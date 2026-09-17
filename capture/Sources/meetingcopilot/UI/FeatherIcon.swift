@@ -3,6 +3,7 @@ import AppKit
 /// The feather, drawn from an inlined SVG so the executable still needs no
 /// resource bundle next to it. Shared by the menu bar, the status window and
 /// the Dock tile so all three show the same state in the same colour.
+@MainActor
 enum FeatherIcon {
     // Lucide feather.
     private static let svg = """

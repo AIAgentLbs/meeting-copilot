@@ -2164,9 +2164,19 @@ def main() -> None:
             state.refresh()
             assert state.snapshot()["meeting_id"] == "test-meeting"
             assert state.snapshot()["live"]
-        scope = REPOSITORIES.resolve("Prima sync", "Обсуждаем Prima")
-        assert scope["name"] == "Prima"
-        assert [repo["name"] for repo in scope["repositories"]] == ["sales"]
+        with tempfile.TemporaryDirectory() as directory:
+            scope_path = Path(directory) / "active-repos.json"
+            scope_path.write_text(json.dumps({
+                "repositories": [{"name": "sales", "path": directory}],
+                "projects": [{
+                    "name": "Prima",
+                    "aliases": ["Prima"],
+                    "repositories": ["sales"],
+                }],
+            }), encoding="utf-8")
+            scope = RepositoryScope(scope_path).resolve("Prima sync", "Обсуждаем Prima")
+            assert scope["name"] == "Prima"
+            assert [repo["name"] for repo in scope["repositories"]] == ["sales"]
         print("meeting-copilot self-test: ok")
         return
 
