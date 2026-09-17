@@ -22,7 +22,7 @@ command -v codex >/dev/null || fail "Codex CLI is required: https://developers.o
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/meeting-copilot.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 url="${MEETING_COPILOT_ASSET_URL:-https://github.com/$REPO/releases/latest/download/$ASSET}"
-say "downloading the current signed package"
+say "downloading the current release package"
 curl --fail --location --silent --show-error "$url" -o "$tmp/$ASSET"
 unzip -q "$tmp/$ASSET" -d "$tmp/release"
 [[ -d "$tmp/release/Meeting Copilot Capture.app" ]] || fail "release app is missing"
