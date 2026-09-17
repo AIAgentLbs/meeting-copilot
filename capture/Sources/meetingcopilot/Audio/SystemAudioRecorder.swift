@@ -58,7 +58,9 @@ final class SystemAudioRecorder {
 
     // Thread-safe shared state: accessed from both the main thread and the
     // IOProc callback (background serial queue) without further sync.
-    private struct LockedState {
+    // Every access is serialized by OSAllocatedUnfairLock. AVAudioFile itself
+    // is not Sendable, so the lock is the synchronization boundary.
+    private struct LockedState: @unchecked Sendable {
         var file: AVAudioFile?
         var firstBufferAt: Date?
         var lastSoundAt: Date?
