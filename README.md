@@ -55,8 +55,12 @@ installer neither uploads repositories nor runs `git pull`, `fetch`, `clone`,
 
 ```sh
 python3 copilot/web/server.py --self-test
-cd capture && swift test
+swift build -c release --package-path capture
 ```
+
+The AppKit UI test suite additionally requires a logged-in macOS GUI session.
+Building the native app requires the macOS 26 SDK; the resulting app keeps a
+macOS 15 deployment target.
 
 The release package is built with `scripts/package-release.sh`. Never commit
 recordings, transcripts, OAuth profiles, delivery credentials or repository
@@ -65,4 +69,3 @@ manifests.
 ## License
 
 MIT. See [LICENSE](LICENSE) and [capture/THIRD-PARTY-NOTICES.md](capture/THIRD-PARTY-NOTICES.md).
-
