@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Bot-free live meeting intelligence grounded in your local Git repositories.">
+  <title>Meeting Copilot by AI Agent Labs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="nav shell">
+    <a class="brand" href="#top"><span class="pulse"></span><span>Meeting Copilot</span><small>AI AGENT LABS</small></a>
+    <nav aria-label="Primary"><a href="#how">How it works</a><a href="#privacy">Privacy</a><a href="ru/">RU</a><a class="button small" href="https://github.com/AIAgentLbs/meeting-copilot">GitHub ↗</a></nav>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow">PRIVATE · BOT-FREE · REPO-GROUNDED</p>
+        <h1>Your meeting,<br><em>with receipts.</em></h1>
+        <p class="lede">Hear what is being said now. Check it instantly against architecture, decisions, numbers and history already living in your local repositories.</p>
+        <div class="actions"><a class="button" href="#install">Install for macOS</a><a class="text-link" href="#how">See the evidence flow ↓</a></div>
+        <p class="fine">Beta · macOS 15+ · Apple Silicon · no meeting bot</p>
+      </div>
+      <div class="evidence-stage" aria-label="Live transcript connected to repository evidence">
+        <div class="live-chip"><span></span> LIVE · 00:23:41</div>
+        <article class="utterance"><b>Speaker</b><time>14:32:08</time><p>“The pricing was approved at ten million.”</p></article>
+        <div class="trace"><i></i><i></i><i></i></div>
+        <article class="finding"><div><span class="signal red">CONTRADICTION</span><time>14:32:10</time></div><p>The latest approved proposal states <strong>15M</strong>, not 10M.</p><footer><code>cmo-shared/proposals/pricing.md</code><br><span>commit a83f4d1 · heading: Approved budget</span></footer></article>
+      </div>
+    </section>
+
+    <section class="marquee" aria-label="Supported intelligence types"><div>FACT <span>●</span> CONTRADICTION <span>●</span> HISTORY <span>●</span> RISK <span>●</span> COMMITMENT <span>●</span> DECISION <span>●</span> ASK</div></section>
+
+    <section class="section shell" id="how">
+      <div class="section-head"><p class="eyebrow">THE EVIDENCE LOOP</p><h2>Not another meeting summary.</h2><p>A local intelligence layer that connects the conversation to the work.</p></div>
+      <ol class="flow">
+        <li><span>01</span><h3>Capture</h3><p>System audio and your microphone become a near-live transcript on your Mac. No bot joins the call.</p></li>
+        <li><span>02</span><h3>Resolve</h3><p>The current project, entities and speakers are identified from the meeting and your selected context.</p></li>
+        <li><span>03</span><h3>Verify</h3><p>Codex searches up to 15 local GitHub or GitLab checkouts, docs, source and Git history.</p></li>
+        <li><span>04</span><h3>Surface</h3><p>Only useful signals appear—with file, heading, symbol and commit provenance.</p></li>
+      </ol>
+    </section>
+
+    <section class="section split shell" id="privacy">
+      <div><p class="eyebrow">LOCAL BY DEFAULT</p><h2>Your context stays yours.</h2></div>
+      <div class="privacy-copy"><p>The UI is available only at <code>127.0.0.1</code>. Transcripts, screenshots, notes and reports stay in your user directory unless you explicitly configure delivery.</p><ul><li>No repository upload</li><li>No background clone, pull or fetch</li><li>Read-only repository inspection</li><li>Optional Drive, email and Telegram delivery</li></ul></div>
+    </section>
+
+    <section class="section shell install" id="install">
+      <p class="eyebrow">ONE COMMAND</p><h2>From call to context in minutes.</h2>
+      <div class="terminal"><div class="terminal-top"><span></span><span></span><span></span><b>Terminal</b></div><div class="command"><code id="install-command">curl -fsSL https://raw.githubusercontent.com/AIAgentLbs/meeting-copilot/main/install.sh | bash</code><button data-copy="install-command">Copy</button></div></div>
+      <div class="after"><span>1</span> Approve macOS audio permissions <span>2</span> Run <code>meeting-copilot</code> <span>3</span> Select the repositories that matter</div>
+    </section>
+
+    <section class="section shell final"><p class="eyebrow">MEETING INTELLIGENCE WITH PROVENANCE</p><h2>Challenge the claim.<br>Find the decision.<br><em>Show the source.</em></h2><a class="button" href="https://github.com/AIAgentLbs/meeting-copilot">View source on GitHub ↗</a></section>
+  </main>
+
+  <footer class="shell"><span>Meeting Copilot by <a href="https://aiagentlbs.com">AI Agent Labs</a></span><span>MIT · Beta · 2026</span></footer>
+  <script src="site.js"></script>
+</body>
+</html>
+

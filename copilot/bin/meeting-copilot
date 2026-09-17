@@ -1,0 +1,146 @@
+#!/bin/zsh
+set -euo pipefail
+
+config_dir="$HOME/.config/meeting-copilot"
+manifest="$config_dir/repos.json"
+active_manifest="$config_dir/active-repos.json"
+session_file="$config_dir/SESSION.md"
+refresh_script="$config_dir/refresh-repos.py"
+capture_app="/Applications/Meeting Copilot Capture.app"
+[[ -d "$capture_app" ]] || capture_app="$HOME/Applications/Meeting Copilot Capture.app"
+transcript_file="$HOME/.local/share/meeting-copilot/meeting-copilot-live.json"
+web_server="$HOME/.local/share/meeting-copilot/web/server.py"
+web_log="$HOME/.local/share/meeting-copilot/web/server.log"
+web_label="com.aiagentlbs.meeting-copilot"
+web_agent="$HOME/Library/LaunchAgents/$web_label.plist"
+window_finder="$HOME/.local/share/meeting-copilot/bin/zoom-window-finder"
+window_target="$config_dir/zoom-window.json"
+web_port=43121
+web_url="http://127.0.0.1:$web_port"
+check_only=false
+no_open=false
+
+open_copilot() {
+  if [[ -d "/Applications/Google Chrome.app" ]]; then
+    /usr/bin/osascript \
+      -e 'tell application "Google Chrome"' \
+      -e 'set copilotWindow to make new window' \
+      -e "set URL of active tab of copilotWindow to \"$web_url\"" \
+      -e 'activate' \
+      -e 'end tell' >/dev/null 2>&1 || open "$web_url"
+  else
+    open "$web_url"
+  fi
+}
+
+case "${1:-}" in
+  "") ;;
+  --check) check_only=true ;;
+  --no-open) no_open=true ;;
+  *)
+    print -u2 "Usage: meeting-copilot [--check|--no-open]"
+    exit 2
+    ;;
+esac
+
+if [[ ! -d "$capture_app" ]]; then
+  print -u2 "Capture app is not installed: $capture_app"
+  exit 1
+fi
+capture_processes=$( { pgrep -f "$capture_app/Contents/MacOS/" || true; } | wc -l | tr -d ' ')
+if (( capture_processes == 0 )); then
+  if [[ "$check_only" == true ]]; then
+    print "Meeting Copilot Capture: installed but not running"
+  else
+    open -a "$capture_app"
+    for _ in {1..30}; do
+      pgrep -f "$capture_app/Contents/MacOS/" >/dev/null 2>&1 && break
+      sleep 0.5
+    done
+    capture_processes=$( { pgrep -f "$capture_app/Contents/MacOS/" || true; } | wc -l | tr -d ' ')
+  fi
+fi
+if (( capture_processes > 1 )); then
+  print -u2 "Meeting Copilot Capture: expected one process, found $capture_processes"
+  exit 1
+fi
+if (( capture_processes == 1 )); then print "Meeting Copilot Capture: running"; fi
+if [[ ! -f "$manifest" ]]; then
+  print -u2 "Repository manifest missing: $manifest"
+  exit 1
+fi
+if [[ ! -f "$active_manifest" ]]; then
+  print -u2 "Active repository manifest missing: $active_manifest"
+  exit 1
+fi
+if [[ ! -x "$refresh_script" ]]; then
+  print -u2 "Repository refresh helper missing: $refresh_script"
+  exit 1
+fi
+if [[ ! -f "$session_file" || ! -f "$web_server" ]]; then
+  print -u2 "Meeting Copilot UI configuration is incomplete"
+  exit 1
+fi
+if ! /usr/bin/env PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin" \
+  codex --version >/dev/null 2>&1; then
+  print -u2 "Codex CLI or its Node runtime is unavailable"
+  exit 1
+fi
+
+"$refresh_script" --status-only --manifest "$active_manifest"
+active_count=$(/usr/bin/python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["repositories"]))' "$active_manifest")
+print "Local knowledge: $active_count active repositories (full catalog is fallback only)"
+if [[ -f "$transcript_file" ]]; then
+  transcript_summary=$(/usr/bin/python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print("%s · %s · %d реплик" % (p.get("title", "Без названия"), p.get("status", "unknown"), len(p.get("segments", []))))' "$transcript_file" 2>/dev/null || true)
+  print "Live transcript: ${transcript_summary:-invalid file}"
+else
+  print "Live transcript: waiting for the first Meeting Copilot recording"
+fi
+print "Session instructions: $session_file"
+
+if [[ -x "$window_finder" ]] && "$window_finder" --write "$window_target" 2>/dev/null; then
+  print "Zoom window: detected for private screenshots"
+else
+  print "Zoom screenshots: waiting for a visible Zoom/Meet window"
+fi
+
+if [[ "$check_only" == true ]]; then
+  print "Local UI: $web_url"
+  print "Run: meeting-copilot"
+  exit 0
+fi
+
+if /usr/bin/curl --silent --fail --max-time 1 "$web_url/api/health" \
+  | /usr/bin/grep -q 'meeting-copilot'; then
+  print "Meeting Copilot is already running: $web_url"
+  if [[ "$no_open" == false ]]; then
+    open_copilot
+  fi
+  exit 0
+fi
+
+print "Starting private local UI; frame capture stays armed: $web_url"
+if [[ ! -f "$web_agent" ]]; then
+  print -u2 "Meeting Copilot LaunchAgent is missing: $web_agent"
+  exit 1
+fi
+if ! launchctl print "gui/$(/usr/bin/id -u)/$web_label" >/dev/null 2>&1; then
+  launchctl bootstrap "gui/$(/usr/bin/id -u)" "$web_agent"
+else
+  launchctl kickstart -k "gui/$(/usr/bin/id -u)/$web_label"
+fi
+
+for _ in {1..50}; do
+  if /usr/bin/curl --silent --fail --max-time 1 "$web_url/api/health" \
+    | /usr/bin/grep -q 'meeting-copilot'; then
+    print "Meeting Copilot is ready: $web_url"
+    if [[ "$no_open" == false ]]; then
+      open_copilot
+    fi
+    exit 0
+  fi
+  sleep 0.2
+done
+
+print -u2 "Meeting Copilot server did not start. Log: $web_log"
+exit 1

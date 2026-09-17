@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "email": {"enabled": false, "to": "you@example.com"},
+  "google_drive": {"enabled": false, "folder_id": ""},
+  "telegram": {"enabled": false, "chat_id": ""}
+}
+

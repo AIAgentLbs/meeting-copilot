@@ -1,0 +1,6 @@
+.DS_Store
+.build/
+.claude/
+.superpowers/
+dist/
+.env.asc

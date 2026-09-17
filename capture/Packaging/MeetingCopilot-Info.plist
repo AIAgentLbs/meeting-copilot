@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.aiagentlbs.meetingcopilot.capture</string>
+    <key>CFBundleName</key>
+    <string>Meeting Copilot</string>
+    <key>CFBundleDisplayName</key>
+    <string>Meeting Copilot</string>
+    <key>CFBundleExecutable</key>
+    <string>MeetingCopilotCapture</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>MeetingCopilot</string>
+    <key>CFBundleShortVersionString</key>
+    <string>__SHORT_VERSION__</string>
+    <key>CFBundleVersion</key>
+    <string>__BUILD_VERSION__</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>15.0</string>
+    <!-- A Dock icon and a menu bar item, not an accessory: the app switches
+         to .accessory at runtime when someone turns the Dock icon off. -->
+    <key>LSUIElement</key>
+    <false/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
+    <key>NSSupportsSuddenTermination</key>
+    <false/>
+    <!-- Updates are disabled until AI Agent Labs publishes a signed appcast. -->
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Meeting Copilot records your microphone during meetings so you can transcribe them locally.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Meeting Copilot records system audio during meetings so you can transcribe it locally.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Meeting Copilot reads your calendar to identify and name meetings and, if enabled, start recording scheduled calls.</string>
+</dict>
+</plist>

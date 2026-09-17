@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Meeting Copilot by aiagentlbs.com</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-lockup">
+          <div class="brand">Meeting Copilot</div>
+          <div class="brand-company">by aiagentlbs.com</div>
+        </div>
+        <div class="meeting-title" id="meeting-title" data-i18n="meeting.connecting">Подключение к записи...</div>
+      </div>
+      <div class="status-strip" aria-live="polite">
+        <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
+        <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings">Встречи</button>
+        <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories">Репозитории</button>
+        <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
+          <button data-language="ru" type="button">RU</button>
+          <button data-language="en" type="button">EN</button>
+        </div>
+        <button class="quiet-button" id="refresh-button" type="button" data-i18n="common.refresh">Обновить</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <section class="transcript-pane" aria-labelledby="transcript-heading">
+        <div class="pane-header">
+          <div>
+            <h1 id="transcript-heading" data-i18n="transcript.heading">Ход созвона</h1>
+            <p id="transcript-meta" data-i18n="transcript.loading">Получаю последние реплики</p>
+          </div>
+          <div class="transcript-actions">
+            <button class="quiet-button copy-dialog-button" id="copy-dialog" type="button" data-i18n="transcript.copy">Копировать диалог</button>
+            <div class="view-tabs transcript-tabs" role="group" aria-label="Вид левой панели" data-i18n-aria-label="aria.transcript_view">
+              <button class="active" data-transcript-view="transcript" type="button"><span data-i18n="transcript.tab">Стенограмма</span></button>
+              <button data-transcript-view="frames" type="button"><span data-i18n="frames.tab">Кадры</span> <span id="frame-count">0</span></button>
+            </div>
+            <div class="segmented" id="speaker-filters" role="group" aria-label="Фильтр участников" data-i18n-aria-label="aria.speaker_filter">
+              <button class="active" data-source="all" type="button" data-i18n="speaker.all">Все</button>
+              <button data-source="microphone" type="button" data-i18n="speaker.me">Я</button>
+              <button data-source="system" type="button" data-i18n="speaker.others">Собеседники</button>
+            </div>
+          </div>
+        </div>
+        <div class="transcript" id="transcript" aria-live="polite">
+          <div class="empty-state">
+            <strong data-i18n="transcript.empty_title">Жду стенограмму</strong>
+            <span data-i18n="transcript.empty_text">Meeting Copilot передаёт локальную расшифровку примерно раз в секунду.</span>
+          </div>
+        </div>
+        <div class="frames" id="frames" hidden>
+          <div class="frames-toolbar">
+            <span><span data-i18n="frames.local_note">Кадры хранятся только локально вместе с записью.</span> <span id="frame-status"></span></span>
+            <button class="quiet-button" id="capture-frame" type="button" data-i18n="frames.capture">Снять кадр сейчас</button>
+          </div>
+          <div class="frames-grid" id="frames-grid"></div>
+        </div>
+      </section>
+
+      <section class="copilot-pane" aria-labelledby="copilot-heading">
+        <div class="pane-header copilot-header">
+          <div>
+            <h2 id="copilot-heading" data-i18n="copilot.heading">Чат с контекстом</h2>
+            <p id="copilot-meta" data-i18n="copilot.meta">Codex читает стенограмму и локальные Git-репозитории</p>
+          </div>
+          <div class="copilot-actions">
+            <button class="quiet-button" id="reset-button" type="button" data-i18n="copilot.reset">Новый контекст</button>
+          </div>
+        </div>
+
+        <div class="copilot-content">
+          <div class="workspace-filters" id="workspace-filters" role="tablist" aria-label="Чат и сигналы" data-i18n-aria-label="aria.workspace_filter">
+            <button class="active" data-content-view="chat" role="tab" type="button" data-i18n="view.chat">Чат</button>
+            <button data-content-view="questions" role="tab" type="button"><span data-i18n="journal.questions">Вопросы</span><span class="tab-count" id="questions-count">0</span></button>
+            <button data-content-view="objections" role="tab" type="button"><span data-i18n="journal.objections">Риски и возражения</span><span class="tab-count" id="objections-count">0</span></button>
+            <button data-content-view="decisions" role="tab" type="button"><span data-i18n="journal.decisions">Решения</span><span class="tab-count" id="decisions-count">0</span></button>
+            <button data-content-view="notes" role="tab" type="button"><span data-i18n="journal.notes">Мои заметки</span><span class="tab-count" id="notes-count">0</span></button>
+            <button data-content-view="entities" role="tab" type="button"><span data-i18n="journal.entities">Ссылки и сервисы</span><span class="tab-count" id="entities-count">0</span></button>
+            <button data-content-view="meeting-chat" role="tab" type="button"><span data-i18n="view.meeting_chat">Чат встречи</span><span class="tab-count" id="meeting-chat-count">0</span></button>
+          </div>
+          <div class="workspace-view">
+            <div class="chat" id="chat" aria-live="polite">
+              <div class="welcome" id="welcome">
+                <h3 data-i18n="welcome.title">Спросите по ходу разговора</h3>
+                <p data-i18n="welcome.text">Ответ будет проверен по локальным источникам. Репозитории открываются только для чтения.</p>
+                <div class="suggestions">
+                  <button type="button" data-i18n="suggestion.latest">Что они только что сказали?</button>
+                  <button type="button" data-i18n="suggestion.repos">Проверь это по репозиториям</button>
+                  <button type="button" data-i18n="suggestion.history">Что мы решали раньше?</button>
+                  <button type="button" data-i18n="suggestion.challenge">Что здесь стоит оспорить?</button>
+                </div>
+              </div>
+            </div>
+            <button class="chat-latest" id="chat-latest" type="button" hidden data-i18n="message.latest">К последнему ответу</button>
+            <div class="journal" id="journal" hidden>
+              <div class="journal-list" id="journal-list" aria-live="polite"></div>
+            </div>
+            <div class="meeting-chat" id="meeting-chat" hidden>
+              <div class="meeting-chat-note" data-i18n="meeting_chat.note">Сообщения извлекаются из видимой панели Zoom Chat и сохраняются только локально.</div>
+              <div class="meeting-chat-list" id="meeting-chat-list" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer-wrap" id="composer-wrap">
+          <div class="analysis-row">
+            <label class="switch-label">
+              <input id="auto-analysis" type="checkbox" checked />
+              <span data-i18n="analysis.auto">Автоанализ важных новых реплик</span>
+            </label>
+            <button class="quiet-button" id="analyze-button" type="button" data-i18n="analysis.now">Анализ сейчас</button>
+          </div>
+          <div class="analysis-status" id="analysis-status" data-i18n="analysis.initial">Автоанализ ещё не запускался</div>
+          <form class="composer" id="chat-form">
+            <label for="question" data-i18n="composer.label">Вопрос или заметка к текущему созвону</label>
+            <div class="composer-input">
+              <textarea
+                id="question"
+                rows="2"
+                maxlength="8000"
+                placeholder="Спросите Copilot или запишите мысль по ходу разговора."
+                data-i18n-placeholder="composer.placeholder"
+              ></textarea>
+              <div class="composer-buttons">
+                <button class="note-button" id="note-button" type="button">Заметка @ --:--</button>
+                <button class="send-button" id="send-button" type="submit" data-i18n="composer.ask">Спросить</button>
+              </div>
+            </div>
+            <div class="composer-help" id="composer-help" data-i18n="composer.help">Enter спрашивает · ⌘Enter сохраняет заметку · Shift+Enter переносит строку</div>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="repo-dialog" id="repo-dialog">
+      <form method="dialog" class="repo-dialog-shell">
+        <div class="repo-dialog-header">
+          <div>
+            <h2 data-i18n="repos.title">Репозитории для контекста</h2>
+            <p data-i18n="repos.description">Выберите до 15 уже клонированных GitHub/GitLab-репозиториев. Файлы и Git остаются только для чтения.</p>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="Закрыть" data-i18n-aria-label="common.close" type="submit">×</button>
+        </div>
+        <div class="repo-toolbar">
+          <input id="repo-search" type="search" placeholder="Имя, путь или remote URL" data-i18n-placeholder="repos.search" autocomplete="off" />
+          <span id="repo-selection-count">0 из 15</span>
+        </div>
+        <div class="repo-list" id="repo-list"></div>
+        <div class="repo-dialog-footer">
+          <span id="repo-help" data-i18n="repos.help">Список берётся из локального каталога — клонирования и сетевых Git-команд нет.</span>
+          <div>
+            <button class="quiet-button" value="cancel" type="submit" data-i18n="common.cancel">Отмена</button>
+            <button class="send-button" id="repo-save" value="default" type="button" data-i18n="repos.save">Сохранить набор</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="archive-dialog" id="archive-dialog">
+      <div class="archive-shell">
+        <div class="archive-header">
+          <div>
+            <h2 data-i18n="archive.title">Архив встреч</h2>
+            <p data-i18n="archive.description">Стенограммы, заметки, чат, кадры и отчёты хранятся локально.</p>
+          </div>
+          <button class="icon-button" id="archive-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
+        </div>
+        <div class="archive-layout">
+          <aside class="archive-list" id="archive-list"></aside>
+          <section class="archive-detail" id="archive-detail">
+            <div class="empty-state">
+              <strong data-i18n="archive.select_title">Выберите встречу</strong>
+              <span data-i18n="archive.select_text">Здесь появятся её материалы и готовые отчёты.</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </dialog>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

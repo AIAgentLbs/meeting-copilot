@@ -1,0 +1,14 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  python:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 copilot/web/server.py --self-test
+  swift:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path capture
+
