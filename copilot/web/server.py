@@ -34,6 +34,7 @@ TRANSCRIPT_FILE = HOME / ".local/share/meeting-copilot/meeting-copilot-live.json
 SESSION_FILE = HOME / ".config/meeting-copilot/SESSION.md"
 MANIFEST_FILE = HOME / ".config/meeting-copilot/repos.json"
 ACTIVE_REPOS_FILE = HOME / ".config/meeting-copilot/active-repos.json"
+MEETING_PROJECTS_FILE = HOME / ".config/meeting-copilot/meeting-projects.json"
 JOURNAL_FILE = HOME / ".config/meeting-copilot/journal.json"
 MEETING_CHAT_FILE = HOME / ".config/meeting-copilot/meeting-chat.json"
 COPILOT_FILE = HOME / ".config/meeting-copilot/copilot-state.json"
@@ -209,8 +210,10 @@ def repository_count(path: Path = ACTIVE_REPOS_FILE) -> int:
 
 
 class RepositoryScope:
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, selection_path: Path = MEETING_PROJECTS_FILE) -> None:
         self.path = path
+        self.selection_path = selection_path
+        self.selection_lock = threading.Lock()
 
     def payload(self) -> dict:
         try:
@@ -289,16 +292,104 @@ class RepositoryScope:
         temporary.replace(self.path)
         return len(unique_paths)
 
-    def resolve(self, meeting: str, transcript: str, question: str = "") -> dict:
+    def choices(self) -> list[dict]:
+        config = self.payload()
+        repositories = [
+            item for item in config.get("repositories", [])
+            if isinstance(item, dict) and item.get("name") and item.get("path")
+        ]
+        active_names = {item["name"] for item in repositories}
+        choices = [
+            {"value": "auto", "kind": "auto", "name": "", "repositories": []},
+            {"value": "all", "kind": "all", "name": "", "repositories": [
+                item["name"] for item in repositories
+            ]},
+        ]
+        for project in config.get("projects", []):
+            if not isinstance(project, dict) or not project.get("name"):
+                continue
+            names = [
+                name for name in project.get("repositories", [])
+                if name in active_names
+            ]
+            if names:
+                choices.append({
+                    "value": f"project:{project['name']}",
+                    "kind": "project",
+                    "name": project["name"],
+                    "repositories": names,
+                })
+        for item in repositories:
+            choices.append({
+                "value": f"repository:{item['path']}",
+                "kind": "repository",
+                "name": item["name"],
+                "repositories": [item["name"]],
+            })
+        return choices
+
+    def selection(self, meeting_id: str) -> str:
+        if not meeting_id:
+            return "auto"
+        payload = self._read_payload(self.selection_path)
+        meetings = payload.get("meetings", {})
+        return str(meetings.get(meeting_id, "auto")) if isinstance(meetings, dict) else "auto"
+
+    def set_selection(self, meeting_id: str, value: str) -> None:
+        if not meeting_id or len(meeting_id) > 200:
+            raise ValueError("Встреча ещё не определена")
+        if value not in {item["value"] for item in self.choices()}:
+            raise ValueError("Выберите проект или репозиторий из списка")
+        with self.selection_lock:
+            try:
+                payload = json.loads(self.selection_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                payload = {}
+            except (OSError, ValueError, TypeError) as error:
+                raise ValueError("Не удалось прочитать локальные настройки проектов") from error
+            if not isinstance(payload, dict) or not isinstance(payload.get("meetings", {}), dict):
+                raise ValueError("Локальные настройки проектов повреждены")
+            meetings = payload.setdefault("meetings", {})
+            if value == "auto":
+                meetings.pop(meeting_id, None)
+            else:
+                meetings[meeting_id] = value
+            data = json.dumps({"version": 1, "meetings": meetings}, ensure_ascii=False, indent=2) + "\n"
+            self.selection_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            temporary = self.selection_path.with_suffix(".tmp")
+            temporary.write_text(data, encoding="utf-8")
+            temporary.chmod(0o600)
+            temporary.replace(self.selection_path)
+
+    def resolve(
+        self, meeting: str, transcript: str, question: str = "", meeting_id: str = ""
+    ) -> dict:
         config = self.payload()
         repositories = {
             item.get("name", ""): item
             for item in config.get("repositories", [])
             if item.get("name") and item.get("path")
         }
+        selection = self.selection(meeting_id)
+        choice = next((item for item in self.choices() if item["value"] == selection), None)
+        if choice and choice["kind"] != "auto":
+            names = choice["repositories"]
+            return {
+                "name": choice["name"] if choice["kind"] != "all" else "Не определён",
+                "confidence": "manual",
+                "matched_aliases": [],
+                "repositories": [repositories[name] for name in names if name in repositories],
+                "fallback_allowed": True,
+                "selection": selection,
+                "kind": choice["kind"],
+            }
         fields = ((meeting, 6), (question, 4), (transcript[-16000:], 2))
         scored: list[tuple[int, dict, list[str]]] = []
         for project in config.get("projects", []):
+            if not isinstance(project, dict):
+                continue
+            if not any(name in repositories for name in project.get("repositories", [])):
+                continue
             hits: list[str] = []
             score = 0
             for alias in project.get("aliases", []):
@@ -322,6 +413,8 @@ class RepositoryScope:
                 "matched_aliases": selected[2],
                 "repositories": [repositories[name] for name in names],
                 "fallback_allowed": True,
+                "selection": "auto",
+                "kind": "project",
             }
         return {
             "name": "Не определён",
@@ -329,6 +422,8 @@ class RepositoryScope:
             "matched_aliases": selected[2] if selected else [],
             "repositories": list(repositories.values()),
             "fallback_allowed": True,
+            "selection": "auto",
+            "kind": "all",
         }
 
 
@@ -1553,9 +1648,13 @@ class CodexSession:
             f"- {item['name']}: {item['path']}"
             for item in scope.get("repositories", [])
         )
+        if scope.get("kind") == "all":
+            context = "Проект встречи не выбран; используй все выбранные репозитории."
+        else:
+            source = "выбран пользователем" if scope.get("confidence") == "manual" else "определён автоматически"
+            context = f"Проект/репозиторий: {scope.get('name', 'Не определён')} ({source})."
         return (
-            f"Определённый проект: {scope.get('name', 'Не определён')} "
-            f"(уверенность: {scope.get('confidence', 'low')}).\n"
+            f"{context}\n"
             f"Разрешённый рабочий набор репозиториев:\n{repos or '- нет'}"
         )
 
@@ -1879,7 +1978,8 @@ class Handler(BaseHTTPRequestHandler):
             FRAMES.ingest_artifacts(transcript["meeting_id"], transcript["meeting"])
             COPILOT.bind_meeting(transcript["meeting_id"])
             scope = REPOSITORIES.resolve(
-                transcript["meeting"], self._transcript_text(transcript)
+                transcript["meeting"], self._transcript_text(transcript),
+                meeting_id=transcript["meeting_id"],
             )
             self._json(
                 {
@@ -1896,6 +1996,14 @@ class Handler(BaseHTTPRequestHandler):
             )
         elif path == "/api/repositories":
             self._json({"ok": True, **REPOSITORIES.catalog()})
+        elif path == "/api/projects":
+            transcript = TRANSCRIPT.snapshot()
+            self._json({
+                "ok": True,
+                "meeting_id": transcript["meeting_id"],
+                "choices": REPOSITORIES.choices(),
+                "selection": REPOSITORIES.selection(transcript["meeting_id"]),
+            })
         elif path == "/api/archive":
             self._json({"ok": True, "meetings": ARCHIVE.list_meetings()})
         elif path.startswith("/api/archive/frame/"):
@@ -1942,7 +2050,9 @@ class Handler(BaseHTTPRequestHandler):
                     context += "\n\n[VISIBLE SCREEN OCR]\n" + visual
                 if notes:
                     context += "\n\n[MANUAL NOTES]\n" + notes
-                scope = REPOSITORIES.resolve(snap["meeting"], context, question)
+                scope = REPOSITORIES.resolve(
+                    snap["meeting"], context, question, snap["meeting_id"]
+                )
                 answer = COPILOT.ask(
                     question,
                     context,
@@ -2000,7 +2110,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not COPILOT.should_analyze(context, force):
                     self._json({"ok": True, "skipped": True})
                     return
-                scope = REPOSITORIES.resolve(snap["meeting"], context)
+                scope = REPOSITORIES.resolve(
+                    snap["meeting"], context, meeting_id=snap["meeting_id"]
+                )
                 question = (
                     "Проверь только новый текущий контекст. Покажи максимум пять действительно "
                     "важных FACT, CONTRADICTION, HISTORY, RISK, COMMITMENT, DECISION, ASK, URL, "
@@ -2030,6 +2142,17 @@ class Handler(BaseHTTPRequestHandler):
                 # must not make an already delivered answer disappear.
                 COPILOT.reset(clear_messages=False)
                 self._json({"ok": True, "repositories": count})
+            elif path == "/api/project":
+                snap = TRANSCRIPT.snapshot()
+                meeting_id = str(payload.get("meeting_id") or "")
+                selection = str(payload.get("selection") or "")
+                if not meeting_id or meeting_id != snap["meeting_id"]:
+                    raise ValueError("Встреча сменилась. Обновите страницу и выберите проект снова")
+                if selection not in {item["value"] for item in REPOSITORIES.choices()}:
+                    raise ValueError("Выберите проект или репозиторий из списка")
+                REPOSITORIES.set_selection(meeting_id, selection)
+                COPILOT.reset(clear_messages=False)
+                self._json({"ok": True, "selection": selection})
             elif path == "/api/archive/report":
                 meeting_id = str(payload.get("meeting_id") or "")
                 if not meeting_id:
@@ -2211,9 +2334,28 @@ def main() -> None:
                     "repositories": ["sales"],
                 }],
             }), encoding="utf-8")
-            scope = RepositoryScope(scope_path).resolve("Prima sync", "Обсуждаем Prima")
+            repository_scope = RepositoryScope(
+                scope_path, Path(directory) / "meeting-projects.json"
+            )
+            scope = repository_scope.resolve("Prima sync", "Обсуждаем Prima")
             assert scope["name"] == "Prima"
             assert [repo["name"] for repo in scope["repositories"]] == ["sales"]
+            assert repository_scope.resolve(
+                "Google Chrome Helper", "Обсуждаем новый продукт", meeting_id="one"
+            )["kind"] == "all"
+            repository_scope.set_selection("one", "project:Prima")
+            assert repository_scope.resolve(
+                "Google Chrome Helper", "Обсуждаем новый продукт", meeting_id="one"
+            )["name"] == "Prima"
+            assert repository_scope.resolve(
+                "Google Chrome Helper", "Обсуждаем новый продукт", meeting_id="two"
+            )["kind"] == "all"
+            repository_scope.set_selection("one", f"repository:{directory}")
+            assert repository_scope.resolve(
+                "Google Chrome Helper", "", meeting_id="one"
+            )["repositories"][0]["name"] == "sales"
+            repository_scope.set_selection("one", "auto")
+            assert repository_scope.selection("one") == "auto"
         print("meeting-copilot self-test: ok")
         return
 
