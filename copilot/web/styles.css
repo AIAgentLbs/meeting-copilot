@@ -109,6 +109,23 @@ body {
   background: var(--surface);
 }
 
+.archive-day-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 14px 12px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.archive-day-heading:not(:first-child) {
+  margin-top: 12px;
+}
+
 .archive-item {
   width: 100%;
   display: grid;
