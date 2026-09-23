@@ -578,9 +578,12 @@ class MeetingJournal:
             # Preserve an unreadable journal instead of overwriting it.
             self.path = path.with_name("journal-recovered.json")
 
-    def snapshot(self) -> list[dict]:
+    def snapshot(self, meeting_id: str) -> list[dict]:
         with self.lock:
-            return list(reversed(self.items[-500:]))
+            return [
+                item for item in reversed(self.items)
+                if meeting_id and item.get("meeting_id") == meeting_id
+            ][:500]
 
     def manual_context(self, meeting_id: str, limit: int = 40) -> str:
         with self.lock:
@@ -1457,7 +1460,8 @@ class CodexSession:
             messages = payload.get("messages", [])
             if isinstance(messages, list):
                 self.messages = [
-                    item for item in messages[-100:]
+                    {**item, "meeting_id": str(item.get("meeting_id") or "")}
+                    for item in messages[-100:]
                     if isinstance(item, dict)
                     and item.get("role") in {"user", "assistant"}
                     and isinstance(item.get("text"), str)
@@ -1494,14 +1498,21 @@ class CodexSession:
         temporary.chmod(0o600)
         temporary.replace(self.path)
 
-    def snapshot(self) -> dict:
+    def snapshot(self, meeting_id: str | None = None) -> dict:
         with self.lock:
+            current_id = self.meeting_id if meeting_id is None else meeting_id
+            same_meeting = bool(current_id) and current_id == self.meeting_id
             return {
-                "messages": list(self.messages),
+                "messages": [
+                    item for item in self.messages
+                    if current_id and item.get("meeting_id") == current_id
+                ],
                 "busy": self.busy,
-                "error": self.last_error,
-                "connected": bool(self.thread_id),
-                "analysis": dict(self.analysis),
+                "error": self.last_error if same_meeting else "",
+                "connected": bool(self.thread_id) and same_meeting,
+                "analysis": dict(self.analysis) if same_meeting else {
+                    "state": "idle", "at": "", "message": ""
+                },
             }
 
     def reset(self, clear_messages: bool = True) -> None:
@@ -1526,10 +1537,8 @@ class CodexSession:
                 if not self.meeting_id:
                     self.meeting_id = meeting_id
                 return
-            # A recorder restart during the same real call produces a new
-            # meeting id. Start a fresh Codex thread so stale transcript is not
-            # reused, but keep the visible Q&A history; only "New context"
-            # should erase answers from the operator's screen.
+            # A new recording has its own visible Q&A. Keep previous messages
+            # in the local state file, but only display those for this meeting.
             self.thread_id = ""
             self.meeting_id = meeting_id
             self.last_error = ""
@@ -1669,7 +1678,10 @@ class CodexSession:
             self.busy = True
             self.last_error = ""
             if show_user:
-                self.messages.append({"role": "user", "text": question, "kind": kind})
+                self.messages.append({
+                    "role": "user", "text": question, "kind": kind,
+                    "meeting_id": meeting_id,
+                })
                 self._persist_locked()
             first_turn = not self.thread_id
         try:
@@ -1681,7 +1693,10 @@ class CodexSession:
             answer = self._run_codex(prompt)
             with self.lock:
                 if kind != "insight" or answer.strip() != "НЕТ НОВОГО СИГНАЛА":
-                    self.messages.append({"role": "assistant", "text": answer, "kind": kind})
+                    self.messages.append({
+                        "role": "assistant", "text": answer, "kind": kind,
+                        "meeting_id": meeting_id,
+                    })
                 self._persist_locked()
             return answer
         except Exception as exc:
@@ -1871,8 +1886,8 @@ class Handler(BaseHTTPRequestHandler):
                     "transcript": transcript,
                     "frames": FRAMES.snapshot(transcript["meeting_id"]),
                     "frame_capture": FRAMES.status_snapshot(),
-                    "copilot": COPILOT.snapshot(),
-                    "journal": JOURNAL.snapshot(),
+                    "copilot": COPILOT.snapshot(transcript["meeting_id"]),
+                    "journal": JOURNAL.snapshot(transcript["meeting_id"]),
                     "meeting_chat": MEETING_CHAT.snapshot(transcript["meeting_id"]),
                     "repositories": repository_count(),
                     "all_repositories": repository_count(MANIFEST_FILE),
@@ -2135,8 +2150,12 @@ def main() -> None:
         with tempfile.TemporaryDirectory() as directory:
             test_path = Path(directory) / "journal.json"
             MeetingJournal(test_path).add("QUESTION", "Тест", "id", "Встреча", "user")
-            assert MeetingJournal(test_path).snapshot()[0]["text"] == "Тест"
+            assert MeetingJournal(test_path).snapshot("id")[0]["text"] == "Тест"
             journal = MeetingJournal(test_path)
+            journal.add("QUESTION", "Другой звонок", "other-id", "Другая встреча", "user")
+            assert [item["text"] for item in journal.snapshot("id")] == ["Тест"]
+            assert [item["text"] for item in journal.snapshot("other-id")] == ["Другой звонок"]
+            assert journal.snapshot("") == []
             note = journal.add(
                 "NOTE", "Проверить обещанный срок", "id", "Встреча", "user_note",
                 meeting_time_seconds=125,
@@ -2144,6 +2163,24 @@ def main() -> None:
             )
             assert note is not None and note["timecode"] == "00:02:05"
             assert journal.manual_context("id") == "[00:02:05] Проверить обещанный срок"
+            session_path = Path(directory) / "codex-state.json"
+            session = CodexSession(session_path)
+            session._run_codex = lambda prompt: "FACT — Проверено"
+            scope = {"name": "Не определён", "repositories": []}
+            session.ask("Первый вопрос", "Первый звонок", "Первый", "id", scope)
+            session.bind_meeting("other-id")
+            assert session.snapshot("other-id")["messages"] == []
+            assert len(session.snapshot("id")["messages"]) == 2
+            session.ask("Второй вопрос", "Второй звонок", "Второй", "other-id", scope)
+            assert len(session.snapshot("other-id")["messages"]) == 2
+            assert len(CodexSession(session_path).snapshot("other-id")["messages"]) == 2
+            legacy_path = Path(directory) / "legacy-codex-state.json"
+            legacy_path.write_text(json.dumps({
+                "version": 1,
+                "meeting_id": "other-id",
+                "messages": [{"role": "assistant", "text": "Старый ответ"}],
+            }), encoding="utf-8")
+            assert CodexSession(legacy_path).snapshot("other-id")["messages"] == []
             transcript_path = Path(directory) / "meeting-copilot-live.json"
             transcript_path.write_text(json.dumps({
                 "version": 1,
