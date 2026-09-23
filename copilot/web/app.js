@@ -44,6 +44,11 @@ const elements = {
   composerWrap: document.querySelector("#composer-wrap"),
   analysisStatus: document.querySelector("#analysis-status"),
   repoDialog: document.querySelector("#repo-dialog"),
+  projectDialog: document.querySelector("#project-dialog"),
+  projectClose: document.querySelector("#project-close"),
+  projectHelp: document.querySelector("#project-help"),
+  projectOptions: document.querySelector("#project-options"),
+  projectEditRepos: document.querySelector("#project-edit-repos"),
   repoSearch: document.querySelector("#repo-search"),
   repoList: document.querySelector("#repo-list"),
   repoSelectionCount: document.querySelector("#repo-selection-count"),
@@ -55,7 +60,7 @@ const translations = {
   ru: {
     "meeting.connecting": "Подключение к записи...",
     "status.checking": "Проверка",
-    "nav.repositories": "Репозитории",
+    "nav.repositories": "Контекст встречи",
     "nav.meetings": "Встречи",
     "language.label": "Язык интерфейса",
     "aria.transcript_view": "Вид левой панели",
@@ -167,9 +172,30 @@ const translations = {
     "meeting_chat.empty_text": "Откройте панель Zoom Chat: новые видимые сообщения сохранятся с именами участников.",
     "meeting_chat.participant": "Участник",
     "project.unknown": "Проект не определён",
-    "project.unknown_scope": "Проект не определён · поиск по {count} выбранным",
-    "project.identified_scope": "{project} · {scope} из {count} репозиториев",
-    "project.unknown_hint": "Название проекта не найдено уверенно. Copilot проверяет все выбранные репозитории.",
+    "project.all_scope": "Контекст: все {count} · выбрать проект",
+    "project.manual_scope": "Проект: {project} · {count} · изменить",
+    "project.repository_scope": "Контекст: {project} · изменить",
+    "project.auto_scope": "Похоже, {project} · {count} · изменить",
+    "project.all_hint": "Проект не выбран. Copilot ищет по всем выбранным репозиториям.",
+    "project.manual_hint": "Вы выбрали контекст только для этой встречи.",
+    "project.auto_hint": "Проект определён по названию или репликам. Вы можете изменить выбор.",
+    "project.choose_title": "Контекст этой встречи",
+    "project.choose_description": "Выберите проект или репозиторий. Выбор действует только для этой встречи и меняет поиск Copilot.",
+    "project.loading": "Загружаю варианты…",
+    "project.choose_help": "Сейчас поиск идёт по {count}. Можно оставить как есть или сузить контекст.",
+    "project.no_meeting": "Начните запись, чтобы выбрать контекст встречи.",
+    "project.group_modes": "Режим поиска",
+    "project.group_projects": "Проекты",
+    "project.group_repositories": "Отдельные репозитории",
+    "project.auto": "Автоматически",
+    "project.auto_detail": "Если проект не распознан — поиск по всем выбранным.",
+    "project.all": "Все выбранные репозитории",
+    "project.all_detail": "Искать по {count} без привязки к проекту.",
+    "project.only_repo": "Только {name}",
+    "project.selected": "Выбрано",
+    "project.local_note": "Поиск идёт только по выбранным локальным репозиториям.",
+    "project.edit_repos": "Изменить набор репозиториев",
+    "project.saving": "Сохраняю выбор…",
     "ui.disconnected": "UI отключён",
     "help.codex": "Codex проверяет стенограмму и локальные источники",
     "note.saving": "Сохраняю заметку локально",
@@ -207,7 +233,7 @@ const translations = {
   en: {
     "meeting.connecting": "Connecting to the recording...",
     "status.checking": "Checking",
-    "nav.repositories": "Repositories",
+    "nav.repositories": "Meeting context",
     "nav.meetings": "Meetings",
     "language.label": "Interface language",
     "aria.transcript_view": "Left pane view",
@@ -319,9 +345,30 @@ const translations = {
     "meeting_chat.empty_text": "Open the Zoom Chat panel; newly visible messages will be saved with participant names.",
     "meeting_chat.participant": "Participant",
     "project.unknown": "Project not identified",
-    "project.unknown_scope": "Project not identified · searching {count} selected",
-    "project.identified_scope": "{project} · {scope} of {count} repositories",
-    "project.unknown_hint": "No project was identified confidently. Copilot is checking all selected repositories.",
+    "project.all_scope": "Context: all {count} · choose project",
+    "project.manual_scope": "Project: {project} · {count} · change",
+    "project.repository_scope": "Context: {project} · change",
+    "project.auto_scope": "Likely {project} · {count} · change",
+    "project.all_hint": "No project is selected. Copilot searches all selected repositories.",
+    "project.manual_hint": "You selected this context for this meeting only.",
+    "project.auto_hint": "The project was inferred from the meeting title or transcript. You can change it.",
+    "project.choose_title": "Context for this meeting",
+    "project.choose_description": "Choose a project or repository. This affects Copilot search for this meeting only.",
+    "project.loading": "Loading choices…",
+    "project.choose_help": "Copilot currently searches {count}. Keep this scope or narrow it.",
+    "project.no_meeting": "Start a recording to choose meeting context.",
+    "project.group_modes": "Search mode",
+    "project.group_projects": "Projects",
+    "project.group_repositories": "Individual repositories",
+    "project.auto": "Automatic",
+    "project.auto_detail": "Search all selected repositories when no project is recognized.",
+    "project.all": "All selected repositories",
+    "project.all_detail": "Search {count} without choosing a project.",
+    "project.only_repo": "Only {name}",
+    "project.selected": "Selected",
+    "project.local_note": "Search is limited to selected local repositories.",
+    "project.edit_repos": "Change repository set",
+    "project.saving": "Saving selection…",
     "ui.disconnected": "UI disconnected",
     "help.codex": "Codex is checking the transcript and local sources",
     "note.saving": "Saving the note locally",
@@ -368,6 +415,15 @@ function t(key, variables = {}) {
   );
 }
 
+function repositoryCountLabel(count) {
+  if (uiLanguage === "en") return `${count} ${count === 1 ? "repository" : "repositories"}`;
+  const remainder = count % 100;
+  const suffix = remainder >= 11 && remainder <= 14 ? "репозиториев"
+    : count % 10 === 1 ? "репозиторий"
+      : [2, 3, 4].includes(count % 10) ? "репозитория" : "репозиториев";
+  return `${count} ${suffix}`;
+}
+
 function applyLanguage() {
   document.documentElement.lang = uiLanguage;
   document.querySelectorAll("[data-i18n]").forEach((node) => {
@@ -396,6 +452,9 @@ let meetingChatSignature = "";
 let repositoryCatalog = [];
 let selectedRepositoryPaths = new Set();
 let maxActiveRepositories = 15;
+let projectChoices = [];
+let projectSelection = "auto";
+let projectMeetingId = "";
 let transcriptView = "transcript";
 let frameSignature = "";
 let stateRequestInFlight = false;
@@ -789,6 +848,79 @@ function renderRepositoryCatalog() {
     max: maxActiveRepositories,
   });
   elements.repoSave.disabled = selectedRepositoryPaths.size < 1 || selectedRepositoryPaths.size > maxActiveRepositories;
+}
+
+function renderProjectOptions() {
+  const fragment = document.createDocumentFragment();
+  let previousGroup = "";
+  for (const choice of projectChoices) {
+    const group = choice.kind === "project" ? "projects"
+      : choice.kind === "repository" ? "repositories" : "modes";
+    if (group !== previousGroup) {
+      fragment.append(textNode("div", "project-group-title", t(`project.group_${group}`)));
+      previousGroup = group;
+    }
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `project-option${choice.value === projectSelection ? " selected" : ""}`;
+    button.disabled = !projectMeetingId;
+    const label = choice.kind === "auto" ? t("project.auto")
+      : choice.kind === "all" ? t("project.all")
+        : choice.kind === "repository" ? t("project.only_repo", { name: choice.name })
+          : choice.name;
+    const detail = choice.kind === "auto" ? t("project.auto_detail")
+      : choice.kind === "all" ? t("project.all_detail", {
+          count: repositoryCountLabel(choice.repositories.length),
+        }) : choice.repositories.join(" · ");
+    button.append(
+      textNode("strong", "project-option-name", label),
+      textNode("span", "project-option-detail", detail),
+    );
+    if (choice.value === projectSelection) {
+      button.append(textNode("span", "project-option-selected", t("project.selected")));
+    }
+    button.addEventListener("click", () => void chooseProject(choice.value));
+    fragment.append(button);
+  }
+  elements.projectOptions.replaceChildren(fragment);
+}
+
+async function openProjectDialog() {
+  elements.projectHelp.textContent = t("project.loading");
+  elements.projectHelp.classList.remove("error");
+  elements.projectDialog.showModal();
+  try {
+    const response = await fetch("/api/projects", { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    projectMeetingId = data.meeting_id || "";
+    projectChoices = data.choices || [];
+    projectSelection = data.selection || "auto";
+    const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;
+    elements.projectHelp.textContent = projectMeetingId
+      ? t("project.choose_help", { count: repositoryCountLabel(count) })
+      : t("project.no_meeting");
+    renderProjectOptions();
+  } catch (error) {
+    elements.projectHelp.textContent = String(error);
+    elements.projectHelp.classList.add("error");
+  }
+}
+
+async function chooseProject(selection) {
+  elements.projectHelp.textContent = t("project.saving");
+  elements.projectOptions.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+  try {
+    await post("/api/project", { meeting_id: projectMeetingId, selection });
+    projectSelection = selection;
+    elements.projectDialog.close();
+    autoAnalysisPrimed = "";
+    await state();
+  } catch (error) {
+    elements.projectHelp.textContent = String(error);
+    elements.projectHelp.classList.add("error");
+    renderProjectOptions();
+  }
 }
 
 async function openRepositoryDialog() {
@@ -1268,23 +1400,23 @@ async function state() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     const project = data.project || {};
-    const projectIdentified = Boolean(
-      project.name && !["Не определён", "Not identified"].includes(project.name)
-    );
     const scopedRepositories = project.repositories || [];
-    elements.repoStatus.textContent = projectIdentified
-      ? t("project.identified_scope", {
-          project: project.name,
-          scope: scopedRepositories.length,
-          count: data.repositories,
-        })
-      : t("project.unknown_scope", { count: data.repositories });
+    const count = repositoryCountLabel(scopedRepositories.length || data.repositories || 0);
+    const projectKind = project.kind || "all";
+    const hint = projectKind === "all" ? "project.all_hint"
+      : project.confidence === "manual" ? "project.manual_hint" : "project.auto_hint";
+    elements.repoStatus.textContent = projectKind === "all"
+      ? t("project.all_scope", { count })
+      : projectKind === "repository"
+        ? t("project.repository_scope", { project: project.name })
+        : t(project.confidence === "manual" ? "project.manual_scope" : "project.auto_scope", {
+            project: project.name,
+            count,
+          });
     const repositoryList = scopedRepositories
       .map((repo) => `${repo.name}: ${repo.path}`)
       .join("\n");
-    elements.repoStatus.title = projectIdentified
-      ? repositoryList
-      : `${t("project.unknown_hint")}\n${repositoryList}`;
+    elements.repoStatus.title = `${t(hint)}\n${repositoryList}`;
     renderTranscript(data.transcript);
     renderFrames(data.frames || []);
     renderFrameStatus(data.frame_capture || {});
@@ -1513,7 +1645,15 @@ elements.captureFrame.addEventListener("click", async () => {
     }
   }
 });
-elements.repoStatus.addEventListener("click", () => void openRepositoryDialog());
+elements.repoStatus.addEventListener("click", () => void openProjectDialog());
+elements.projectClose.addEventListener("click", () => elements.projectDialog.close());
+elements.projectDialog.addEventListener("click", (event) => {
+  if (event.target === elements.projectDialog) elements.projectDialog.close();
+});
+elements.projectEditRepos.addEventListener("click", () => {
+  elements.projectDialog.close();
+  void openRepositoryDialog();
+});
 elements.archiveButton.addEventListener("click", () => void openArchive());
 elements.archiveClose.addEventListener("click", () => elements.archiveDialog.close());
 elements.archiveDialog.addEventListener("click", (event) => {
@@ -1542,6 +1682,13 @@ document.querySelectorAll("[data-language]").forEach((button) => {
     journalSignature = "";
     meetingChatSignature = "";
     if (elements.archiveDialog.open) void openArchive();
+    if (elements.projectDialog.open) {
+      renderProjectOptions();
+      const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;
+      elements.projectHelp.textContent = t("project.choose_help", {
+        count: repositoryCountLabel(count),
+      });
+    }
     void state();
   });
 });
