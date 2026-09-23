@@ -1042,6 +1042,15 @@ class TranscriptState:
                     segments.append(segment)
 
             with self.lock:
+                # A stopped/idle exporter must not replace the last visible
+                # meeting. A different context becomes current only after its
+                # recording has actually started.
+                if (
+                    self.meeting_id
+                    and meeting_id != self.meeting_id
+                    and status in {"idle", "finished"}
+                ):
+                    return
                 self.meeting = meeting
                 self.meeting_id = meeting_id
                 self.segments = segments
@@ -2324,6 +2333,19 @@ def main() -> None:
             state.refresh()
             assert state.snapshot()["meeting_id"] == "test-meeting"
             assert state.snapshot()["live"]
+            idle_payload = json.loads(transcript_path.read_text(encoding="utf-8"))
+            idle_payload.update({"meeting_id": "next-meeting", "status": "idle", "segments": []})
+            transcript_path.write_text(json.dumps(idle_payload), encoding="utf-8")
+            state.refresh()
+            assert state.snapshot()["meeting_id"] == "test-meeting"
+            idle_payload["status"] = "finished"
+            transcript_path.write_text(json.dumps(idle_payload), encoding="utf-8")
+            state.refresh()
+            assert state.snapshot()["meeting_id"] == "test-meeting"
+            idle_payload["status"] = "recording"
+            transcript_path.write_text(json.dumps(idle_payload), encoding="utf-8")
+            state.refresh()
+            assert state.snapshot()["meeting_id"] == "next-meeting"
         with tempfile.TemporaryDirectory() as directory:
             scope_path = Path(directory) / "active-repos.json"
             scope_path.write_text(json.dumps({
