@@ -128,6 +128,7 @@ const translations = {
     "age.hours": "{value} ч назад",
     "status.waiting": "Ожидание записи",
     "status.live": "Созвон идёт",
+    "status.finished": "Созвон завершён · контекст сохранён",
     "status.model_loading": "Загрузка модели",
     "status.model_missing": "Нет live-модели",
     "status.overloaded": "Live-расшифровка перегружена",
@@ -301,6 +302,7 @@ const translations = {
     "age.hours": "{value}h ago",
     "status.waiting": "Waiting for recording",
     "status.live": "Meeting live",
+    "status.finished": "Meeting ended · context retained",
     "status.model_loading": "Loading model",
     "status.model_missing": "Live model missing",
     "status.overloaded": "Live transcription overloaded",
@@ -565,6 +567,8 @@ function renderTranscript(transcript) {
     elements.liveStatus.lastChild.textContent = t("status.waiting");
   } else if (transcript.live) {
     elements.liveStatus.lastChild.textContent = t("status.live");
+  } else if (transcript.status === "finished") {
+    elements.liveStatus.lastChild.textContent = t("status.finished");
   } else if (transcript.status === "loading") {
     elements.liveStatus.lastChild.textContent = t("status.model_loading");
   } else if (transcript.status === "model_missing") {
@@ -1431,16 +1435,21 @@ async function state() {
     }
     stateConnectionFailed = false;
 
+    const finishedWithoutAnalysis = data.transcript.status === "finished"
+      && data.transcript.segments.length > 0
+      && data.copilot.messages.length === 0
+      && data.copilot.analysis?.state === "idle";
+    const analysisKey = `${data.transcript.meeting_id}:${data.transcript.status}:${data.transcript.latest_at}`;
     if (
       elements.autoAnalysis.checked &&
-      data.transcript.live &&
+      (data.transcript.live || finishedWithoutAnalysis) &&
       data.transcript.latest_at &&
-      data.transcript.latest_at !== autoAnalysisPrimed &&
+      analysisKey !== autoAnalysisPrimed &&
       !requestBusy &&
       !data.copilot.busy
     ) {
-      autoAnalysisPrimed = data.transcript.latest_at;
-      void analyze(false);
+      autoAnalysisPrimed = analysisKey;
+      void analyze(finishedWithoutAnalysis);
     }
   } catch (error) {
     stateConnectionFailed = true;
