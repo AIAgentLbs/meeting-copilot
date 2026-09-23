@@ -4,6 +4,7 @@ const elements = {
   repoStatus: document.querySelector("#repo-button"),
   archiveButton: document.querySelector("#archive-button"),
   archiveDialog: document.querySelector("#archive-dialog"),
+  archiveDescription: document.querySelector("#archive-description"),
   archiveClose: document.querySelector("#archive-close"),
   archiveList: document.querySelector("#archive-list"),
   archiveDetail: document.querySelector("#archive-detail"),
@@ -61,7 +62,7 @@ const translations = {
     "meeting.connecting": "Подключение к записи...",
     "status.checking": "Проверка",
     "nav.repositories": "Контекст встречи",
-    "nav.meetings": "Встречи",
+    "nav.meetings": "История встреч",
     "language.label": "Язык интерфейса",
     "aria.transcript_view": "Вид левой панели",
     "aria.speaker_filter": "Фильтр участников",
@@ -207,6 +208,8 @@ const translations = {
     "frames.capturing": "Снимаю…",
     "archive.title": "Архив встреч",
     "archive.description": "Стенограммы, заметки, чат, кадры и отчёты хранятся локально.",
+    "archive.count_description": "Записей: {count} · сгруппированы по дням. Материалы хранятся локально.",
+    "archive.unknown_day": "Дата не указана",
     "archive.copy_dialog": "Копировать диалог",
     "archive.select_title": "Выберите встречу",
     "archive.select_text": "Здесь появятся её материалы и готовые отчёты.",
@@ -235,7 +238,7 @@ const translations = {
     "meeting.connecting": "Connecting to the recording...",
     "status.checking": "Checking",
     "nav.repositories": "Meeting context",
-    "nav.meetings": "Meetings",
+    "nav.meetings": "Meeting history",
     "language.label": "Interface language",
     "aria.transcript_view": "Left pane view",
     "aria.speaker_filter": "Speaker filter",
@@ -381,6 +384,8 @@ const translations = {
     "frames.capturing": "Capturing…",
     "archive.title": "Meeting archive",
     "archive.description": "Transcripts, notes, chat, frames and reports are stored locally.",
+    "archive.count_description": "{count} recordings · grouped by day. Materials are stored locally.",
+    "archive.unknown_day": "Date unavailable",
     "archive.copy_dialog": "Copy dialogue",
     "archive.select_title": "Select a meeting",
     "archive.select_text": "Its materials and generated reports appear here.",
@@ -1168,6 +1173,19 @@ function archiveDate(value) {
   }).format(date);
 }
 
+function archiveDay(value) {
+  const date = new Date(value || "");
+  if (Number.isNaN(date.getTime())) {
+    return { key: "unknown", label: t("archive.unknown_day") };
+  }
+  const key = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")].join("-");
+  const label = new Intl.DateTimeFormat(uiLanguage === "ru" ? "ru-RU" : "en-GB", {
+    dateStyle: "full",
+  }).format(date);
+  return { key, label };
+}
+
 function archiveDuration(seconds) {
   const total = Math.max(0, Number(seconds) || 0);
   const hours = Math.floor(total / 3600);
@@ -1176,7 +1194,7 @@ function archiveDuration(seconds) {
 }
 
 async function openArchive() {
-  elements.archiveDialog.showModal();
+  if (!elements.archiveDialog.open) elements.archiveDialog.showModal();
   elements.archiveList.replaceChildren(textNode("div", "archive-loading", "…"));
   try {
     const response = await fetch("/api/archive", { cache: "no-store" });
@@ -1192,12 +1210,22 @@ async function openArchive() {
 }
 
 function renderArchiveList() {
+  elements.archiveDescription.textContent = archiveMeetings.length
+    ? t("archive.count_description", { count: archiveMeetings.length })
+    : t("archive.description");
   if (!archiveMeetings.length) {
     elements.archiveList.replaceChildren(textNode("div", "archive-empty", t("archive.empty")));
     return;
   }
   const fragment = document.createDocumentFragment();
+  let currentDay = "";
   for (const meeting of archiveMeetings) {
+    const day = archiveDay(meeting.started_at);
+    if (day.key !== currentDay) {
+      currentDay = day.key;
+      const heading = textNode("h3", "archive-day-heading", day.label);
+      fragment.append(heading);
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = "archive-item";
