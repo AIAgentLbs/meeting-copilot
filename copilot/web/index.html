@@ -19,7 +19,7 @@
       <div class="status-strip" aria-live="polite">
         <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
         <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings">Встречи</button>
-        <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories">Репозитории</button>
+        <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
         <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
           <button data-language="ru" type="button">RU</button>
           <button data-language="en" type="button">EN</button>
@@ -137,6 +137,24 @@
         </div>
       </section>
     </main>
+
+    <dialog class="project-dialog" id="project-dialog">
+      <div class="project-dialog-shell">
+        <div class="repo-dialog-header">
+          <div>
+            <h2 data-i18n="project.choose_title">Контекст этой встречи</h2>
+            <p data-i18n="project.choose_description">Выберите проект или репозиторий. Выбор действует только для этой встречи и меняет поиск Copilot.</p>
+          </div>
+          <button class="icon-button" id="project-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
+        </div>
+        <p class="project-help" id="project-help" data-i18n="project.loading">Загружаю варианты…</p>
+        <div class="project-options" id="project-options"></div>
+        <div class="repo-dialog-footer">
+          <span data-i18n="project.local_note">Поиск идёт только по выбранным локальным репозиториям.</span>
+          <button class="quiet-button" id="project-edit-repos" type="button" data-i18n="project.edit_repos">Изменить набор репозиториев</button>
+        </div>
+      </div>
+    </dialog>
 
     <dialog class="repo-dialog" id="repo-dialog">
       <form method="dialog" class="repo-dialog-shell">
