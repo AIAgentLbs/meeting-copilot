@@ -1,0 +1,42 @@
+name: Publish v0.1.5 concise live questions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-0.1.5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test concise question prompts
+        run: |
+          python3 copilot/web/server.py --self-test
+          node --check copilot/web/app.js
+      - name: Patch the existing macOS package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/base" "$RUNNER_TEMP/stage"
+          gh release download v0.1.4 --pattern meeting-copilot-macos.zip --dir "$RUNNER_TEMP/base"
+          unzip -q "$RUNNER_TEMP/base/meeting-copilot-macos.zip" -d "$RUNNER_TEMP/stage"
+          test -f "$RUNNER_TEMP/stage/payload/web/server.py"
+          cp copilot/web/server.py "$RUNNER_TEMP/stage/payload/web/server.py"
+          cp copilot/config/SESSION.md "$RUNNER_TEMP/stage/payload/config/SESSION.md"
+          (cd "$RUNNER_TEMP/stage" && zip -qry "$RUNNER_TEMP/meeting-copilot-macos.zip" .)
+          unzip -tq "$RUNNER_TEMP/meeting-copilot-macos.zip"
+          shasum -a 256 "$RUNNER_TEMP/meeting-copilot-macos.zip"
+      - name: Publish v0.1.5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create v0.1.5 "$RUNNER_TEMP/meeting-copilot-macos.zip"
+          --target "$GITHUB_SHA"
+          --title "Meeting Copilot v0.1.5"
+          --notes "Live ASK prompts now use one short, direct spoken question; rationale and sources stay separate. The native capture binary is unchanged."
