@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -522,6 +522,7 @@ class MeetingArchive:
             self._print_pdf(html_path, pdf_path)
             pdf_path.chmod(0o600)
 
+            previous_report = detail.get("report") or {}
             meta = {
                 "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 "html": f"/api/archive/report/{detail['meeting_id']}/index.html",
@@ -533,12 +534,105 @@ class MeetingArchive:
                 "mail_status": "not_configured",
                 "telegram_status": "not_configured",
                 "source_signature": self.source_signature(detail),
+                "generated_while_recording": not self._ready_for_delivery(detail),
             }
             _atomic_json(report_dir / "report.json", meta)
-            delivery = self.deliver(detail, meta)
+            delivery = (
+                self.deliver(detail, meta, previous=previous_report)
+                if self._ready_for_delivery(detail)
+                else {
+                    "drive_status": (
+                        "uploaded" if previous_report.get("drive_status") == "uploaded"
+                        else "waiting_for_end"
+                    ),
+                    "mail_status": (
+                        "sent" if previous_report.get("mail_status") == "sent"
+                        else "waiting_for_end"
+                    ),
+                    "telegram_status": (
+                        "sent" if previous_report.get("telegram_status") == "sent"
+                        else "waiting_for_end"
+                    ),
+                }
+            )
             meta.update(delivery)
+            checked_at = datetime.now().astimezone()
+            meta["delivery_checked_at"] = checked_at.isoformat(timespec="seconds")
+            meta["delivery_retry_at"] = (
+                checked_at + timedelta(minutes=15)
+            ).isoformat(timespec="seconds")
             _atomic_json(report_dir / "report.json", meta)
             return meta
+
+    def retry_pending_deliveries(self, *, max_reports: int = 5) -> int:
+        """Retry incomplete delivery without regenerating PDFs or resending successes."""
+        settings = _json(self.config_root / "delivery.json", {})
+        if not isinstance(settings, dict):
+            return 0
+        now = datetime.now().astimezone()
+        reports = sorted(
+            self.reports_root.glob("*/report.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        retried = 0
+        for path in reports:
+            if retried >= max_reports:
+                break
+            meta = _json(path, {})
+            generated = _date(str(meta.get("generated_at") or ""))
+            if not generated or (now - generated).days > 14:
+                continue
+            retry_at = _date(str(meta.get("delivery_retry_at") or ""))
+            if retry_at and retry_at > now:
+                continue
+            wants_drive = bool(settings.get("drive_folder_id") or settings.get("drive_remote") or settings.get("drive_local_path"))
+            wants_mail = bool(settings.get("email_to"))
+            wants_telegram = bool(settings.get("telegram_account") and settings.get("telegram_config"))
+            pending = (
+                (wants_drive and meta.get("drive_status") != "uploaded")
+                or (wants_mail and meta.get("mail_status") != "sent")
+                or (wants_telegram and meta.get("telegram_status") != "sent")
+            )
+            if not pending:
+                continue
+            detail = self.report_detail(path.parent.name)
+            if (not detail or not self._ready_for_delivery(detail)
+                    or not Path(str(meta.get("pdf_path") or "")).is_file()):
+                continue
+            with self.lock:
+                if _json(path, {}) != meta:
+                    # Report generation may have completed while we prepared
+                    # the retry. Re-check next scan instead of resending it.
+                    continue
+                meta.update(self.deliver(detail, meta, previous=meta))
+                meta["delivery_checked_at"] = now.isoformat(timespec="seconds")
+                meta["delivery_retry_at"] = (now + timedelta(minutes=15)).isoformat(timespec="seconds")
+                _atomic_json(path, meta)
+            retried += 1
+        return retried
+
+    def delivery_health(self) -> dict:
+        """Expose recent delivery failures without revealing addresses or report data."""
+        settings = _json(self.config_root / "delivery.json", {})
+        if not isinstance(settings, dict) or not settings.get("email_to"):
+            return {"mail_configured": False, "mail_pending": 0, "mail_auth_required": False}
+        now = datetime.now().astimezone()
+        pending = 0
+        auth_required = False
+        for path in self.reports_root.glob("*/report.json"):
+            meta = _json(path, {})
+            generated = _date(str(meta.get("generated_at") or ""))
+            if not generated or (now - generated).days > 14:
+                continue
+            if meta.get("mail_status") != "sent":
+                pending += 1
+                auth_required |= meta.get("mail_status") == "auth_required"
+        return {
+            "mail_configured": True,
+            "mail_pending": pending,
+            "mail_auth_required": auth_required,
+        }
 
     @staticmethod
     def _print_pdf(html_path: Path, pdf_path: Path) -> None:
@@ -607,26 +701,28 @@ class MeetingArchive:
         ).hexdigest()
 
     def needs_report(self, meeting_id: str) -> bool:
-        # The recorder rotates long calls into chunks. A closed chunk must
-        # never be mistaken for the end of the Zoom/Meet call while any capture
-        # marker is still active.
-        if any(self.recordings_root.glob("*/.recording.json")):
-            return False
         detail = self.report_detail(meeting_id)
-        if not detail or detail.get("status") not in {
-            "finished", "complete", "completed", "stopped", "idle"
-        }:
-            return False
-        chain = self._continuous_chain(detail)
-        if chain and meeting_id != chain[-1].get("meeting_id"):
-            return False
-        ended = _date(str(detail.get("ended_at") or ""))
-        if not ended or (datetime.now().astimezone() - ended).total_seconds() < 120:
+        if not detail or not self._ready_for_delivery(detail):
             return False
         if not detail["transcript"] and not detail["journal"] and not detail["frames"]:
             return False
         report = detail.get("report") or {}
-        return report.get("source_signature") != self.source_signature(detail)
+        return bool(report.get("generated_while_recording")) or (
+            report.get("source_signature") != self.source_signature(detail)
+        )
+
+    def _ready_for_delivery(self, detail: dict) -> bool:
+        # Long calls may be split into chunks. An active capture marker means
+        # no chunk is final even if its exporter says "finished".
+        if any(self.recordings_root.glob("*/.recording.json")):
+            return False
+        if detail.get("status") not in {"finished", "complete", "completed", "stopped", "idle"}:
+            return False
+        chain = self._continuous_chain(detail)
+        if chain and detail.get("meeting_id") != chain[-1].get("meeting_id"):
+            return False
+        ended = _date(str(detail.get("ended_at") or ""))
+        return bool(ended and (datetime.now().astimezone() - ended).total_seconds() >= 120)
 
     @staticmethod
     def _drive_items(
@@ -755,25 +851,25 @@ class MeetingArchive:
         )
         return ("uploaded" if links else "failed"), links
 
-    def deliver(self, detail: dict, report: dict) -> dict:
+    def deliver(self, detail: dict, report: dict, *, previous: dict | None = None) -> dict:
         settings = _json(self.config_root / "delivery.json", {})
-        local_drive = Path(str(settings.get("drive_local_path") or "")).expanduser()
+        previous = previous or {}
+        local_drive_setting = str(settings.get("drive_local_path") or "").strip()
+        local_drive = Path(local_drive_setting).expanduser() if local_drive_setting else None
         remote = str(settings.get("drive_remote") or "").strip()
-        if not remote and not local_drive:
-            return {
-                "drive_status": "not_configured",
-                "mail_status": "not_configured",
-                "telegram_status": "not_configured",
-            }
         meeting_started = _date(detail.get("started_at")) or datetime.now().astimezone()
         stamp = meeting_started.strftime("%Y-%m-%d")
         time_stamp = meeting_started.strftime("%H-%M")
         title = re.sub(r"[/\\:*?\"<>|]+", "-", detail["title"]).strip()[:80]
         folder_name = f"{stamp} {time_stamp} {title} [{detail['meeting_id'][-8:]}]"
         source = self.reports_root / detail["meeting_id"]
-        drive_status = "not_configured"
-        drive_folder = ""
-        drive_links: dict[str, str] = {}
+        drive_status = str(previous.get("drive_status") or "not_configured")
+        drive_folder = str(previous.get("drive_folder") or "")
+        drive_links: dict[str, str] = {
+            key: str(previous[key]) for key in (
+                "drive_folder_url", "drive_html_url", "drive_pdf_url"
+            ) if previous.get(key)
+        }
 
         gog = shutil.which("gog")
         recipient = str(settings.get("email_to") or "").strip()
@@ -782,12 +878,14 @@ class MeetingArchive:
 
         # The API upload is authoritative: delivery proceeds only after Google
         # returns private webViewLink values for both report files.
-        if gog and google_account and reports_folder_id:
+        if drive_status == "uploaded":
+            pass
+        elif gog and google_account and reports_folder_id:
             drive_status, drive_links = self._upload_drive_report(
                 gog, google_account, reports_folder_id, folder_name, source
             )
             drive_folder = drive_links.get("drive_folder_url", "")
-        elif local_drive and local_drive.parent.exists():
+        elif local_drive is not None and local_drive.parent.exists():
             try:
                 destination_path = local_drive / folder_name
                 destination_path.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -818,7 +916,7 @@ class MeetingArchive:
             except (OSError, subprocess.TimeoutExpired):
                 drive_status = "failed"
 
-        mail_status = "not_configured"
+        mail_status = str(previous.get("mail_status") or "not_configured")
         if gog and drive_status == "uploaded" and not drive_links:
             drive_links = self._drive_links(
                 gog, google_account, reports_folder_id, folder_name
@@ -831,13 +929,15 @@ class MeetingArchive:
                 f"HTML: {drive_links['drive_html_url']}\n"
                 f"PDF: {drive_links['drive_pdf_url']}"
             )
-        if gog and recipient and drive_status == "uploaded":
+        if mail_status != "sent" and gog and recipient:
             subject = f"{self.product_name}: {detail['title']} — {stamp}"
             body = (
                 f"Отчёт по встрече «{detail['title']}» от {stamp}.\n\n"
                 f"Сформирован {self.product_name}.\n"
-                "HTML и PDF сохранены в Google Drive. PDF приложен к письму."
-                f"{links_text}"
+                + ("HTML и PDF сохранены в Google Drive. " if drive_status == "uploaded"
+                   else "Google Drive пока недоступен; PDF сохранён локально. ")
+                + "PDF приложен к письму."
+                + links_text
             )
             try:
                 result = subprocess.run(
@@ -855,15 +955,16 @@ class MeetingArchive:
             except (OSError, subprocess.TimeoutExpired):
                 mail_status = "failed"
 
-        telegram_status = "not_configured"
-        telegram_message_id = None
+        telegram_status = str(previous.get("telegram_status") or "not_configured")
+        telegram_message_id = previous.get("telegram_message_id")
         telegram_config = Path(
             str(settings.get("telegram_config") or "")
         ).expanduser()
         telegram_account = str(settings.get("telegram_account") or "").strip()
         telegram_target = str(settings.get("telegram_target") or "me").strip()
         telegram_helper = Path(__file__).with_name("telegram_delivery.py")
-        if telegram_account and telegram_config.is_file() and drive_status == "uploaded":
+        if (telegram_status != "sent" and telegram_account
+                and telegram_config.is_file() and drive_status == "uploaded"):
             command = [
                 "/opt/homebrew/bin/python3", str(telegram_helper),
                 "--config", str(telegram_config),
