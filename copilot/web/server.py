@@ -25,6 +25,7 @@ from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from archive import MeetingArchive
 from live_translation import LiveTranslation
+from meet_participants import meet_active_speaker, meet_participant_labels
 
 
 HOST = "127.0.0.1"
@@ -1153,6 +1154,7 @@ class MeetingFrames:
                     "captured_at": item.get("captured_at", ""),
                     "speaker": item.get("speaker", ""),
                     "speaker_confidence": item.get("speaker_confidence", ""),
+                    "participant_labels": item.get("participant_labels", []),
                     "window_title": item.get("window_title", ""),
                     "url": f"/api/frames/{item.get('id', '')}",
                 }
@@ -1351,6 +1353,12 @@ class MeetingFrames:
             speaker, confidence = self._speaker_from_frame(path, observations)
             visual_lines = sanitised_visual_lines(observations)
             visual_text = "\n".join(visual_lines)
+            is_meet = "meet.google.com" in visual_text.casefold() or str(window.get("title", "")).casefold().startswith("meet -")
+            participant_labels = meet_participant_labels(observations) if is_meet else []
+            if participant_labels:
+                meet_speaker = meet_active_speaker(path, observations)
+                if meet_speaker:
+                    speaker, confidence = meet_speaker, "meet-active-tile"
             chat_messages = parse_zoom_chat(observations, captured_at)
             observed_urls = extract_observed_urls(observations)
             item = {
@@ -1360,6 +1368,7 @@ class MeetingFrames:
                 "captured_at": captured_at,
                 "speaker": speaker,
                 "speaker_confidence": confidence,
+                "participant_labels": participant_labels,
                 "window_title": str(window.get("title", "Zoom")),
                 "path": str(path),
                 "visual_text": visual_text,
@@ -1432,7 +1441,7 @@ class MeetingFrames:
         for segment in segments:
             voice_id = str(segment.get("voice_id") or "")
             nearest = nearest_named_frame(segment) if voice_id and voice_id not in voice_names else None
-            if nearest:
+            if nearest and nearest[1].get("speaker_confidence") != "meet-active-tile":
                 name = str(nearest[1].get("speaker") or "")
                 votes.setdefault(voice_id, {})[name] = (
                     votes.setdefault(voice_id, {}).get(name, 0.0)
@@ -1484,7 +1493,7 @@ class MeetingFrames:
                 segment["speaker_confidence"] = voice_confidence[voice_id]
                 continue
             nearest = nearest_named_frame(segment) if not voice_id else None
-            if nearest:
+            if nearest and nearest[1].get("speaker_confidence") != "meet-active-tile":
                 segment["speaker"] = nearest[1]["speaker"]
                 segment["speaker_confidence"] = nearest[1]["speaker_confidence"]
 
@@ -2280,6 +2289,16 @@ def main() -> None:
             assert annotated["segments"][1]["speaker_confidence"] == (
                 "spoken-self-introduction"
             )
+            frames.items = [{
+                "meeting_id": "meet-test", "captured_at": "2026-09-17T13:06:40+02:00",
+                "speaker": "Dmitry Brich", "speaker_confidence": "meet-active-tile",
+            }]
+            meet_annotated = frames.annotate({
+                "meeting_id": "meet-test",
+                "segments": [{"source": "system", "timestamp": "2026-09-17T13:06:40+02:00",
+                              "voice_id": "remote-1", "text": "Hello"}],
+            })
+            assert not meet_annotated["segments"][0].get("speaker")
             assert ARCHIVE.display_title({
                 "meeting_id": "brand-title-test",
                 "meeting": "Google Chrome Helper",
