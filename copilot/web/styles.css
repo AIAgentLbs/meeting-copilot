@@ -525,6 +525,16 @@ input:focus-visible + span {
   color: var(--text);
 }
 
+.translation-jump {
+  border-color: color-mix(in srgb, var(--accent) 56%, var(--line));
+  color: var(--accent-strong);
+  font-weight: 680;
+}
+
+.translation-jump[hidden] {
+  display: none;
+}
+
 .language-switch {
   display: flex;
   gap: 2px;
