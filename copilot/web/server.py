@@ -1876,6 +1876,16 @@ def archive_loop() -> None:
         TRANSCRIPT.stop.wait(10)
 
 
+def delivery_loop() -> None:
+    """Retry missing reports independently of live capture and report creation."""
+    while not TRANSCRIPT.stop.is_set():
+        try:
+            ARCHIVE.retry_pending_deliveries()
+        except Exception as exc:
+            print(f"meeting delivery retry failed: {exc}", flush=True)
+        TRANSCRIPT.stop.wait(60)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "Meeting-Copilot/1"
 
@@ -2004,6 +2014,7 @@ class Handler(BaseHTTPRequestHandler):
                     "repositories": repository_count(),
                     "all_repositories": repository_count(MANIFEST_FILE),
                     "project": scope,
+                    "delivery": ARCHIVE.delivery_health(),
                 }
             )
         elif path == "/api/repositories":
@@ -2407,6 +2418,8 @@ def main() -> None:
     frame_poller.start()
     archiver = threading.Thread(target=archive_loop, name="meeting-archive", daemon=True)
     archiver.start()
+    delivery_worker = threading.Thread(target=delivery_loop, name="meeting-delivery", daemon=True)
+    delivery_worker.start()
     server = ThreadingHTTPServer((HOST, args.port), Handler)
     url = f"http://{HOST}:{args.port}"
     print(f"Meeting Copilot: {url}", flush=True)
