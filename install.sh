@@ -53,6 +53,7 @@ install -m 0755 "$tmp/release/payload/config/refresh-repos.py" "$CONFIG/refresh-
 
 swiftc "$tmp/release/payload/bin/ZoomWindowFinder.swift" -o "$SHARE/bin/zoom-window-finder"
 swiftc "$tmp/release/payload/bin/ZoomFrameInspector.swift" -o "$SHARE/bin/zoom-frame-inspector"
+swiftc "$tmp/release/payload/bin/DetectSpeechLanguage.swift" -o "$SHARE/bin/detect-speech-language"
 
 python3 "$CONFIG/refresh-repos.py"
 if [[ ! -f "$CONFIG/active-repos.json" ]]; then
