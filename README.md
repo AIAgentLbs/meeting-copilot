@@ -35,8 +35,9 @@ The local interface opens at `http://127.0.0.1:43121`.
 - surfaces facts, contradictions, history, risks, commitments, decisions and
   useful questions with file and commit provenance;
 - saves manual notes with meeting timecodes, chat, links, services and frames;
-- produces local HTML/PDF meeting reports; optional delivery integrations can
-  be configured separately.
+- produces local HTML/PDF meeting reports; optional Google Drive, email and
+  Telegram delivery is retried after transient failures, and the UI shows
+  recent unsent email reports. Email can include the PDF even if Drive fails.
 
 ## Privacy model
 
