@@ -698,7 +698,7 @@ class MeetingArchive:
     @staticmethod
     def source_signature(detail: dict) -> str:
         material = {
-            "report_schema": 4,
+            "report_schema": 5,
             "product_name": MeetingArchive.product_name,
             "title": detail.get("title", ""),
             "segments": detail.get("transcript", []),
@@ -1299,8 +1299,8 @@ class MeetingArchive:
         )
         sources = Counter(str(item.get("source") or "") for item in detail.get("transcript", []))
         audio_identity_note = (
-            f'<p class="uncertain">В стенограмме {sources["system"]} фрагментов удалённого звука и '
-            f'{sources["microphone"]} с локального микрофона. Удалённый канал не разделён '
+            f'<p class="uncertain">Фрагменты стенограммы: удалённый звук — {sources["system"]}, '
+            f'локальный микрофон — {sources["microphone"]}. Удалённый канал не разделён '
             'надёжно между аккаунтами Meet.</p>'
             if main_speaker == "Не определён по записи" and sources["system"] else ""
         )
@@ -1449,7 +1449,7 @@ h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:
 .brand{{font-size:9pt;text-transform:uppercase;letter-spacing:.13em;color:#2c6958;font-weight:700;margin-bottom:5mm}} .meta{{display:flex;gap:10mm;color:#56615d;margin-bottom:8mm}}
 .toc{{background:#eff5f2;border:1px solid #d7e3de;border-radius:8px;padding:5mm 7mm}} .toc h2{{border:0;margin:0 0 2mm;font-size:14pt}} a{{color:#205c4c;text-decoration:none}}
 .summary{{background:#f7f4ea;border-left:4px solid #b98a2f;padding:4mm 6mm}} li{{margin:0 0 2mm}}
-.opening h2{{margin:6mm 0 2mm;font-size:14pt}} .opening ul{{margin:2mm 0 3mm;padding-left:6mm}}
+.opening h2{{margin:6mm 0 2mm;font-size:14pt;break-after:avoid-page}} .opening ul{{margin:2mm 0 3mm;padding-left:6mm}}
 .opening .roster{{columns:2;column-gap:6mm}} .opening .roster li{{break-inside:avoid}}
 .opening .main-speaker{{font-size:9pt;color:#56615d;margin:0 0 2mm}} .opening .main-speaker strong{{color:#174c3e}}
 .opening .uncertain{{color:#6c7773;font-size:9pt;margin:1mm 0 3mm}}
