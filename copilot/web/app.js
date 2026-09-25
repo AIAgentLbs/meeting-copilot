@@ -16,6 +16,7 @@ const elements = {
   frameStatus: document.querySelector("#frame-status"),
   captureFrame: document.querySelector("#capture-frame"),
   copyDialog: document.querySelector("#copy-dialog"),
+  translationJump: document.querySelector("#translation-jump"),
   speakerFilters: document.querySelector("#speaker-filters"),
   chat: document.querySelector("#chat"),
   chatLatest: document.querySelector("#chat-latest"),
@@ -79,6 +80,8 @@ const translations = {
     "transcript.copied": "Диалог скопирован",
     "transcript.copy_empty": "Нет реплик для копирования",
     "transcript.copy_failed": "Не удалось скопировать",
+    "transcript.translation_jump": "EN-переводы: {count} · к последнему",
+    "transcript.translation_hint": "Последний перевод: {time}. Новые реплики на английском не переводятся.",
     "frames.tab": "Кадры",
     "speaker.all": "Все",
     "speaker.me": "Я",
@@ -255,6 +258,8 @@ const translations = {
     "transcript.copied": "Dialogue copied",
     "transcript.copy_empty": "No utterances to copy",
     "transcript.copy_failed": "Could not copy",
+    "transcript.translation_jump": "EN translations: {count} · show latest",
+    "transcript.translation_hint": "Latest translation: {time}. New English utterances are not translated.",
     "frames.tab": "Frames",
     "speaker.all": "All",
     "speaker.me": "Me",
@@ -564,6 +569,13 @@ function readableAnswer(text) {
 function renderTranscript(transcript) {
   activeTranscript = transcript;
   elements.copyDialog.disabled = !transcript.segments.length;
+  const translated = transcript.segments.filter((segment) => segment.translation_en);
+  const latestTranslation = translated.at(-1);
+  elements.translationJump.hidden = !latestTranslation;
+  if (latestTranslation) {
+    elements.translationJump.textContent = t("transcript.translation_jump", { count: translated.length });
+    elements.translationJump.title = t("transcript.translation_hint", { time: localTime(latestTranslation.timestamp) });
+  }
   elements.note.textContent = t("note.button", { time: timecodeLabel(transcript) });
   elements.meetingTitle.textContent = transcript.display_meeting || transcript.meeting || "Встреча";
   elements.liveStatus.classList.toggle("live", Boolean(transcript.live));
@@ -1659,6 +1671,10 @@ elements.question.addEventListener("keydown", (event) => {
 
 elements.note.addEventListener("click", () => void saveNote());
 elements.copyDialog.addEventListener("click", () => void copyDialogue());
+elements.translationJump.addEventListener("click", () => {
+  const latest = activeTranscript?.segments.filter((segment) => segment.translation_en).at(-1);
+  if (latest) jumpToTranscript(latest.timestamp);
+});
 
 elements.refresh.addEventListener("click", async () => {
   elements.refresh.disabled = true;
