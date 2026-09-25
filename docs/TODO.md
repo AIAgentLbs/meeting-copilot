@@ -23,12 +23,21 @@ Acceptance criteria:
 - Make writes idempotent by meeting ID, show per-repository status in meeting
   history, and verify the remote GitHub/GitLab revision after push. Never claim
   completion from local Git state alone.
-- Do not enable unattended repository writes until the owner confirms the
-  publication policy for private/public and ambiguous meetings.
+- Owner confirmed on 2026-09-25: automatic writes are permitted only to
+  verified private repositories for an unambiguous project; ambiguous meetings
+  stay pending for selection. The local GitHub and GitLab command-line clients
+  currently lack push/API credentials, so unattended publication remains off
+  until both the private-visibility check and a real remote push/readback pass.
+- Evaluate [Laya](https://github.com/NandhaKishorM/laya) as an optional local
+  candidate scorer for one or more repos. It must not independently authorize
+  publication: validate on labelled meeting-to-repo examples, calibrate the
+  multilingual model, then apply the private-repo and ambiguity gates above.
 
 ## Google delivery
 
 The application retries unsent reports and shows recent failures in the UI.
-The local `gog` OAuth account must be reconnected before Gmail/Drive delivery
-can resume. The retry worker will then process missed reports without resending
-ones already marked successful.
+`gog` OAuth is still absent, but the user's existing authorized `gws` client now
+serves as a fallback for Gmail and Drive. A completed report from 2026-09-25
+was uploaded and delivered through this path, including Telegram and Drive
+links. Automatic retries are limited to the most recent three days; older
+pending reports need a duplicate check against Sent mail before any backfill.
