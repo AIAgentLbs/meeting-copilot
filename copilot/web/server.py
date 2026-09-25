@@ -24,6 +24,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from archive import MeetingArchive
+from live_translation import LiveTranslation
 
 
 HOST = "127.0.0.1"
@@ -1847,6 +1848,7 @@ ASK формулируй как одну короткую реплику, кот
 
 
 TRANSCRIPT = TranscriptState()
+TRANSLATIONS = LiveTranslation()
 FRAMES = MeetingFrames(FRAMES_FILE)
 COPILOT = CodexSession(COPILOT_FILE)
 JOURNAL = MeetingJournal(JOURNAL_FILE)
@@ -1864,7 +1866,7 @@ def archive_loop() -> None:
     """Persist live state and finalize reports even when no browser is open."""
     while not TRANSCRIPT.stop.is_set():
         try:
-            snapshot = FRAMES.annotate(TRANSCRIPT.snapshot())
+            snapshot = TRANSLATIONS.annotate(FRAMES.annotate(TRANSCRIPT.snapshot()))
             ARCHIVE.sync_transcript(snapshot)
             meeting_id = str(snapshot.get("meeting_id") or "")
             if meeting_id and ARCHIVE.needs_report(meeting_id):
@@ -1983,7 +1985,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/health":
             self._json({"ok": True, "service": "meeting-copilot"})
         elif path == "/api/state":
-            transcript = FRAMES.annotate(TRANSCRIPT.snapshot())
+            transcript = TRANSLATIONS.annotate(FRAMES.annotate(TRANSCRIPT.snapshot()))
             transcript["display_meeting"] = ARCHIVE.display_title(transcript)
             FRAMES.ingest_artifacts(transcript["meeting_id"], transcript["meeting"])
             COPILOT.bind_meeting(transcript["meeting_id"])
