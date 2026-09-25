@@ -524,6 +524,13 @@ class MeetingArchive:
             pdf_path.chmod(0o600)
 
             previous_report = detail.get("report") or {}
+            source_signature = self.source_signature(detail)
+            previous_delivery = dict(previous_report)
+            if (previous_report.get("source_signature") != source_signature
+                    and previous_report.get("drive_status") == "uploaded"):
+                # A revised PDF must replace its Drive copy, but a previously
+                # delivered email or Telegram message must never be resent.
+                previous_delivery["drive_status"] = "pending"
             meta = {
                 "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 "html": f"/api/archive/report/{detail['meeting_id']}/index.html",
@@ -532,14 +539,16 @@ class MeetingArchive:
                 "pdf_path": str(pdf_path),
                 "included_frames": len(rendered_frames),
                 "drive_status": "pending",
-                "mail_status": "not_configured",
-                "telegram_status": "not_configured",
-                "source_signature": self.source_signature(detail),
+                # Keep sent markers durable even if the process exits during
+                # a slow Drive refresh; a restart must not resend the memo.
+                "mail_status": str(previous_report.get("mail_status") or "not_configured"),
+                "telegram_status": str(previous_report.get("telegram_status") or "not_configured"),
+                "source_signature": source_signature,
                 "generated_while_recording": not self._ready_for_delivery(detail),
             }
             _atomic_json(report_dir / "report.json", meta)
             delivery = (
-                self.deliver(detail, meta, previous=previous_report)
+                self.deliver(detail, meta, previous=previous_delivery)
                 if self._ready_for_delivery(detail)
                 else {
                     "drive_status": (
@@ -689,13 +698,13 @@ class MeetingArchive:
     @staticmethod
     def source_signature(detail: dict) -> str:
         material = {
-            "report_schema": 2,
+            "report_schema": 4,
             "product_name": MeetingArchive.product_name,
             "title": detail.get("title", ""),
             "segments": detail.get("transcript", []),
             "journal": detail.get("journal", []),
             "frames": [
-                {key: item.get(key) for key in ("id", "captured_at", "speaker", "path")}
+                {key: item.get(key) for key in ("id", "captured_at", "speaker", "participant_labels", "path")}
                 for item in detail.get("frames", [])
             ],
             "chat": detail.get("meeting_chat", []),
@@ -1139,6 +1148,125 @@ class MeetingArchive:
                 return path if path.is_file() else None
         return None
 
+    @staticmethod
+    def _brief_line(value: object, limit: int = 220) -> str:
+        """Keep the executive page readable without manufacturing a summary."""
+        line = re.sub(r"\s+", " ", str(value or "")).strip()
+        line = re.split(r"\b(?:Источник|Основание|Provenance)\s*:", line, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        line = re.sub(
+            r"^(?:FACT|DECISION|COMMITMENT|ASK|RISK|ФАКТ|РЕШЕНИЕ)\s*[—:–-]\s*",
+            "", line, flags=re.IGNORECASE,
+        )
+        if len(line) <= limit:
+            return line
+        sentence_end = [match.end() for match in re.finditer(r"[.!?](?=\s|$)", line[:limit])]
+        if sentence_end and sentence_end[-1] >= 70:
+            return line[:sentence_end[-1]]
+        return line[:limit].rsplit(" ", 1)[0].rstrip(".,;: ") + "…"
+
+    @staticmethod
+    def _followup_sentence(value: object) -> str:
+        """Require an explicit next action, not merely a future-sounding fact."""
+        text = str(value or "").replace("\\n", " ")
+        text = re.split(r"\b(?:Источник|Основание|Provenance)\s*:", text, maxsplit=1, flags=re.IGNORECASE)[0]
+        action = re.compile(
+            r"\b(?:(?:пришл|отправ|подготов|покаж|созвон|назнач|запланир|запрошен|"
+            r"договорил|согласовал|предостав|передад)\w*|"
+            r"will\s+(?:send|prepare|share|schedule|show|provide)|"
+            r"agreed\s+to|follow[ -]?up)\b",
+            re.IGNORECASE,
+        )
+        for sentence in re.split(r"(?<=[.!?;])\s+", text):
+            if re.search(r"\bне\s+(?:договорил|согласовал|подготов|отправ|предостав)\w*", sentence, re.IGNORECASE):
+                continue
+            if action.search(sentence):
+                line = sentence.strip().lstrip("; ")
+                return line[:1].upper() + line[1:]
+        return ""
+
+    @staticmethod
+    def _known_speaker(value: object) -> bool:
+        name = str(value or "").strip()
+        return bool(name) and not (
+            name.casefold() in {"я", "me", "you", "собеседник", "собеседники", "participant", "участник"}
+            or re.fullmatch(r"(?:спикер|speaker|remote|участник)[ -]?\d+", name, re.IGNORECASE)
+        )
+
+    @classmethod
+    def _front_participants(cls, detail: dict) -> tuple[list[dict], str]:
+        """Only observed names and explicitly supplied contacts are shown."""
+        people: dict[str, dict] = {}
+        speech_by_label: Counter[str] = Counter()
+
+        def person(name: str) -> dict:
+            key = name.strip().casefold()
+            return people.setdefault(key, {"name": name.strip(), "speech": 0, "contacts": [], "seen": set(), "about": None})
+
+        for item in detail.get("participants", []):
+            name = str(item.get("name") or "").strip()
+            if not cls._known_speaker(name):
+                continue
+            entry = person(name)
+            entry["seen"].add("контекст встречи")
+            for identity in item.get("identities", []):
+                value = str(identity.get("value") or "").strip()
+                if value and value not in entry["contacts"]:
+                    entry["contacts"].append(value)
+            for fact in item.get("public_facts", []):
+                source_url = str(fact.get("url") or "").strip()
+                fact_text = cls._brief_line(fact.get("text"), 140)
+                if fact_text and source_url.startswith(("https://", "http://")):
+                    entry["about"] = {"text": fact_text, "url": source_url}
+                    break
+
+        for item in detail.get("transcript", []):
+            name = str(item.get("speaker") or "").strip()
+            if name:
+                speech_by_label[name.casefold()] += len(str(item.get("text") or ""))
+            if cls._known_speaker(name):
+                entry = person(name)
+                entry["speech"] += len(str(item.get("text") or ""))
+                entry["seen"].add("стенограмма")
+
+        meet_label_counts: Counter[str] = Counter()
+        for item in detail.get("frames", []):
+            meet_label_counts.update({str(label).strip() for label in item.get("participant_labels", []) if label})
+        for item in detail.get("frames", []):
+            name = str(item.get("speaker") or "").strip()
+            if cls._known_speaker(name):
+                person(name)["seen"].add("активная плитка Meet" if item.get("speaker_confidence") == "meet-active-tile" else "кадр встречи")
+            for label in item.get("participant_labels", []):
+                label = str(label or "").strip()
+                if cls._known_speaker(label) and meet_label_counts[label] >= 2:
+                    person(label)["seen"].add("аккаунт Meet")
+
+        for item in detail.get("meeting_chat", []):
+            name = str(item.get("sender") or "").strip()
+            if not cls._known_speaker(name):
+                continue
+            entry = person(name)
+            entry["seen"].add("чат")
+            message = str(item.get("text") or "")
+            for match in re.findall(r"https?://t\.me/[A-Za-z0-9_]{5,}|(?:telegram|телеграм)\s*[:—-]\s*@[A-Za-z0-9_]{5,}", message, re.IGNORECASE):
+                if match not in entry["contacts"]:
+                    entry["contacts"].append(match)
+
+        spoken_text = " ".join(str(item.get("text") or "") for item in detail.get("transcript", []))
+        for entry in people.values():
+            first_name = entry["name"].split()[0]
+            if (len(first_name) >= 4 and first_name[:1].isupper()
+                    and re.search(rf"(?<!\w){re.escape(first_name)}\w*", spoken_text, re.IGNORECASE)):
+                entry["seen"].add("имя звучит в разговоре")
+
+        ranked = sorted(people.values(), key=lambda item: (-item["speech"], item["name"].casefold()))
+        spoken = [item for item in ranked if item["speech"] > 0]
+        main = (
+            spoken[0]["name"]
+            if spoken and spoken[0]["speech"] >= max(speech_by_label.values(), default=0)
+            else "Не определён по записи"
+        )
+        return ranked, main
+
     def _report_html(self, detail: dict, frames: list[dict]) -> str:
         esc = lambda value: html.escape(str(value or ""))
         title = esc(detail["title"])
@@ -1156,16 +1284,69 @@ class MeetingArchive:
             "URL": "Ссылки", "PRODUCT": "Продукты", "SERVICE": "Сервисы",
         }
         priority = ["DECISION", "COMMITMENT", "RISK", "ASK", "FACT", "HISTORY"]
-        summary_items = []
-        for category in priority:
-            for item in groups.get(category, [])[-4:]:
-                summary_items.append(
-                    f'<li><strong>{esc(labels[category])}.</strong> {esc(item.get("text"))}</li>'
-                )
-            if len(summary_items) >= 12:
-                break
+        participants, main_speaker = self._front_participants(detail)
+        active_tiles = Counter(
+            str(item.get("speaker") or "").strip()
+            for item in detail.get("frames", [])
+            if item.get("speaker_confidence") == "meet-active-tile" and item.get("speaker")
+        )
+        top_tile, top_tile_count = active_tiles.most_common(1)[0] if active_tiles else ("", 0)
+        active_tile_note = (
+            f'<p class="uncertain">Чаще всего подсвечен в кадрах Meet: <strong>{esc(top_tile)}</strong> '
+            f'({top_tile_count} из {sum(active_tiles.values())} кадров с видимой активной плиткой). '
+            'Это не доказательство, что он говорил больше всех.</p>'
+            if top_tile else ""
+        )
+        sources = Counter(str(item.get("source") or "") for item in detail.get("transcript", []))
+        audio_identity_note = (
+            f'<p class="uncertain">В стенограмме {sources["system"]} фрагментов удалённого звука и '
+            f'{sources["microphone"]} с локального микрофона. Удалённый канал не разделён '
+            'надёжно между аккаунтами Meet.</p>'
+            if main_speaker == "Не определён по записи" and sources["system"] else ""
+        )
+        roster = "".join(
+            f'<li><strong>{esc(person["name"])}</strong> · {esc(", ".join(sorted(person["seen"]))) or "участник"}'
+            f'{" · " + esc(", ".join(person["contacts"])) if person["contacts"] else ""}'
+            f'{"<br>Публично: " + esc(person["about"]["text"]) + " (<a href=\"" + esc(person["about"]["url"]) + "\">источник</a>)" if person["about"] else ""}</li>'
+            for person in participants
+        )
+        if not roster and detail.get("transcript"):
+            microphone_seen = any(item.get("source") == "microphone" for item in detail["transcript"])
+            roster = (
+                '<li>Вы — локальный микрофон.</li><li>Другие голоса — имена не подтверждены записью или чатом.</li>'
+                if microphone_seen else '<li>Голоса есть, но имена участников не подтверждены записью или чатом.</li>'
+            )
+        brief = []
+        for category in ("DECISION", "FACT", "COMMITMENT"):
+            for item in groups.get(category, [])[-2:]:
+                if category == "FACT" and re.search(r"(?:На экране|Источник:\s*OCR)", str(item.get("text") or ""), re.IGNORECASE):
+                    continue
+                line = self._brief_line(item.get("text"), 240)
+                if line and line not in brief:
+                    brief.append(line)
+        summary_items = "".join(f"<li>{esc(line)}</li>" for line in brief[:3])
+        followups = []
+        for item in [*groups.get("COMMITMENT", []), *groups.get("FACT", [])]:
+            line = self._brief_line(self._followup_sentence(item.get("text")), 220)
+            if line and line not in followups:
+                followups.append(line)
+        followup_items = "".join(f"<li>{esc(line)}</li>" for line in followups[:5])
+        topics = []
+        if (not self._is_generic_title(detail["title"])
+                and not re.match(r"^(?:Meet|Zoom)\s*[-—]\s*[a-z]{3}-[a-z]{4}-[a-z]{3}$", detail["title"], re.IGNORECASE)):
+            topics.append(self._brief_line(detail["title"], 120))
+        for category in ("QUESTION", "DECISION", "FACT"):
+            for item in groups.get(category, [])[:2]:
+                if category == "FACT" and re.search(r"(?:На экране|Источник:\s*OCR)", str(item.get("text") or ""), re.IGNORECASE):
+                    continue
+                line = self._brief_line(item.get("text"), 150)
+                if line and line not in topics and not re.search(r"https?://(?:meet\.google\.com|zoom\.us)", line, re.IGNORECASE):
+                    topics.append(line)
+        topic_items = "".join(f"<li>{esc(line)}</li>" for line in topics[:4])
 
         toc = [
+            '<li><a href="#overview">Участники и суть</a></li>',
+            '<li><a href="#followups">Следующие шаги</a></li>',
             '<li><a href="#summary">Краткое резюме</a></li>',
         ]
         if detail.get("participants"):
@@ -1268,6 +1449,10 @@ h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:
 .brand{{font-size:9pt;text-transform:uppercase;letter-spacing:.13em;color:#2c6958;font-weight:700;margin-bottom:5mm}} .meta{{display:flex;gap:10mm;color:#56615d;margin-bottom:8mm}}
 .toc{{background:#eff5f2;border:1px solid #d7e3de;border-radius:8px;padding:5mm 7mm}} .toc h2{{border:0;margin:0 0 2mm;font-size:14pt}} a{{color:#205c4c;text-decoration:none}}
 .summary{{background:#f7f4ea;border-left:4px solid #b98a2f;padding:4mm 6mm}} li{{margin:0 0 2mm}}
+.opening h2{{margin:6mm 0 2mm;font-size:14pt}} .opening ul{{margin:2mm 0 3mm;padding-left:6mm}}
+.opening .roster{{columns:2;column-gap:6mm}} .opening .roster li{{break-inside:avoid}}
+.opening .main-speaker{{font-size:9pt;color:#56615d;margin:0 0 2mm}} .opening .main-speaker strong{{color:#174c3e}}
+.opening .uncertain{{color:#6c7773;font-size:9pt;margin:1mm 0 3mm}}
 .participant{{border:1px solid #d7e3de;border-radius:8px;padding:5mm 6mm;margin:0 0 6mm;background:#fbfdfc}} .participant h3{{color:#174c3e;margin:0 0 2mm}} .participant h4{{margin:5mm 0 1.5mm;font-size:11pt}} .participant p{{margin:2mm 0}}
 .identities{{display:flex;flex-wrap:wrap;gap:2mm;margin-bottom:3mm}} .identity{{background:#e8f1ed;border-radius:999px;padding:1mm 3mm;font-size:8.5pt}} .provenance{{font-size:8pt;color:#66736d;margin-top:1mm;overflow-wrap:anywhere}}
 .correspondence{{position:relative;border-left:3px solid #86aa9e;padding:1mm 0 2mm 4mm;margin:2mm 0 4mm;break-inside:avoid}} .correspondence h4{{margin:0 0 1mm}} .correspondence h4 span{{font-weight:400;color:#66736d;margin-left:2mm}} .evidence{{display:inline-block;font-size:7.5pt;text-transform:uppercase;letter-spacing:.05em;color:#215848;background:#e8f1ed;border-radius:3px;padding:.5mm 1.5mm}} .evidence.none{{color:#725825;background:#f5eddc}} .caveats{{color:#56615d}}
@@ -1278,8 +1463,17 @@ h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:
 </style></head><body>
 <div class="brand">Meeting Copilot by aiagentlbs.com</div><h1>{title}</h1>
 <div class="meta"><span>{esc(date_label)}</span><span>Длительность {esc(duration)}</span><span>{len(detail['transcript'])} реплик</span></div>
+<section id="overview" class="opening"><h2>Участники</h2>
+<p class="main-speaker">Основной спикер по объёму распознанной речи: <strong>{esc(main_speaker)}</strong></p>
+<ul class="roster">{roster or '<li>Имена участников не подтверждены записью или чатом.</li>'}</ul>
+{active_tile_note}
+{audio_identity_note}
+<p class="uncertain">Имена и контакты показаны только там, где они есть в источниках; роль спикера может требовать ручной проверки.</p></section>
+<section id="followups" class="opening"><h2>Следующие шаги</h2><ul>{followup_items or '<li>Автоматически выделенных следующих шагов нет; проверьте стенограмму.</li>'}</ul>
+{'' if not followup_items else '<p class="uncertain">Если срок или ответственный не указаны в пункте, они не были подтверждены автоматически.</p>'}</section>
+<section id="summary" class="opening"><h2>Суть звонка</h2><div class="summary"><ul>{summary_items or '<li>Проверенное краткое резюме пока не сформировано; см. заметки и стенограмму ниже.</li>'}</ul></div>
+<h2>Повестка и темы</h2><ul>{topic_items or '<li>Повестка не зафиксирована; ключевые темы смотрите в резюме.</li>'}</ul></section>
 <nav class="toc"><h2>Оглавление</h2><ol>{''.join(toc)}</ol></nav>
-<section id="summary"><h2>Краткое резюме</h2><div class="summary"><ul>{''.join(summary_items) or '<li>Значимые решения и обязательства автоматически не выделены.</li>'}</ul></div></section>
 {f'<section id="participants"><h2>Справка о собеседниках</h2>{participants_html}</section>' if participants_html else ''}
 <section id="notes"><h2>Заметки и сигналы</h2>{''.join(notes_sections) or '<p class="empty">Заметок пока нет.</p>'}</section>
 {f'<section id="chat"><h2>Чат встречи</h2>{chat_html}</section>' if chat_html else ''}
