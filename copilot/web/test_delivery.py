@@ -96,6 +96,36 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(result["drive_pdf_url"], links["drive_pdf_url"])
         self.assertEqual(gws.call_args.args[:2], ("gmail", "+send"))
 
+    def test_revised_report_refreshes_drive_without_resending_mail(self):
+        detail = {
+            **self.detail,
+            "duration_seconds": 300,
+            "transcript": [{"speaker": "Ana", "text": "Pilot approved"}],
+            "journal": [], "frames": [], "meeting_chat": [], "participants": [],
+            "report": {
+                "source_signature": "outdated", "drive_status": "uploaded",
+                "mail_status": "sent", "telegram_status": "sent",
+            },
+        }
+
+        def print_pdf(_html, pdf):
+            pdf.write_bytes(b"%PDF-test")
+
+        def delivery_result(_detail, _report, *, previous):
+            on_disk = json.loads((self.archive.reports_root / "meeting-1" / "report.json").read_text())
+            self.assertEqual(on_disk["mail_status"], "sent")
+            self.assertEqual(on_disk["telegram_status"], "sent")
+            return {"drive_status": "uploaded", "mail_status": "sent", "telegram_status": "sent"}
+
+        with patch.object(self.archive, "report_detail", return_value=detail), \
+             patch.object(self.archive, "_print_pdf", side_effect=print_pdf), \
+             patch.object(self.archive, "deliver", side_effect=delivery_result) as deliver:
+            self.archive.generate_report("meeting-1")
+        previous = deliver.call_args.kwargs["previous"]
+        self.assertEqual(previous["drive_status"], "pending")
+        self.assertEqual(previous["mail_status"], "sent")
+        self.assertEqual(previous["telegram_status"], "sent")
+
 
 if __name__ == "__main__":
     unittest.main()
