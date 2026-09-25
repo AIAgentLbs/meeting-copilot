@@ -525,6 +525,21 @@ input:focus-visible + span {
   color: var(--text);
 }
 
+.delivery-alert {
+  border: 1px solid #bb6a2d;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--surface) 88%, #e99d60);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.delivery-alert[hidden] {
+  display: none;
+}
+
 .translation-jump {
   border-color: color-mix(in srgb, var(--accent) 56%, var(--line));
   color: var(--accent-strong);
