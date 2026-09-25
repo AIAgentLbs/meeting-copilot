@@ -78,6 +78,24 @@ class DeliveryTests(unittest.TestCase):
         marker.write_text("{}", encoding="utf-8")
         self.assertFalse(self.archive._ready_for_delivery(self.detail))
 
+    def test_existing_gws_auth_recovers_google_delivery(self):
+        report = {"pdf_path": str(self.pdf)}
+        links = {
+            "drive_folder_url": "https://drive.google.com/drive/folders/test",
+            "drive_html_url": "https://drive.google.com/file/d/html/view",
+            "drive_pdf_url": "https://drive.google.com/file/d/pdf/view",
+        }
+        with patch("archive.shutil.which", side_effect=lambda name: f"/usr/local/bin/{name}"), \
+             patch.object(self.archive, "_upload_drive_report", return_value=("auth_required", {})), \
+             patch.object(self.archive, "_upload_drive_report_gws", return_value=("uploaded", links)), \
+             patch("archive.subprocess.run", return_value=subprocess.CompletedProcess([], 4, "", "")), \
+             patch.object(self.archive, "_gws_call", return_value={"id": "sent-id"}) as gws:
+            result = self.archive.deliver(self.detail, report)
+        self.assertEqual(result["drive_status"], "uploaded")
+        self.assertEqual(result["mail_status"], "sent")
+        self.assertEqual(result["drive_pdf_url"], links["drive_pdf_url"])
+        self.assertEqual(gws.call_args.args[:2], ("gmail", "+send"))
+
 
 if __name__ == "__main__":
     unittest.main()
