@@ -978,7 +978,9 @@ class MeetingArchive:
         transcript_html = "".join(
             f'<article class="utterance"><div><strong>{esc(item.get("speaker") or ("Я" if item.get("source") == "microphone" else "Собеседник"))}</strong>'
             f'<time>{esc((_date(item.get("timestamp")) or datetime.now().astimezone()).strftime("%H:%M:%S"))}</time></div>'
-            f'<p>{esc(item.get("text"))}</p></article>' for item in detail["transcript"]
+            f'<p>{esc(item.get("text"))}</p>'
+            f'{"<p class=\"translated\"><strong>EN:</strong> " + esc(item.get("translation_en")) + "</p>" if item.get("translation_en") else ""}'
+            f'</article>' for item in detail["transcript"]
         )
 
         participant_cards = []
@@ -1045,6 +1047,7 @@ h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:
 .identities{{display:flex;flex-wrap:wrap;gap:2mm;margin-bottom:3mm}} .identity{{background:#e8f1ed;border-radius:999px;padding:1mm 3mm;font-size:8.5pt}} .provenance{{font-size:8pt;color:#66736d;margin-top:1mm;overflow-wrap:anywhere}}
 .correspondence{{position:relative;border-left:3px solid #86aa9e;padding:1mm 0 2mm 4mm;margin:2mm 0 4mm;break-inside:avoid}} .correspondence h4{{margin:0 0 1mm}} .correspondence h4 span{{font-weight:400;color:#66736d;margin-left:2mm}} .evidence{{display:inline-block;font-size:7.5pt;text-transform:uppercase;letter-spacing:.05em;color:#215848;background:#e8f1ed;border-radius:3px;padding:.5mm 1.5mm}} .evidence.none{{color:#725825;background:#f5eddc}} .caveats{{color:#56615d}}
 .note,.chat,.utterance{{break-inside:avoid;border-bottom:1px solid #e0e5e2;padding:2.5mm 0}} .note p,.chat p,.utterance p{{margin:1mm 0 0}} .time,time,.chat span{{font-size:8.5pt;color:#707b77;margin-left:3mm}}
+.utterance .translated{{border-left:2px solid #2c6958;padding-left:3mm;background:#eff5f2}}
 .frames{{display:grid;grid-template-columns:1fr 1fr;gap:5mm}} figure{{margin:0;break-inside:avoid}} img{{width:100%;height:auto;border:1px solid #d5ddd9;border-radius:5px}} figcaption{{font-size:8.5pt;color:#65706c;margin-top:1mm}}
 .empty{{color:#6c7773;font-style:italic}} .page-break{{break-before:page}}
 </style></head><body>
