@@ -28,6 +28,8 @@ The local interface opens at `http://127.0.0.1:43121`.
 
 - captures meetings without adding a bot to Zoom or Google Meet;
 - updates a local near-live transcript with speaker separation where available;
+- detects mixed meeting languages and shows an English translation next to
+  non-Russian/non-English speech while preserving the original;
 - searches up to 15 selected local GitHub or GitLab checkouts without cloning,
   pulling, or modifying them;
 - surfaces facts, contradictions, history, risks, commitments, decisions and
@@ -43,6 +45,8 @@ frames and reports are stored under `~/.local/share/meeting-copilot`; settings
 and repository manifests are stored under `~/.config/meeting-copilot`. The
 installer neither uploads repositories nor runs `git pull`, `fetch`, `clone`,
 `checkout`, `reset`, `clean`, `commit` or `push`.
+Language detection runs on the Mac. Translation sends only the relevant text
+fragments through your authenticated Codex CLI, not raw audio.
 
 ## Repository layout
 
