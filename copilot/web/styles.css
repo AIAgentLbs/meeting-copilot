@@ -714,6 +714,32 @@ input:focus-visible + span {
   overflow-wrap: anywhere;
 }
 
+.utterance .translation {
+  margin: 0 0 6px;
+  padding: 9px 11px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  background: var(--accent-soft);
+  line-height: 1.48;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.utterance .translation::before {
+  content: "EN";
+  display: inline-block;
+  margin-right: 8px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  color: var(--accent-strong);
+}
+
+.utterance .original {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .utterance time {
   display: block;
   margin-top: 6px;
