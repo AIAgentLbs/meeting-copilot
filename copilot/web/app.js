@@ -584,7 +584,7 @@ function renderTranscript(transcript) {
     elements.liveStatus.lastChild.textContent = t("status.no_fresh");
   }
 
-  const signature = `${sourceFilter}:${transcript.meeting_id}:${transcript.updated_at}:${transcript.segments.length}`;
+  const signature = `${sourceFilter}:${transcript.meeting_id}:${transcript.updated_at}:${transcript.segments.length}:${transcript.translation_revision || 0}`;
   if (signature === transcriptSignature) return;
   transcriptSignature = signature;
 
@@ -636,10 +636,15 @@ function renderTranscript(transcript) {
       }
       const body = document.createElement("div");
       body.className = "body";
-      body.append(
-        textNode("p", "text", segment.text),
-        textNode("time", "", localTime(segment.timestamp)),
-      );
+      if (segment.translation_en) {
+        body.append(
+          textNode("p", "translation", segment.translation_en),
+          textNode("p", "text original", segment.text),
+        );
+      } else {
+        body.append(textNode("p", "text", segment.text));
+      }
+      body.append(textNode("time", "", localTime(segment.timestamp)));
       row.append(speaker, body);
       fragment.append(row);
     }
@@ -1061,7 +1066,8 @@ function transcriptDialogue(transcript) {
       : (segment.speaker || (segment.voice_id
         ? t("speaker.voice", { value: segment.voice_id.replace(/^remote-/, "") })
         : t("speaker.others")));
-    return `[${localTime(segment.timestamp)}] ${speaker}: ${segment.text}`;
+    const spoken = `[${localTime(segment.timestamp)}] ${speaker}: ${segment.text}`;
+    return segment.translation_en ? `${spoken}\nEN: ${segment.translation_en}` : spoken;
   });
   return `${transcript.display_meeting || transcript.meeting || "Встреча"}\n\n${lines.join("\n")}`;
 }
