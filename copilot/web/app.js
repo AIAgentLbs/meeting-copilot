@@ -3,6 +3,7 @@ const elements = {
   liveStatus: document.querySelector("#live-status"),
   repoStatus: document.querySelector("#repo-button"),
   archiveButton: document.querySelector("#archive-button"),
+  deliveryAlert: document.querySelector("#delivery-alert"),
   archiveDialog: document.querySelector("#archive-dialog"),
   archiveDescription: document.querySelector("#archive-description"),
   archiveClose: document.querySelector("#archive-close"),
@@ -64,6 +65,9 @@ const translations = {
     "status.checking": "Проверка",
     "nav.repositories": "Контекст встречи",
     "nav.meetings": "История встреч",
+    "delivery.auth_required": "Почта: нужен вход · {count}",
+    "delivery.pending": "Почта: не отправлено · {count}",
+    "delivery.hint": "Отчёты сохранены локально. Откройте историю встреч для статуса доставки.",
     "language.label": "Язык интерфейса",
     "aria.transcript_view": "Вид левой панели",
     "aria.speaker_filter": "Фильтр участников",
@@ -242,6 +246,9 @@ const translations = {
     "status.checking": "Checking",
     "nav.repositories": "Meeting context",
     "nav.meetings": "Meeting history",
+    "delivery.auth_required": "Email: sign-in needed · {count}",
+    "delivery.pending": "Email: not sent · {count}",
+    "delivery.hint": "Reports are saved locally. Open meeting history for delivery status.",
     "language.label": "Interface language",
     "aria.transcript_view": "Left pane view",
     "aria.speaker_filter": "Speaker filter",
@@ -918,6 +925,15 @@ async function openProjectDialog() {
   try {
     const response = await fetch("/api/projects", { cache: "no-store" });
     const data = await response.json();
+    const delivery = data.delivery || {};
+    elements.deliveryAlert.hidden = !delivery.mail_pending;
+    if (delivery.mail_pending) {
+      elements.deliveryAlert.textContent = t(
+        delivery.mail_auth_required ? "delivery.auth_required" : "delivery.pending",
+        { count: delivery.mail_pending },
+      );
+      elements.deliveryAlert.title = t("delivery.hint");
+    }
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     projectMeetingId = data.meeting_id || "";
     projectChoices = data.choices || [];
@@ -1671,6 +1687,7 @@ elements.question.addEventListener("keydown", (event) => {
 
 elements.note.addEventListener("click", () => void saveNote());
 elements.copyDialog.addEventListener("click", () => void copyDialogue());
+elements.deliveryAlert.addEventListener("click", () => elements.archiveButton.click());
 elements.translationJump.addEventListener("click", () => {
   const latest = activeTranscript?.segments.filter((segment) => segment.translation_en).at(-1);
   if (latest) jumpToTranscript(latest.timestamp);
