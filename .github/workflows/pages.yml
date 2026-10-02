@@ -2,7 +2,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/check-project-site.cjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,10 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check installer and site
+        run: |
+          bash -n install.sh
+          python3 scripts/test_installer.py
+          node --check docs/site.js
+      - name: Stage only public site files
+        run: |
+          mkdir -p _site/ru
+          cp docs/index.html docs/styles.css docs/site.js _site/
+          cp docs/ru/index.html _site/ru/
+          cp install.sh _site/install.sh
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
-

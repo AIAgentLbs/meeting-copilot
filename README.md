@@ -11,18 +11,29 @@ already have locally.
 
 ## Install
 
+Project page: [English](https://aiagentlbs.github.io/meeting-copilot/) ·
+[Русский](https://aiagentlbs.github.io/meeting-copilot/ru/).
+The command currently installs the checked, pinned **v0.1.7** package, not
+unreleased features from `main`. It requires Apple Silicon, macOS 15+, Python
+3.10+, Apple Command Line Tools and an authenticated Codex CLI. Google Chrome
+is required for PDF reports. Quit Capture before reinstalling.
+
 ```sh
-curl -fsSL https://raw.githubusercontent.com/AIAgentLbs/meeting-copilot/main/install.sh | bash
+curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash
 ```
 
 Then approve **Microphone** and **Screen & System Audio Recording** when macOS
 asks, and run:
 
 ```sh
-meeting-copilot
+~/.local/bin/meeting-copilot
 ```
 
 The local interface opens at `http://127.0.0.1:43121`.
+See [INSTALL.md](INSTALL.md) for dependencies, first-run permissions, manual
+updates and troubleshooting. Automatic in-app updates are not enabled in this
+beta. Audio/transcription run locally; AI analysis can send relevant transcript
+and repository excerpts through the configured Codex service.
 
 ## What it does
 
