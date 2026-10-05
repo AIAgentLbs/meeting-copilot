@@ -285,7 +285,7 @@ struct SetupTests {
     func keepAudioLabelTogglesItsSwitch() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let label = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Keep the audio after transcribing" })
@@ -446,7 +446,7 @@ struct SetupTests {
     func transcriptionSwitchesAreWired() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
 
         for title in ["In the cloud", "On this Mac"] {
             let label = try #require(panel.contentView?.allDescendants
@@ -468,7 +468,7 @@ struct SetupTests {
     func providerCardsCarryPriceAndLink() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let cards = panel.contentView?.allDescendants.compactMap { $0 as? ChoiceCard } ?? []
 
         let assembly = try #require(cards.first { $0.id == "assemblyai" })
@@ -503,7 +503,7 @@ struct SetupTests {
     func returnInAKeyFieldIsSwallowed() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let keyFields = panel.contentView?.allDescendants
             .compactMap { $0 as? NSSecureTextField } ?? []
         // Both of them: the cloud key and the summary key sit under the same
@@ -530,7 +530,7 @@ struct SetupTests {
     func summariesSwitchIsFirst() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let heading = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Summaries" })
@@ -544,7 +544,7 @@ struct SetupTests {
     func summariesSwitchIsWired() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let heading = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Summaries" })
@@ -567,7 +567,7 @@ struct SetupTests {
     func iconSwitchesAreOffered() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
 
         for title in ["In the menu bar", "In the Dock"] {
             let label = try #require(
@@ -594,7 +594,7 @@ struct SetupTests {
 
         let note = SetupForm.noIconsNote(menuBar: false, dock: false)
         #expect(note.contains("keeps recording"))
-        #expect(note.contains("open MeetingCopilot"))
+        #expect(note.contains("open \(ProductBrand.name)"))
     }
 
     /// The window used to ask for a two-letter code in a text field, which
@@ -606,7 +606,7 @@ struct SetupTests {
     func languageIsAMenuOfNames() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let label = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Meetings are mostly in" })
@@ -629,7 +629,7 @@ struct SetupTests {
     func ollamaIsInstallableChoiceCard() throws {
         let setup = SetupWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let ollama = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? ChoiceCard }
             .first { $0.id == "ollama" })
@@ -653,7 +653,7 @@ struct SetupTests {
     func settingsReusesTheSetupForm() throws {
         let settings = SettingsWindow()
         defer { withExtendedLifetime(settings) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot settings" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let tabs = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTabView }.first)
 
@@ -702,8 +702,8 @@ struct SetupTests {
         defer { withExtendedLifetime((setup, settings)) {} }
 
         let panels = [
-            try #require(NSApp.windows.last { $0.title == "meetingcopilot setup" }),
-            try #require(NSApp.windows.last { $0.title == "meetingcopilot settings" }),
+            try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" }),
+            try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" }),
         ]
         // One switch, in two windows: the settings copy is on its Setup tab,
         // which is the tab a person lands on.
@@ -893,7 +893,7 @@ struct SetupTests {
     func endingEditingOnAnUntouchedRowWritesNothing() throws {
         let settings = SettingsWindow()
         defer { withExtendedLifetime(settings) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot settings" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
 
         // The Advanced tab is built with the window but only installed in the
         // hierarchy while it is the one on screen, so it is reached through
@@ -944,7 +944,7 @@ struct SetupTests {
     func outstandingLineFollowsTheForm() throws {
         let settings = SettingsWindow()
         defer { withExtendedLifetime(settings) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "meetingcopilot settings" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
 
         let truth = settings.outstandingLine
         let label = try #require(panel.contentView?.allDescendants
@@ -962,7 +962,7 @@ struct SetupTests {
     /// only appears when something is wrong leaves them counting green ticks.
     @Test("The sentence says the good news as well as the bad")
     func outstandingSentenceShapes() {
-        #expect(SetupForm.sentence(for: []) == "Everything meetingcopilot needs is granted.")
+        #expect(SetupForm.sentence(for: []) == "Everything \(ProductBrand.name) needs is granted.")
         #expect(SetupForm.sentence(for: [.microphone]) == "One thing left: microphone")
         #expect(SetupForm.sentence(for: [.microphone, .systemAudio])
             == "Left: microphone, system audio")

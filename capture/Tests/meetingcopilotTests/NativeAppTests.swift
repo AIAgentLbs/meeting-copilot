@@ -254,11 +254,11 @@ struct SetupOfferTests {
     func aboutIsInBothMenus() throws {
         let menuBar = MenuBarController()
         defer { withExtendedLifetime(menuBar) {} }
-        #expect(menuBar.offeredItemTitles.contains("About MeetingCopilot"))
+        #expect(menuBar.offeredItemTitles.contains("About \(ProductBrand.name)"))
 
         let menu = Run.mainMenu(settingsTarget: AppDelegate())
         let appMenu = try #require(menu.items.first?.submenu)
-        #expect(appMenu.items.first?.title == "About MeetingCopilot")
+        #expect(appMenu.items.first?.title == "About \(ProductBrand.name)")
     }
 
     /// The window links to the product company.

@@ -276,9 +276,9 @@ struct InterfaceLanguageTests {
     @MainActor
     func theOutstandingSentenceIsTranslated() {
         #expect(Self.inLanguage(.english) { SetupForm.sentence(for: []) }
-            == "Everything meetingcopilot needs is granted.")
+            == "Everything \(ProductBrand.name) needs is granted.")
         #expect(Self.inLanguage(.russian) { SetupForm.sentence(for: []) }
-            == "Всё, что нужно meetingcopilot, разрешено.")
+            == "Всё, что нужно \(ProductBrand.name), разрешено.")
 
         // A name stays a name in either language; what surrounds it does not.
         let left = Self.inLanguage(.russian) {
@@ -608,6 +608,7 @@ struct InterfaceLanguageTests {
         if text.isEmpty { return true }
         // Names of things, and the shape of a key nobody translates.
         let names = [
+            ProductBrand.name, "by \(ProductBrand.company)", "\(ProductBrand.company) ↗",
             "AssemblyAI", "OpenAI", "Anthropic", "Claude Code", "Codex", "Ollama",
             "sk-ant-…", "sk-…", "meetingcopilot",
             // The models, named the way their release notes name them.

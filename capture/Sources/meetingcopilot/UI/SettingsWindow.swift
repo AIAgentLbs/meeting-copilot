@@ -52,6 +52,7 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
     /// Setup tab is a `SetupForm` and listens on its own.
     private var configWatch: ConfigWatch.Token?
     private var rows: [Row] = []
+    private var renderedText: [Int: String] = [:]
     /// The local models as files: what they weigh and the button that gets
     /// the space back. The one thing on this tab that is not a setting, and
     /// the reason it is here anyway is in `modelsSection`.
@@ -598,8 +599,10 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
             case .list:
                 let items = stored as? [String] ?? []
                 row.control.stringValue = items.joined(separator: ", ")
+                renderedText[row.control.tag] = row.control.stringValue
             case .number, .text:
                 row.control.stringValue = stored.map { "\($0)" } ?? ""
+                renderedText[row.control.tag] = row.control.stringValue
             }
         }
         showStrayKeys(in: config)
@@ -638,6 +641,10 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         case .choice:
             input = .choice((row.control as? NSPopUpButton)?.titleOfSelectedItem ?? "")
         case .number, .text, .list:
+            // Losing focus is not an edit, including when an explicit stored
+            // value happens to equal today's default. Never normalize it away
+            // merely because the user opened or closed this window.
+            guard row.control.stringValue != renderedText[row.control.tag] else { return }
             input = .text(row.control.stringValue)
         }
 
