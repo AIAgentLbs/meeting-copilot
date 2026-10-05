@@ -28,11 +28,11 @@ need first-run checks. It does not install Homebrew or sign into providers.
 
 ## What the command installs
 
-Currently **v0.1.7**, from the explicit GitHub Release URL. Its ZIP is verified
+Currently **v0.1.8**, from the explicit GitHub Release URL. Its ZIP is verified
 against SHA-256:
 
 ```text
-fa3fedcf4fca053266732d6515bb5564eecb3c55b75aba6540a147b089b16b4a
+2575dbe3cae77a0afdddceda1ddb321541ce58b89b9f914dac4a8f6e098fac19
 ```
 
 This digest was compared with the downloaded ZIP and GitHub asset metadata.
@@ -50,16 +50,18 @@ running `MeetingCopilotCapture` process. It checks again after staging.
 An existing app and web directory are preserved as timestamped backups.
 Existing private settings, repository selection and recordings are retained.
 The published script and the package are versioned separately: `main` includes
-newer work that is not necessarily inside the v0.1.7 download.
+newer work that is not necessarily inside the v0.1.8 download.
 
 ## First run
 
-1. Approve **Microphone** and **Screen & System Audio Recording** for the exact
+1. Choose English / Русский when the application opens for the first time.
+   Interface language is separate from speech and summary language.
+2. Approve **Microphone** and **Screen & System Audio Recording** for the exact
    installed Meeting Copilot Capture app in System Settings.
-2. Complete model setup in the Capture app and check Codex authentication.
-3. Run `~/.local/bin/meeting-copilot`; the UI opens at `http://127.0.0.1:43121`.
+3. Complete model setup in the Capture app and check Codex authentication.
+4. Run `~/.local/bin/meeting-copilot`; the UI opens at `http://127.0.0.1:43121`.
    If `~/.local/bin` is already in your PATH, `meeting-copilot` also works.
-4. Select the relevant local repositories. Run a short test call, inspect both
+5. Select the relevant local repositories. Run a short test call, inspect both
    microphone and system audio, and check the saved transcript/report before
    relying on a long recording. Speaker labels can need correction.
 
@@ -69,11 +71,18 @@ and Telegram delivery are optional, require separate configuration and are not
 activated by the installer. Fully offline AI and a general model/provider
 selector are planned, not promised for this package.
 
+Google context search is optional in Settings and requires a separately
+configured `gws` CLI and Google authorization. Calendar, Gmail and Drive are
+opt-in, with one account. Drive search currently returns metadata and links.
+Native usage statistics are inherited as opt-out, with a visible setup switch;
+read [the exact disclosure](capture/docs/analytics.md) before enabling them.
+The ZIP includes `release.json` with the runtime source revision and file hashes.
+
 ## Updating
 
 Automatic in-app updates are not enabled in this beta. The one-line command
 installs the version pinned in `install.sh`; repeating it today reinstalls
-v0.1.7. After a new tested release is published, maintainers must update the
+v0.1.8. After a new tested release is published, maintainers must update the
 script's version and SHA-256 together and deploy the page and script. Then
 finish your call, quit Capture and rerun the same command.
 

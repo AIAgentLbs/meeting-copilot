@@ -42,7 +42,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
       assert.equal(await page.locator('h1').count(), 1);
       const command = await page.locator('#install-command').textContent();
       assert.equal(command.trim(), 'curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash');
-      assert((await page.locator('#install').textContent()).includes('v0.1.7'));
+      assert((await page.locator('#install').textContent()).includes('v0.1.8'));
       await page.locator('[data-copy]').click();
       assert.equal(await page.evaluate(() => window.copiedCommand), command.trim());
       await page.waitForFunction(() => !document.querySelector('[data-copy]').disabled);

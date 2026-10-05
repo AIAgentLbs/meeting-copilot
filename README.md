@@ -5,18 +5,22 @@ your microphone and system audio, keeps a live transcript on your Mac, and lets
 Codex check what is being said against the Git repositories and documents you
 already have locally.
 
-> Beta. macOS 15+, Apple Silicon. The transcript and repository access remain
-> local by default. Codex usage follows the authentication and policy of your
-> installed Codex CLI.
+> Technical beta. macOS 15+, Apple Silicon. Audio/transcript files are stored
+> locally; AI analysis can send relevant dialogue and repository excerpts to
+> your configured Codex service. Usage follows your CLI account and policy.
 
 ## Install
 
 Project page: [English](https://aiagentlbs.github.io/meeting-copilot/) ·
 [Русский](https://aiagentlbs.github.io/meeting-copilot/ru/).
-The command currently installs the checked, pinned **v0.1.7** package, not
+The command currently installs the checked, pinned **v0.1.8** package, not
 unreleased features from `main`. It requires Apple Silicon, macOS 15+, Python
 3.10+, Apple Command Line Tools and an authenticated Codex CLI. Google Chrome
 is required for PDF reports. Quit Capture before reinstalling.
+
+v0.1.8 includes the freshly compiled Swift app, the matched web payload and a
+source/hash manifest. It is ad-hoc signed, not notarized; automatic updates
+remain disabled. See [release notes](docs/releases/v0.1.8.md) for scope and gates.
 
 ```sh
 curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash
