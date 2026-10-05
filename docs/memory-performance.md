@@ -9,7 +9,9 @@ The existing LaunchAgent is restored, running with `RunAtLoad=true` and
 `KeepAlive=true`; one listener serves `127.0.0.1:43121`.
 Native Capture, recognition models, recording settings, recovery, delivery
 and automatic start/stop rules were not disabled or replaced. Capture was
-not restarted while recording. No public release or repository commit was made.
+not restarted while recording. No public release or repository commit had been
+made when this audit completed. Subsequent beta packaging is documented in
+[v0.1.8 release notes](releases/v0.1.8.md).
 
 ## Evidence and minimal fixes
 
