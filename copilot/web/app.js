@@ -1,9 +1,20 @@
 const elements = {
+  swapPanels: document.querySelector("#swap-panels"),
   meetingTitle: document.querySelector("#meeting-title"),
   liveStatus: document.querySelector("#live-status"),
+  captureStatus: document.querySelector("#capture-status"),
+  recognitionNotice: document.querySelector("#recognition-notice"),
+  recognitionNoticeText: document.querySelector("#recognition-notice-text"),
+  recognitionResume: document.querySelector("#recognition-resume"),
   repoStatus: document.querySelector("#repo-button"),
   archiveButton: document.querySelector("#archive-button"),
   deliveryAlert: document.querySelector("#delivery-alert"),
+  deliverySummary: document.querySelector("#delivery-summary"),
+  deliveryChannels: document.querySelector("#delivery-channels"),
+  deliveryNotice: document.querySelector("#delivery-notice"),
+  deliveryNoticeText: document.querySelector("#delivery-notice-text"),
+  deliveryNoticeDetails: document.querySelector("#delivery-notice-details"),
+  deliveryNoticeDismiss: document.querySelector("#delivery-notice-dismiss"),
   archiveDialog: document.querySelector("#archive-dialog"),
   archiveDescription: document.querySelector("#archive-description"),
   archiveClose: document.querySelector("#archive-close"),
@@ -17,6 +28,19 @@ const elements = {
   frameStatus: document.querySelector("#frame-status"),
   captureFrame: document.querySelector("#capture-frame"),
   copyDialog: document.querySelector("#copy-dialog"),
+  speakerEdit: document.querySelector("#speaker-edit"),
+  speakerDialog: document.querySelector("#speaker-dialog"),
+  speakerEditClose: document.querySelector("#speaker-edit-close"),
+  speakerNameList: document.querySelector("#speaker-name-list"),
+  speakerUtteranceList: document.querySelector("#speaker-utterance-list"),
+  speakerEditHelp: document.querySelector("#speaker-edit-help"),
+  speakerEditStatus: document.querySelector("#speaker-edit-status"),
+  speakerSelectionCount: document.querySelector("#speaker-selection-count"),
+  speakerAssignmentTarget: document.querySelector("#speaker-assignment-target"),
+  speakerAssignmentName: document.querySelector("#speaker-assignment-name"),
+  speakerAssignmentSave: document.querySelector("#speaker-assignment-save"),
+  speakerSelectPending: document.querySelector("#speaker-select-pending"),
+  speakerSelectClear: document.querySelector("#speaker-select-clear"),
   translationJump: document.querySelector("#translation-jump"),
   speakerFilters: document.querySelector("#speaker-filters"),
   chat: document.querySelector("#chat"),
@@ -33,6 +57,10 @@ const elements = {
   analyze: document.querySelector("#analyze-button"),
   autoAnalysis: document.querySelector("#auto-analysis"),
   journal: document.querySelector("#journal"),
+  callPlan: document.querySelector("#call-plan"),
+  callBoard: document.querySelector("#call-board"),
+  callPlanTab: document.querySelector("#call-plan-tab"),
+  callPlanCount: document.querySelector("#call-plan-count"),
   journalList: document.querySelector("#journal-list"),
   journalCounts: {
     questions: document.querySelector("#questions-count"),
@@ -75,6 +103,7 @@ const translations = {
     "aria.journal_filter": "Фильтр журнала",
     "aria.workspace_filter": "Чат и сигналы встречи",
     "common.refresh": "Обновить",
+    "nav.swap_panels": "Поменять панели",
     "common.close": "Закрыть",
     "common.cancel": "Отмена",
     "transcript.heading": "Ход созвона",
@@ -84,11 +113,30 @@ const translations = {
     "transcript.copied": "Диалог скопирован",
     "transcript.copy_empty": "Нет реплик для копирования",
     "transcript.copy_failed": "Не удалось скопировать",
-    "transcript.translation_jump": "EN-переводы: {count} · к последнему",
+    "transcript.translation_jump": "EN: {count} · к последнему",
     "transcript.translation_hint": "Последний перевод: {time}. Новые реплики на английском не переводятся.",
     "frames.tab": "Кадры",
     "speaker.all": "Все",
+    "speakers.open": "Имена",
+    "speakers.title": "Участники и реплики",
+    "speakers.help": "Имя меняется во всей встрече. Если два голоса слиплись, выберите реплики и назначьте участника.",
+    "speakers.rename_title": "Переименовать во всей встрече",
+    "speakers.assign_title": "Исправить, кто говорит",
+    "speakers.select_pending": "Выбрать неразмеченные",
+    "speakers.clear_selection": "Снять выбор",
+    "speakers.selected": "Выбрано: {count}",
+    "speakers.target": "Кто говорит",
+    "speakers.new_name": "Или новое имя",
+    "speakers.assign": "Назначить выбранным",
+    "speakers.rename": "Переименовать все",
+    "speakers.saved": "Сохранено. Имена обновлены в стенограмме и архиве; отчёт обновится автоматически.",
+    "speakers.pending": "Разметить",
+    "speakers.edit_hint": "Нажмите, чтобы переименовать спикера или изменить автора реплики",
     "speaker.me": "Я",
+    "speaker.unverified": "Голос не подтверждён",
+    "speaker.unverified_short": "Неясно",
+    "transcript.capture_lost": "Потеря аудио",
+    "transcript.capture_lost_hint": "Системная дорожка пропала. На отмеченном участке нельзя уверенно определить, кто говорит.",
     "speaker.others": "Собеседники",
     "transcript.empty_title": "Жду стенограмму",
     "transcript.empty_text": "Meeting Copilot передаёт локальную расшифровку примерно раз в секунду.",
@@ -97,9 +145,32 @@ const translations = {
     "frames.armed": "Съёмка готова.",
     "frames.ok": "Последний кадр: {time}.",
     "frames.error": "Ошибка съёмки: {error}",
-    "copilot.heading": "Чат с контекстом",
+    "copilot.heading": "Карта звонка и помощник",
     "copilot.meta": "Codex читает стенограмму и локальные Git-репозитории",
     "view.chat": "Чат",
+    "plan.tab": "Подготовка",
+    "plan.links": "Материалы",
+    "plan.question": "Вопросы",
+    "plan.risk": "Риски",
+    "plan.objection": "Возражения",
+    "plan.open": "Не закрыто",
+    "plan.resolved": "Закрыто",
+    "plan.clarify": "Уточнить",
+    "plan.evidence": "Из разговора: {quote}",
+    "plan.tentative": "Подобрано по времени. Проверьте, что это нужная встреча.",
+    "plan.calendar": "Подобрано по событию календаря. Проверьте, что это нужная встреча.",
+    "plan.source": "Подготовка из {source}",
+    "plan.score": "Пунктов закрыто: {resolved} из {total} · уточнить: {clarify}",
+    "plan.group_score": "{label}: {resolved}/{total}",
+    "plan.question.open": "Без ответа",
+    "plan.question.resolved": "Ответ получен",
+    "plan.question.clarify": "Уточнить ответ",
+    "plan.risk.open": "Риск открыт",
+    "plan.risk.resolved": "Риск снят",
+    "plan.risk.clarify": "Риск уточнён",
+    "plan.objection.open": "Не отработано",
+    "plan.objection.resolved": "Отработано",
+    "plan.objection.clarify": "Нужны детали",
     "view.journal": "Журнал",
     "view.meeting_chat": "Чат встречи",
     "copilot.reset": "Новый контекст",
@@ -115,7 +186,9 @@ const translations = {
     "journal.decisions": "Решения",
     "journal.notes": "Мои заметки",
     "journal.entities": "Ссылки и сервисы",
-    "meeting_chat.note": "Сообщения извлекаются из видимой панели Zoom Chat и сохраняются только локально.",
+    "meeting_chat.note": "Видимый Zoom Chat и импорт экспорта · сообщения сохраняются отдельно от скриншотов. Скрытая история автоматически не прокручивается.",
+    "meeting_chat.import": "Импорт TXT / JSON",
+    "meeting_chat.questions": "Только вопросы аудитории",
     "analysis.auto": "Автоанализ важных новых реплик",
     "analysis.now": "Анализ сейчас",
     "analysis.initial": "Автоанализ ещё не запускался",
@@ -135,13 +208,13 @@ const translations = {
     "age.minutes": "{value} мин назад",
     "age.hours": "{value} ч назад",
     "status.waiting": "Ожидание записи",
-    "status.live": "Созвон идёт",
+    "status.live": "Расшифровка идёт",
     "status.finished": "Созвон завершён · контекст сохранён",
     "status.model_loading": "Загрузка модели",
     "status.model_missing": "Нет live-модели",
     "status.overloaded": "Live-расшифровка перегружена",
     "status.no_fresh": "Нет свежих реплик",
-    "transcript.overloaded_meta": "Модель не успевает в реальном времени; аудиозапись продолжается. Последняя реплика: {age}",
+    "transcript.overloaded_meta": "Расшифровка отстаёт. Последняя реплика: {age}",
     "transcript.latest_meta": "Последняя реплика: {age}",
     "transcript.failed": "Не удалось обновить стенограмму",
     "speaker.name_hint": "Имя определено по активной рамке Zoom",
@@ -154,7 +227,7 @@ const translations = {
     "message.autoanalysis": "Автоанализ",
     "message.thinking": "Ищу в стенограмме и репозиториях",
     "message.latest": "К последнему ответу",
-    "speaker.voice": "Спикер {value}",
+    "speaker.voice": "Собеседник {value}",
     "speaker.voice_hint": "Голос различён локально по аудио; имя появится, когда Zoom покажет активного участника",
     "copilot.error": "Ошибка: {error}",
     "copilot.active": "Контекст Codex активен, репозитории доступны только для чтения",
@@ -256,6 +329,7 @@ const translations = {
     "aria.journal_filter": "Journal filter",
     "aria.workspace_filter": "Meeting chat and signals",
     "common.refresh": "Refresh",
+    "nav.swap_panels": "Swap panels",
     "common.close": "Close",
     "common.cancel": "Cancel",
     "transcript.heading": "Live meeting",
@@ -265,11 +339,30 @@ const translations = {
     "transcript.copied": "Dialogue copied",
     "transcript.copy_empty": "No utterances to copy",
     "transcript.copy_failed": "Could not copy",
-    "transcript.translation_jump": "EN translations: {count} · show latest",
+    "transcript.translation_jump": "EN: {count} · show latest",
     "transcript.translation_hint": "Latest translation: {time}. New English utterances are not translated.",
     "frames.tab": "Frames",
     "speaker.all": "All",
+    "speakers.open": "Names",
+    "speakers.title": "Participants and utterances",
+    "speakers.help": "A name changes throughout this meeting. If voices were merged, select utterances and assign a participant.",
+    "speakers.rename_title": "Rename throughout the meeting",
+    "speakers.assign_title": "Correct who is speaking",
+    "speakers.select_pending": "Select unassigned",
+    "speakers.clear_selection": "Clear selection",
+    "speakers.selected": "Selected: {count}",
+    "speakers.target": "Who is speaking",
+    "speakers.new_name": "Or a new name",
+    "speakers.assign": "Assign selected",
+    "speakers.rename": "Rename all",
+    "speakers.saved": "Saved. Transcript and archive updated; the report will refresh automatically.",
+    "speakers.pending": "Assign",
+    "speakers.edit_hint": "Click to rename this speaker or correct the utterance author",
     "speaker.me": "Me",
+    "speaker.unverified": "Unverified voice",
+    "speaker.unverified_short": "Unverified",
+    "transcript.capture_lost": "Audio dropout",
+    "transcript.capture_lost_hint": "The system audio track was lost. Speaker identity is uncertain in the marked interval.",
     "speaker.others": "Others",
     "transcript.empty_title": "Waiting for the transcript",
     "transcript.empty_text": "Meeting Copilot publishes the local transcript about once per second.",
@@ -278,9 +371,32 @@ const translations = {
     "frames.armed": "Capture is armed.",
     "frames.ok": "Last frame: {time}.",
     "frames.error": "Capture error: {error}",
-    "copilot.heading": "Context chat",
+    "copilot.heading": "Call map & assistant",
     "copilot.meta": "Codex reads the transcript and local Git repositories",
     "view.chat": "Chat",
+    "plan.tab": "Preparation",
+    "plan.links": "Materials",
+    "plan.question": "Questions",
+    "plan.risk": "Risks",
+    "plan.objection": "Objections",
+    "plan.open": "Open",
+    "plan.resolved": "Resolved",
+    "plan.clarify": "Clarify",
+    "plan.evidence": "From this call: {quote}",
+    "plan.tentative": "Matched by time only. Check this is the right meeting.",
+    "plan.calendar": "Matched to a calendar event. Check this is the right meeting.",
+    "plan.source": "Preparation from {source}",
+    "plan.score": "Resolved: {resolved} of {total} · clarify: {clarify}",
+    "plan.group_score": "{label}: {resolved}/{total}",
+    "plan.question.open": "Unanswered",
+    "plan.question.resolved": "Answered",
+    "plan.question.clarify": "Needs clarification",
+    "plan.risk.open": "Open risk",
+    "plan.risk.resolved": "Risk cleared",
+    "plan.risk.clarify": "Risk clarified",
+    "plan.objection.open": "Not addressed",
+    "plan.objection.resolved": "Addressed",
+    "plan.objection.clarify": "More information needed",
     "view.journal": "Journal",
     "view.meeting_chat": "Meeting chat",
     "copilot.reset": "New context",
@@ -296,7 +412,9 @@ const translations = {
     "journal.decisions": "Decisions",
     "journal.notes": "My notes",
     "journal.entities": "Links and services",
-    "meeting_chat.note": "Messages are extracted from the visible Zoom Chat panel and stored locally only.",
+    "meeting_chat.note": "Visible Zoom Chat and imported exports · messages are saved independently of screenshots. Hidden history is not scrolled automatically.",
+    "meeting_chat.import": "Import TXT / JSON",
+    "meeting_chat.questions": "Audience questions only",
     "analysis.auto": "Auto-analyse important new utterances",
     "analysis.now": "Analyse now",
     "analysis.initial": "Auto-analysis has not run yet",
@@ -316,13 +434,13 @@ const translations = {
     "age.minutes": "{value}m ago",
     "age.hours": "{value}h ago",
     "status.waiting": "Waiting for recording",
-    "status.live": "Meeting live",
+    "status.live": "Transcription live",
     "status.finished": "Meeting ended · context retained",
     "status.model_loading": "Loading model",
     "status.model_missing": "Live model missing",
     "status.overloaded": "Live transcription overloaded",
     "status.no_fresh": "No recent utterances",
-    "transcript.overloaded_meta": "The model is behind real time; audio recording continues. Latest utterance: {age}",
+    "transcript.overloaded_meta": "Transcription is behind. Latest utterance: {age}",
     "transcript.latest_meta": "Latest utterance: {age}",
     "transcript.failed": "Could not refresh the transcript",
     "speaker.name_hint": "Name detected from Zoom's active-speaker frame",
@@ -335,7 +453,7 @@ const translations = {
     "message.autoanalysis": "Auto-analysis",
     "message.thinking": "Searching the transcript and repositories",
     "message.latest": "Jump to latest",
-    "speaker.voice": "Speaker {value}",
+    "speaker.voice": "Participant {value}",
     "speaker.voice_hint": "The voice was separated locally from audio; a name appears when Zoom shows the active participant",
     "copilot.error": "Error: {error}",
     "copilot.active": "Codex context is active; repositories are read-only",
@@ -424,7 +542,25 @@ const translations = {
   },
 };
 
-let uiLanguage = localStorage.getItem("meeting-copilot-language") === "en" ? "en" : "ru";
+const savedUiLanguage = localStorage.getItem("meeting-copilot-language");
+let hasExplicitUiLanguage = ["en", "ru"].includes(savedUiLanguage);
+let uiLanguage = hasExplicitUiLanguage ? savedUiLanguage : "ru";
+let inheritedUiLanguage = false;
+let panelsSwapped = localStorage.getItem("meeting-copilot-panels-swapped") === "true";
+function applyPanelOrder() {
+  const workspace = document.querySelector(".workspace");
+  const transcript = workspace.querySelector(".transcript-pane");
+  const copilot = workspace.querySelector(".copilot-pane");
+  workspace.append(...(panelsSwapped ? [copilot, transcript] : [transcript, copilot]));
+  workspace.classList.toggle("panels-swapped", panelsSwapped);
+  elements.swapPanels.setAttribute("aria-pressed", String(panelsSwapped));
+}
+elements.swapPanels.addEventListener("click", () => {
+  panelsSwapped = !panelsSwapped;
+  localStorage.setItem("meeting-copilot-panels-swapped", String(panelsSwapped));
+  applyPanelOrder();
+});
+applyPanelOrder();
 
 function t(key, variables = {}) {
   const template = translations[uiLanguage][key] || translations.ru[key] || key;
@@ -458,6 +594,9 @@ function applyLanguage() {
     button.classList.toggle("active", button.dataset.language === uiLanguage);
     button.setAttribute("aria-pressed", String(button.dataset.language === uiLanguage));
   });
+  const googleAccount = document.querySelector("#google-account");
+  if (googleAccount?.dataset.auth) googleAccount.textContent = googleAccount.dataset.auth === "connected"
+    ? t("google.account", {account: googleAccount.dataset.account || "gws"}) : t("google.auth");
 }
 
 let sourceFilter = "all";
@@ -479,14 +618,248 @@ let frameSignature = "";
 let stateRequestInFlight = false;
 let stateConnectionFailed = false;
 let activeTranscript = null;
+let recordingHealth = {};
+let recognitionResumeBusy = false;
+let recognitionResumeError = "";
 let noteBusy = false;
 let chatPinnedToLatest = true;
 let archiveMeetings = [];
 let selectedArchiveMeeting = "";
+let deliverySignature = "";
+let deliveryAcknowledgedThrough = 0;
+let deliveryDismissBusy = false;
+let deliveryHealth = {};
+let callPlanSignature = "";
+let selectedPlanMeetingId = "";
+let currentCallPlan = null;
+let currentJournal = [];
+let callBoardSignature = "";
+const boardExpanded = new Set();
+
+Object.assign(translations.ru, {
+  "delivery.heading": "Доставка отчётов", "delivery.button": "Доставка",
+  "delivery.attention": "Доставка · проблем: {count}", "delivery.details": "Подробнее",
+  "delivery.dismiss": "Прочитано", "delivery.dismiss_failed": "Не удалось сохранить. Повторите.",
+  "delivery.local_note": "Запись и отчёт остаются локально. Ошибки доставки не останавливают звонок.",
+  "delivery.state.not_configured": "Не подключён", "delivery.state.idle": "Нет отчётов за последние 3 дня",
+  "delivery.state.sent": "Готово · {count}", "delivery.state.pending": "Ожидает отправки · {count}",
+  "delivery.state.waiting": "После завершения звонка · {count}",
+  "delivery.state.failed": "Не доставлено · {count}", "delivery.state.action_required": "Нужно действие · {count}",
+  "delivery.reason.auth_required": "Восстановите авторизацию этого подключения.",
+  "delivery.reason.links_missing": "Не получены корректные ссылки Drive. Приложение повторит загрузку.",
+  "delivery.reason.delivery_failed": "Отправка не удалась. Приложение повторит её автоматически.",
+  "delivery.reason.retry_overdue": "Доставка задерживается. Автоматические повторы продолжаются.",
+  "delivery.reason.retry_expired": "Автоповторы закончились. Проверьте предыдущую доставку перед повторной отправкой.",
+  "delivery.reason.metadata_invalid": "Не читается состояние отчёта. Проверьте локальный архив.",
+  "delivery.event.failed": "{channel}: сбой доставки. {reason}",
+  "delivery.event.action_required": "{channel}: нужно ваше действие. {reason}",
+  "delivery.event.recovered": "{channel}: доставка отчёта восстановлена.",
+  "delivery.more": "Ещё событий: {count}", "delivery.open_report": "Открыть отчёт",
+  "delivery.explain": "Причина и что делать",
+});
+Object.assign(translations.en, {
+  "delivery.heading": "Report delivery", "delivery.button": "Delivery",
+  "delivery.attention": "Delivery · issues: {count}", "delivery.details": "Details",
+  "delivery.dismiss": "Mark as read", "delivery.dismiss_failed": "Could not save. Try again.",
+  "delivery.local_note": "Recordings and reports stay locally. Delivery errors do not interrupt the call.",
+  "delivery.state.not_configured": "Not connected", "delivery.state.idle": "No reports in the last 3 days",
+  "delivery.state.sent": "Ready · {count}", "delivery.state.pending": "Awaiting delivery · {count}",
+  "delivery.state.waiting": "After the call ends · {count}",
+  "delivery.state.failed": "Not delivered · {count}", "delivery.state.action_required": "Action needed · {count}",
+  "delivery.reason.auth_required": "Restore authorization for this connection.",
+  "delivery.reason.links_missing": "Valid Drive links are missing. The app will retry the upload.",
+  "delivery.reason.delivery_failed": "Delivery failed. The app will retry automatically.",
+  "delivery.reason.retry_overdue": "Delivery is delayed. Automatic retries continue.",
+  "delivery.reason.retry_expired": "Automatic retries ended. Check earlier delivery before sending again.",
+  "delivery.reason.metadata_invalid": "Report status is unreadable. Check the local archive.",
+  "delivery.event.failed": "{channel}: delivery failed. {reason}",
+  "delivery.event.action_required": "{channel}: your action is needed. {reason}",
+  "delivery.event.recovered": "{channel}: report delivery recovered.",
+  "delivery.more": "More events: {count}", "delivery.open_report": "Open report",
+  "delivery.explain": "Cause and next step",
+});
+
+Object.assign(translations.ru, {
+  "capture.recording": "Звук записывается", "capture.verifying": "Проверяю запись звука",
+  "capture.stalled": "Проблема с записью звука", "capture.inactive": "Запись звука неактивна",
+  "capture.paused": "Запись на паузе", "capture.disconnected": "Запись не подтверждена · нет связи",
+  "recognition.heading": "Состояние расшифровки", "recognition.resume": "Возобновить расшифровку",
+  "recognition.recovering": "Восстанавливаю расшифровку",
+  "recognition.recovering_note": "Звук сохраняется. Восстанавливается только распознавание — в том же звонке.",
+  "recognition.waiting": "Расшифровка зависла. Проверяю запись звука перед безопасным возобновлением.",
+  "recognition.exhausted": "Автовосстановление не помогло. Звук сохраняется; повторите расшифровку позже из записи.",
+  "recognition.audio_failed": "Аудиодорожка перестала расти. Проверьте доступ к микрофону и системному звуку; запись может быть неполной.",
+  "recognition.resume_failed": "Не удалось возобновить расшифровку. Аудиозапись не перезапускалась.",
+  "recognition.resuming": "Отправляю команду…", "recognition.command_sent": "Команда отправлена. Жду восстановления распознавания.",
+  "recognition.paused": "Расшифровка на паузе", "recognition.error": "Сбой расшифровки",
+  "recognition.unverified": "Не могу проверить запись и расшифровку: нет свежего ответа приложения. Аудиозапись не перезапускалась.",
+});
+Object.assign(translations.en, {
+  "capture.recording": "Audio recording", "capture.verifying": "Checking audio recording",
+  "capture.stalled": "Audio recording issue", "capture.inactive": "Audio recording inactive",
+  "capture.paused": "Recording paused", "capture.disconnected": "Recording unverified · disconnected",
+  "recognition.heading": "Transcription status", "recognition.resume": "Resume transcription",
+  "recognition.recovering": "Recovering transcription",
+  "recognition.recovering_note": "Audio is being saved. Only recognition is being recovered, in the same call.",
+  "recognition.waiting": "Transcription stalled. Checking audio recording before a safe resume.",
+  "recognition.exhausted": "Automatic recovery did not help. Audio is being saved; transcribe the recording later.",
+  "recognition.audio_failed": "An audio track stopped growing. Check microphone and system audio access; the recording may be incomplete.",
+  "recognition.resume_failed": "Could not resume transcription. Audio recording was not restarted.",
+  "recognition.resuming": "Sending command…", "recognition.command_sent": "Command sent. Waiting for recognition to recover.",
+  "recognition.paused": "Transcription paused", "recognition.error": "Transcription failed",
+  "recognition.unverified": "Cannot verify recording or transcription: no fresh response from the app. Audio recording was not restarted.",
+});
+
+function renderRecordingHealth(health = {}) {
+  recordingHealth = health;
+  const capture = health.capture;
+  const matched = health.meeting_id && health.meeting_id === activeTranscript?.meeting_id;
+  const fresh = !stateConnectionFailed && Number.isFinite(health.checked_at) && Date.now() / 1000 - health.checked_at < 20;
+  elements.captureStatus.hidden = !matched || !capture;
+  elements.captureStatus.classList.toggle("live", Boolean(fresh && capture?.audio_recording));
+  elements.captureStatus.classList.toggle("error", Boolean(!fresh || capture?.state === "stalled"));
+  if (matched && capture) {
+    elements.captureStatus.lastChild.textContent = t(fresh ? `capture.${capture.state}` : "capture.disconnected");
+  }
+  const state = matched && fresh ? health.state : "";
+  const problem = matched && ["waiting", "recovering", "action_required"].includes(health.state);
+  elements.recognitionNotice.hidden = !problem && !recognitionResumeError;
+  const reasonKey = !fresh ? "recognition.unverified"
+    : health.reason === "audio_track_stalled" ? "recognition.audio_failed"
+    : health.reason === "recognition_retries_exhausted" ? "recognition.exhausted"
+    : health.reason === "recognition_resume_failed" ? "recognition.resume_failed"
+    : state === "recovering" ? "recognition.recovering_note" : "recognition.waiting";
+  elements.recognitionNoticeText.textContent = recognitionResumeError || t(reasonKey);
+  elements.recognitionResume.hidden = !fresh || !capture?.audio_recording || health.reason === "audio_track_stalled";
+  elements.recognitionResume.disabled = recognitionResumeBusy || state === "recovering";
+  elements.recognitionResume.setAttribute("aria-busy", String(recognitionResumeBusy));
+  elements.recognitionResume.textContent = t(recognitionResumeBusy ? "recognition.resuming" : "recognition.resume");
+  if (state === "recovering") elements.liveStatus.lastChild.textContent = t("recognition.recovering");
+}
+
+elements.recognitionResume.addEventListener("click", async () => {
+  if (recognitionResumeBusy || !activeTranscript?.meeting_id) return;
+  const meetingId = activeTranscript.meeting_id;
+  recognitionResumeBusy = true;
+  recognitionResumeError = "";
+  renderRecordingHealth(recordingHealth);
+  try {
+    const data = await post("/api/recognition/resume", { meeting_id: meetingId });
+    if (activeTranscript?.meeting_id !== meetingId) return;
+    renderRecordingHealth(data.recording_health);
+  } catch (error) {
+    if (activeTranscript?.meeting_id === meetingId) recognitionResumeError = t("recognition.resume_failed");
+  } finally {
+    recognitionResumeBusy = false;
+    renderRecordingHealth(recordingHealth);
+  }
+});
+
+const deliveryChannelNames = { drive: "Google Drive", gmail: "Gmail", telegram: "Telegram" };
+
+function renderDeliveryHealth(health = {}) {
+  deliveryHealth = health;
+  const signature = `${uiLanguage}:${deliveryAcknowledgedThrough}:${JSON.stringify([health.channels, health.notifications, health.issue_count])}`;
+  if (signature === deliverySignature) return;
+  deliverySignature = signature;
+  const channels = health.channels || {};
+  elements.deliveryAlert.hidden = !Object.keys(channels).length;
+  elements.deliveryAlert.dataset.state = health.state || "not_configured";
+  elements.deliveryAlert.textContent = t(health.issue_count ? "delivery.attention" : "delivery.button", { count: health.issue_count });
+  const fragment = document.createDocumentFragment();
+  const hints = [];
+  for (const [key, name] of Object.entries(deliveryChannelNames)) {
+    const channel = channels[key] || { state: "not_configured" };
+    const state = channel.state || "not_configured";
+    const count = channel[state] || 0;
+    const label = t(`delivery.state.${state}`, { count });
+    hints.push(`${name}: ${label}`);
+    const row = textNode("div", "delivery-channel", "");
+    row.dataset.channel = key;
+    row.append(textNode("dt", "", name));
+    const value = textNode("dd", "", "");
+    const status = textNode("span", "delivery-state", label);
+    status.dataset.state = state;
+    value.append(status);
+    const reasons = new Set();
+    const explanation = document.createElement("details");
+    explanation.className = "delivery-explanation";
+    explanation.open = !window.matchMedia("(max-width: 600px)").matches;
+    explanation.append(textNode("summary", "", t("delivery.explain")));
+    for (const issue of channel.issues || []) {
+      if (reasons.has(issue.reason)) continue;
+      reasons.add(issue.reason);
+      const reason = textNode("p", "delivery-reason", t(`delivery.reason.${issue.reason}`));
+      const open = textNode("button", "quiet-button delivery-issue-link", t("delivery.open_report"));
+      open.type = "button";
+      open.addEventListener("click", () => void loadArchiveMeeting(issue.meeting_id));
+      reason.append(open);
+      explanation.append(reason);
+    }
+    if (reasons.size) value.append(explanation);
+    row.append(value);
+    fragment.append(row);
+  }
+  elements.deliveryAlert.title = hints.join("\n");
+  elements.deliveryChannels.replaceChildren(fragment);
+  elements.deliverySummary.hidden = !Object.keys(channels).length;
+  const notices = (health.notifications || []).filter(item => item.id > deliveryAcknowledgedThrough);
+  elements.deliveryNotice.hidden = !notices.length;
+  if (notices.length) {
+    const event = notices.at(-1);
+    elements.deliveryNotice.dataset.kind = event.kind;
+    const message = t(`delivery.event.${event.kind}`, {
+      channel: deliveryChannelNames[event.channel] || "",
+      reason: t(`delivery.reason.${event.reason}`),
+    });
+    const text = message + (notices.length > 1 ? ` ${t("delivery.more", { count: notices.length - 1 })}` : "");
+    if (elements.deliveryNoticeText.textContent !== text) elements.deliveryNoticeText.textContent = text;
+  }
+}
+
+async function acknowledgeDeliveryNotices() {
+  if (deliveryDismissBusy) return;
+  deliveryDismissBusy = true;
+  elements.deliveryNoticeDismiss.disabled = true;
+  const through = Math.max(0, ...(deliveryHealth.notifications || []).map(item => item.id));
+  try {
+    const data = await post("/api/delivery/ack", { through });
+    deliveryAcknowledgedThrough = Math.max(deliveryAcknowledgedThrough, through);
+    renderDeliveryHealth(data.delivery);
+  } catch (_error) {
+    elements.deliveryNoticeDismiss.textContent = t("delivery.dismiss_failed");
+  } finally {
+    deliveryDismissBusy = false;
+    elements.deliveryNoticeDismiss.disabled = false;
+  }
+}
+
+Object.assign(translations.ru, {
+  "board.tab": "Обзор звонка", "board.mine": "Мне задать", "board.incoming": "Ко мне и общие",
+  "board.risks": "Риски и возражения", "board.open": "Открыто", "board.clarify": "Нужно уточнение",
+  "board.resolved": "Закрыто", "board.count": "{open} открыто · {closed} закрыто",
+  "board.details": "Основание и источник", "board.prepared": "Подготовка", "board.live": "По ходу звонка",
+  "board.to_me": "Ко мне", "board.general": "Общий вопрос", "board.risk": "Риск", "board.objection": "Возражение",
+  "board.empty.mine": "Здесь появятся вопросы из подготовки и подсказки, что спросить.",
+  "board.empty.incoming": "Здесь появятся вопросы собеседников из стенограммы.",
+  "board.empty.risks": "Здесь появятся риски и возражения из подготовки и разговора.",
+  "board.waiting": "Пункты появятся по мере анализа разговора.",
+});
+Object.assign(translations.en, {
+  "board.tab": "Call overview", "board.mine": "Questions to ask", "board.incoming": "To me & the group",
+  "board.risks": "Risks & objections", "board.open": "Open", "board.clarify": "Needs clarification",
+  "board.resolved": "Closed", "board.count": "{open} open · {closed} closed",
+  "board.details": "Evidence & source", "board.prepared": "Preparation", "board.live": "During this call",
+  "board.to_me": "To me", "board.general": "General question", "board.risk": "Risk", "board.objection": "Objection",
+  "board.empty.mine": "Prepared questions and suggestions for what to ask appear here.",
+  "board.empty.incoming": "Questions captured from the conversation appear here.",
+  "board.empty.risks": "Prepared and live risks and objections appear here.",
+  "board.waiting": "Items appear as the conversation is analyzed.",
+});
 
 const journalGroups = {
-  questions: new Set(["QUESTION", "ASK"]),
-  objections: new Set(["CONTRADICTION", "RISK"]),
+  questions: new Set(["QUESTION", "ASK", "INCOMING_QUESTION", "OPEN_QUESTION"]),
+  objections: new Set(["CONTRADICTION", "RISK", "OBJECTION"]),
   decisions: new Set(["DECISION", "COMMITMENT"]),
   notes: new Set(["NOTE"]),
   entities: new Set(["URL", "PRODUCT", "SERVICE"]),
@@ -496,6 +869,9 @@ const journalLabels = {
   ru: {
     QUESTION: "ВОПРОС",
     ASK: "ЧТО СПРОСИТЬ",
+    INCOMING_QUESTION: "ВОПРОС КО МНЕ",
+    OPEN_QUESTION: "ОБЩИЙ ВОПРОС",
+    OBJECTION: "ВОЗРАЖЕНИЕ",
     CONTRADICTION: "ПРОТИВОРЕЧИЕ",
     RISK: "РИСК",
     DECISION: "РЕШЕНИЕ",
@@ -510,6 +886,9 @@ const journalLabels = {
   en: {
     QUESTION: "QUESTION",
     ASK: "ASK",
+    INCOMING_QUESTION: "QUESTION TO ME",
+    OPEN_QUESTION: "GENERAL QUESTION",
+    OBJECTION: "OBJECTION",
     CONTRADICTION: "CONTRADICTION",
     RISK: "RISK",
     DECISION: "DECISION",
@@ -573,7 +952,119 @@ function readableAnswer(text) {
     .replace(/\[([^\]]+)]\(([^)]+)\)/g, "$1\n$2");
 }
 
+function speakerLabel(segment) {
+  if (segment.speaker_id === "unassigned") return t("speakers.pending");
+  if (segment.speaker_identity === "manual") return segment.speaker_label || segment.speaker;
+  if (segment.source === "microphone") return t("speaker.me");
+  const label = segment.speaker_label || segment.speaker;
+  if (label && !/^(Собеседник|Спикер)\s*\d*$/.test(label)) return label;
+  return t("speaker.voice", { value: (segment.voice_id || "remote-1").replace(/^remote-/, "") });
+}
+
+let speakerEditorSnapshot = null;
+let speakerEditorSelection = new Set();
+
+function updateSpeakerSelection() {
+  elements.speakerSelectionCount.textContent = t("speakers.selected", { count: speakerEditorSelection.size });
+  elements.speakerAssignmentSave.disabled = !speakerEditorSelection.size;
+  elements.speakerUtteranceList.querySelectorAll("input[type=checkbox]").forEach((input) => {
+    input.checked = speakerEditorSelection.has(input.value);
+  });
+}
+
+function openSpeakerEditor(snapshot, selectedSegment = "") {
+  speakerEditorSnapshot = snapshot;
+  speakerEditorSelection = new Set(selectedSegment ? [selectedSegment] : []);
+  elements.speakerEditStatus.textContent = "";
+  elements.speakerAssignmentName.value = "";
+  elements.speakerEditHelp.textContent = t("speakers.help");
+  const names = document.createDocumentFragment();
+  const choices = document.createDocumentFragment();
+  choices.append(new Option(t("speakers.target"), ""));
+  for (const person of snapshot.speakers || []) {
+    if (person.unassigned) continue;
+    const row = document.createElement("form");
+    row.className = "speaker-name-row";
+    row.append(textNode("span", "", `${person.name} · ${person.count}`));
+    const input = document.createElement("input");
+    input.value = person.name;
+    input.maxLength = 80;
+    input.required = true;
+    input.setAttribute("aria-label", `${t("speakers.rename")}: ${person.name}`);
+    const save = textNode("button", "quiet-button", t("speakers.rename"));
+    save.type = "submit";
+    row.append(input, save);
+    row.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void saveSpeakerEdit({ operation: "rename", speaker_id: person.id, name: input.value }, save);
+    });
+    names.append(row);
+    choices.append(new Option(person.name, person.id));
+  }
+  elements.speakerNameList.replaceChildren(names);
+  elements.speakerAssignmentTarget.replaceChildren(choices);
+  const utterances = document.createDocumentFragment();
+  for (const segment of snapshot.segments || []) {
+    const row = document.createElement("label");
+    row.className = "speaker-edit-utterance";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.value = segment.segment_id;
+    check.checked = speakerEditorSelection.has(check.value);
+    check.addEventListener("change", () => {
+      if (check.checked) speakerEditorSelection.add(check.value);
+      else speakerEditorSelection.delete(check.value);
+      updateSpeakerSelection();
+    });
+    const author = textNode("strong", "", speakerLabel(segment));
+    author.append(textNode("time", "", localTime(segment.timestamp)));
+    row.append(check, author, textNode("span", "", segment.text));
+    utterances.append(row);
+  }
+  elements.speakerUtteranceList.replaceChildren(utterances);
+  updateSpeakerSelection();
+  if (!elements.speakerDialog.open) elements.speakerDialog.showModal();
+  if (selectedSegment) {
+    const check = elements.speakerUtteranceList.querySelector(`input[value="${CSS.escape(selectedSegment)}"]`);
+    check?.closest("label").scrollIntoView({ block: "center" });
+  }
+}
+
+async function saveSpeakerEdit(payload, button) {
+  const meetingId = speakerEditorSnapshot?.meeting_id;
+  if (!meetingId) return;
+  button.disabled = true;
+  elements.speakerEditStatus.textContent = "…";
+  try {
+    const data = await post("/api/speakers", { ...payload, meeting_id: meetingId });
+    openSpeakerEditor(data.transcript);
+    elements.speakerEditStatus.textContent = t("speakers.saved");
+    if (activeTranscript?.meeting_id === meetingId) {
+      transcriptSignature = "";
+      await state();
+    }
+    if (selectedArchiveMeeting === meetingId && elements.archiveDialog.open) await loadArchiveMeeting(meetingId);
+  } catch (error) {
+    elements.speakerEditStatus.textContent = String(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+elements.speakerEdit.addEventListener("click", () => { if (activeTranscript) openSpeakerEditor(activeTranscript); });
+elements.speakerEditClose.addEventListener("click", () => elements.speakerDialog.close());
+elements.speakerSelectPending.addEventListener("click", () => {
+  speakerEditorSelection = new Set((speakerEditorSnapshot?.segments || []).filter(s => s.speaker_id === "unassigned").map(s => s.segment_id));
+  updateSpeakerSelection();
+});
+elements.speakerSelectClear.addEventListener("click", () => { speakerEditorSelection.clear(); updateSpeakerSelection(); });
+elements.speakerAssignmentSave.addEventListener("click", () => void saveSpeakerEdit({
+  operation: "assign", segment_ids: [...speakerEditorSelection],
+  speaker_id: elements.speakerAssignmentTarget.value, name: elements.speakerAssignmentName.value,
+}, elements.speakerAssignmentSave));
+
 function renderTranscript(transcript) {
+  if (activeTranscript?.meeting_id !== transcript.meeting_id) recognitionResumeError = "";
   activeTranscript = transcript;
   elements.copyDialog.disabled = !transcript.segments.length;
   const translated = transcript.segments.filter((segment) => segment.translation_en);
@@ -586,7 +1077,7 @@ function renderTranscript(transcript) {
   elements.note.textContent = t("note.button", { time: timecodeLabel(transcript) });
   elements.meetingTitle.textContent = transcript.display_meeting || transcript.meeting || "Встреча";
   elements.liveStatus.classList.toggle("live", Boolean(transcript.live));
-  elements.liveStatus.classList.toggle("error", Boolean(transcript.error));
+  elements.liveStatus.classList.toggle("error", Boolean(transcript.error || transcript.status === "error"));
   if (transcript.error) {
     elements.liveStatus.lastChild.textContent = t("status.waiting");
   } else if (transcript.live) {
@@ -599,25 +1090,36 @@ function renderTranscript(transcript) {
     elements.liveStatus.lastChild.textContent = t("status.model_missing");
   } else if (transcript.status === "overloaded") {
     elements.liveStatus.lastChild.textContent = t("status.overloaded");
+  } else if (transcript.status === "paused") {
+    elements.liveStatus.lastChild.textContent = t("recognition.paused");
+  } else if (transcript.status === "error") {
+    elements.liveStatus.lastChild.textContent = t("recognition.error");
   } else {
     elements.liveStatus.lastChild.textContent = t("status.no_fresh");
   }
 
-  const signature = `${sourceFilter}:${transcript.meeting_id}:${transcript.updated_at}:${transcript.segments.length}:${transcript.translation_revision || 0}`;
+  const signature = `${sourceFilter}:${transcript.meeting_id}:${transcript.updated_at}:${transcript.segments.length}:${transcript.translation_revision || 0}:${transcript.speaker_revision || 0}`;
   if (signature === transcriptSignature) return;
   transcriptSignature = signature;
 
+  const audioDropoutActive = transcript.capture_warnings?.some((warning) => !warning.ended_at);
   elements.transcriptMeta.textContent = transcript.error
     ? transcript.error
+    : audioDropoutActive
+      ? t("transcript.capture_lost")
     : transcript.status === "overloaded"
       ? t("transcript.overloaded_meta", { age: ageLabel(transcript.latest_age_seconds) })
       : t("transcript.latest_meta", { age: ageLabel(transcript.latest_age_seconds) });
+  elements.transcriptMeta.title = audioDropoutActive
+    ? t("transcript.capture_lost_hint") : "";
 
   const nearBottom =
     elements.transcript.scrollHeight - elements.transcript.scrollTop - elements.transcript.clientHeight < 120;
   const fragment = document.createDocumentFragment();
   const filtered = transcript.segments.filter(
-    (segment) => sourceFilter === "all" || segment.source === sourceFilter,
+    (segment) => sourceFilter === "all" || (segment.speaker_id
+      ? (sourceFilter === "microphone" ? segment.speaker_id === "self" : segment.speaker_id !== "self")
+      : segment.source === sourceFilter),
   );
 
   if (!filtered.length) {
@@ -637,16 +1139,16 @@ function renderTranscript(transcript) {
       const row = document.createElement("article");
       row.className = `utterance ${segment.source}`;
       row.dataset.timestamp = segment.timestamp;
-      const speaker = textNode(
-        "div",
-        "speaker",
-        segment.source === "microphone"
-          ? t("speaker.me")
-          : (segment.speaker || (segment.voice_id
-            ? t("speaker.voice", { value: segment.voice_id.replace(/^remote-/, "") })
-            : t("speaker.others"))),
-      );
-      if (segment.speaker_confidence === "acoustic-diarization" || segment.voice_id) {
+      const speaker = document.createElement("div");
+      speaker.className = "speaker";
+      const nameButton = textNode("button", "speaker-name-button", speakerLabel(segment));
+      nameButton.type = "button";
+      nameButton.title = t("speakers.edit_hint");
+      nameButton.addEventListener("click", () => openSpeakerEditor(transcript, segment.segment_id));
+      speaker.append(nameButton);
+      if (segment.speaker_identity === "unverified") {
+        speaker.title = t("transcript.capture_lost_hint");
+      } else if (segment.speaker_confidence === "acoustic-diarization" || segment.voice_id) {
         speaker.title = ["visual-active-speaker", "visual-voice-map"].includes(segment.speaker_confidence)
           ? t("speaker.name_hint")
           : t("speaker.voice_hint");
@@ -663,7 +1165,7 @@ function renderTranscript(transcript) {
       } else {
         body.append(textNode("p", "text", segment.text));
       }
-      body.append(textNode("time", "", localTime(segment.timestamp)));
+      speaker.append(textNode("time", "", localTime(segment.timestamp)));
       row.append(speaker, body);
       fragment.append(row);
     }
@@ -925,15 +1427,6 @@ async function openProjectDialog() {
   try {
     const response = await fetch("/api/projects", { cache: "no-store" });
     const data = await response.json();
-    const delivery = data.delivery || {};
-    elements.deliveryAlert.hidden = !delivery.mail_pending;
-    if (delivery.mail_pending) {
-      elements.deliveryAlert.textContent = t(
-        delivery.mail_auth_required ? "delivery.auth_required" : "delivery.pending",
-        { count: delivery.mail_pending },
-      );
-      elements.deliveryAlert.title = t("delivery.hint");
-    }
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     projectMeetingId = data.meeting_id || "";
     projectChoices = data.choices || [];
@@ -1004,6 +1497,258 @@ async function saveRepositorySelection() {
   }
 }
 
+function renderCallPlan(plan) {
+  currentCallPlan = plan;
+  elements.callPlanTab.hidden = !plan;
+  if (!plan) {
+    callPlanSignature = "";
+    elements.callPlan.replaceChildren();
+    selectedPlanMeetingId = "";
+    return;
+  }
+  selectedPlanMeetingId = plan.meeting_id;
+  elements.callPlanCount.textContent = String(plan.items.filter((item) => item.status !== "resolved").length);
+  const signature = `${uiLanguage}:${JSON.stringify(plan)}`;
+  if (signature !== callPlanSignature) {
+    callPlanSignature = signature;
+    const fragment = document.createDocumentFragment();
+    fragment.append(textNode("h3", "call-plan-title", plan.title));
+    if (plan.match === "time-only") fragment.append(textNode("p", "call-plan-tentative", t("plan.tentative")));
+    if (plan.match === "calendar") fragment.append(textNode("p", "call-plan-tentative", t("plan.calendar")));
+    if (plan.source_label) fragment.append(textNode("p", "call-plan-source", t("plan.source", { source: plan.source_label })));
+    if (plan.intro) fragment.append(textNode("p", "call-plan-intro", plan.intro));
+    const score = document.createElement("div");
+    score.className = "call-plan-score";
+    score.append(textNode("strong", "", t("plan.score", plan.score)));
+    const progress = document.createElement("progress");
+    progress.max = Math.max(1, plan.score.total);
+    progress.value = plan.score.resolved;
+    score.append(progress);
+    const groupScores = document.createElement("div");
+    groupScores.className = "call-plan-group-scores";
+    for (const kind of ["question", "risk", "objection"]) {
+      const group = plan.score.by_kind?.[kind];
+      if (!group?.total) continue;
+      groupScores.append(textNode("span", "", t("plan.group_score", {
+        label: t(`plan.${kind}`), resolved: group.resolved, total: group.total,
+      })));
+    }
+    score.append(groupScores);
+    fragment.append(score);
+    if (plan.links.length) {
+      fragment.append(textNode("h4", "call-plan-section-title", t("plan.links")));
+      const links = document.createElement("div");
+      links.className = "call-plan-links";
+      for (const link of plan.links) {
+        const anchor = document.createElement("a");
+        anchor.href = link.url;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        anchor.textContent = link.label;
+        links.append(anchor);
+      }
+      fragment.append(links);
+    }
+    for (const kind of ["question", "risk", "objection"]) {
+      const items = plan.items.filter((item) => item.kind === kind);
+      if (!items.length) continue;
+      fragment.append(textNode("h4", "call-plan-section-title", t(`plan.${kind}`)));
+      for (const item of items) {
+        const card = document.createElement("article");
+        card.className = `call-plan-item ${item.status}`;
+        const marker = textNode("span", "call-plan-marker", item.status === "resolved" ? "✓" : item.status === "clarify" ? "?" : "○");
+        marker.setAttribute("aria-hidden", "true");
+        const text = textNode("p", "call-plan-item-text", item.text);
+        const select = document.createElement("select");
+        select.setAttribute("aria-label", `${item.text}: ${t("plan.tab")}`);
+        for (const status of ["open", "resolved", "clarify"]) {
+          const option = document.createElement("option");
+          option.value = status;
+          option.textContent = t(`plan.${kind}.${status}`);
+          option.selected = item.status === status;
+          select.append(option);
+        }
+        select.addEventListener("change", async () => {
+          select.disabled = true;
+          try {
+            const result = await post("/api/call-plan/status", {
+              meeting_id: plan.meeting_id, item_id: item.id, status: select.value,
+            });
+            callPlanSignature = "";
+            renderCallPlan(result.call_plan);
+            renderCallBoard(result.call_plan, currentJournal);
+          } catch (error) {
+            select.value = item.status;
+            elements.help.textContent = String(error);
+            elements.help.classList.add("error");
+          } finally {
+            select.disabled = false;
+          }
+        });
+        card.append(marker, text, select);
+        if (item.evidence) card.append(textNode("small", "call-plan-evidence", t("plan.evidence", { quote: item.evidence })));
+        fragment.append(card);
+      }
+    }
+    elements.callPlan.replaceChildren(fragment);
+  }
+}
+
+function renderCallBoard(plan, journal) {
+  currentJournal = journal;
+  const signature = `${uiLanguage}:${activeTranscript?.meeting_id}:${JSON.stringify(plan)}:${JSON.stringify(journal)}`;
+  if (signature === callBoardSignature) return;
+  callBoardSignature = signature;
+  const scrolls = Object.fromEntries([...elements.callBoard.querySelectorAll("[data-board-list]")]
+    .map((list) => [list.dataset.boardList, list.scrollTop]));
+  const entries = (plan?.items || []).map((item) => ({ ...item, origin: "plan",
+    lane: item.kind === "question" ? "mine" : "risks", category: item.kind === "objection" ? "OBJECTION" : "RISK" }));
+  for (const item of journal) {
+    const lane = item.category === "ASK" ? "mine"
+      : ["INCOMING_QUESTION", "OPEN_QUESTION"].includes(item.category) ? "incoming"
+      : ["RISK", "OBJECTION", "CONTRADICTION"].includes(item.category) ? "risks" : "";
+    if (lane) entries.push({ ...item, origin: "journal", lane, status: item.status || "open" });
+  }
+  const fragment = document.createDocumentFragment();
+  const summary = document.createElement("div");
+  summary.className = "board-summary";
+  for (const status of ["open", "clarify", "resolved"]) {
+    const count = entries.filter((item) => item.status === status).length;
+    summary.append(textNode("span", `board-summary-status ${status}`, `${t(`board.${status}`)} ${count}`));
+  }
+  if (plan?.links?.length) {
+    const materials = document.createElement("details");
+    materials.className = "board-materials";
+    materials.append(textNode("summary", "", t("plan.links")));
+    const links = document.createElement("div");
+    links.className = "call-plan-links";
+    for (const link of plan.links) {
+      const anchor = textNode("a", "", link.label);
+      anchor.href = link.url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      links.append(anchor);
+    }
+    materials.append(links);
+    summary.append(materials);
+  }
+  fragment.append(summary);
+  const columns = document.createElement("div");
+  columns.className = "board-columns";
+  for (const lane of ["mine", "incoming", "risks"]) {
+    const group = entries.filter((item) => item.lane === lane).sort((a, b) =>
+      ({ clarify: 0, open: 1, resolved: 2 }[a.status] - { clarify: 0, open: 1, resolved: 2 }[b.status]));
+    const section = document.createElement("section");
+    section.className = `board-column ${lane}`;
+    const header = document.createElement("header");
+    header.className = "board-column-header";
+    header.append(textNode("h3", "", t(`board.${lane}`)), textNode("p", "", t("board.count", {
+      open: group.filter((item) => item.status !== "resolved").length,
+      closed: group.filter((item) => item.status === "resolved").length,
+    })));
+    const list = document.createElement("div");
+    list.className = "board-list";
+    list.dataset.boardList = lane;
+    if (!group.length) list.append(textNode("p", "board-empty", t(`board.empty.${lane}`)));
+    for (const item of group) {
+      const card = document.createElement("article");
+      card.className = `board-item ${item.status}`;
+      const heading = document.createElement("div");
+      heading.className = "board-item-heading";
+      const light = trafficLight(item.status === "resolved" ? "green" : item.status === "clarify" ? "yellow" : "red");
+      light.setAttribute("aria-label", t(`board.${item.status}`));
+      light.title = t(`board.${item.status}`);
+      heading.append(light);
+      const mainText = readableAnswer(item.text).split(/\n|(?:Основание|Источник|Evidence|Source):/u)[0].trim();
+      heading.append(textNode("p", "", mainText));
+      const controls = document.createElement("div");
+      controls.className = "board-item-controls";
+      const subtype = lane === "incoming" ? (item.category === "INCOMING_QUESTION" ? "to_me" : "general")
+        : lane === "risks" ? (item.category === "OBJECTION" ? "objection" : "risk")
+        : item.origin === "plan" ? "prepared" : "live";
+      controls.append(textNode("span", "board-item-type", t(`board.${subtype}`)));
+      if (item.source === "meeting_chat") controls.append(textNode("span", "board-item-type", uiLanguage === "ru" ? "Из чата аудитории" : "Audience chat"));
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", `${mainText}: ${t("board.tab")}`);
+      for (const status of ["open", "clarify", "resolved"]) {
+        const option = textNode("option", "", t(`board.${status}`));
+        option.value = status;
+        option.selected = item.status === status;
+        select.append(option);
+      }
+      select.addEventListener("change", async () => {
+        select.disabled = true;
+        try {
+          const result = await post(item.origin === "plan" ? "/api/call-plan/status" : "/api/journal/status", {
+            meeting_id: activeTranscript.meeting_id, item_id: item.id, status: select.value,
+          });
+          if (result.call_plan) renderCallPlan(result.call_plan);
+          if (result.journal) renderJournal(result.journal);
+          renderCallBoard(result.call_plan || currentCallPlan, result.journal || currentJournal);
+        } catch (error) {
+          select.value = item.status;
+          elements.help.textContent = String(error);
+          elements.help.classList.add("error");
+        } finally { select.disabled = false; }
+      });
+      controls.append(select);
+      card.append(heading, controls);
+      const detail = document.createElement("details");
+      const key = `${activeTranscript?.meeting_id}:${item.origin}:${item.id}`;
+      detail.open = boardExpanded.has(key);
+      detail.append(textNode("summary", "", t("board.details")), textNode("p", "", readableAnswer(item.text)));
+      if (item.evidence) detail.append(textNode("p", "board-evidence", t("plan.evidence", { quote: item.evidence })));
+      if (item.origin === "plan" && plan.source_label) detail.append(textNode("small", "", plan.source_label));
+      if (item.speaker) detail.append(textNode("small", "", item.speaker));
+      detail.addEventListener("toggle", () => { if (detail.open) boardExpanded.add(key); else boardExpanded.delete(key); });
+      card.append(detail);
+      list.append(card);
+    }
+    section.append(header, list);
+    columns.append(section);
+  }
+  fragment.append(columns);
+  elements.callBoard.replaceChildren(fragment);
+  for (const list of elements.callBoard.querySelectorAll("[data-board-list]")) list.scrollTop = scrolls[list.dataset.boardList] || 0;
+}
+
+function journalLinks(item) {
+  const root = document.createElement("div");
+  if (!["URL", "PRODUCT", "SERVICE"].includes(item.category)) return root;
+  root.className = "journal-links";
+  const urls = new Set();
+  const candidates = `${item.url || ""} ${item.text || ""}`.match(/(?:https?:\/\/|www\.)[^\s<>"'\])}]+/giu) || [];
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate.replace(/[.,;:!?]+$/u, "").replace(/^www\./iu, "https://www."));
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || /(^|\.)zoom\.us$/iu.test(url.hostname)) continue;
+      url.search = "";
+      url.hash = "";
+      urls.add(url.href);
+    } catch { /* Malformed OCR is not a usable link. */ }
+  }
+  let homepage = false;
+  if (!urls.size) {
+    const sites = { "miro": "https://miro.com/", "youtube": "https://www.youtube.com/", "ютуб": "https://www.youtube.com/",
+      "amocrm": "https://www.amocrm.ru/", "amo crm": "https://www.amocrm.ru/", "trendhero": "https://trendhero.io/",
+      "google sheets": "https://sheets.google.com/", "telegram": "https://telegram.org/", "instagram": "https://www.instagram.com/",
+      "tiktok": "https://www.tiktok.com/", "shopify": "https://www.shopify.com/", "amazon": "https://www.amazon.com/" };
+    const name = String(item.text || "").split(/[:—\n]/u)[0].trim().toLowerCase();
+    if (sites[name]) { urls.add(sites[name]); homepage = true; }
+  }
+  root.append(textNode("small", "", uiLanguage === "ru"
+    ? (homepage ? "Сайт сервиса · не ссылка на конкретный материал" : urls.size ? "URL из встречи" : "URL не найден в материалах встречи")
+    : (homepage ? "Service website · not a specific meeting resource" : urls.size ? "URL from meeting" : "No URL found in meeting materials")));
+  for (const url of urls) {
+    const link = textNode("a", "", url);
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    root.append(link);
+  }
+  return root;
+}
+
 function renderJournal(items) {
   for (const [group, categories] of Object.entries(journalGroups)) {
     if (elements.journalCounts[group]) {
@@ -1059,6 +1804,7 @@ function renderJournal(items) {
       card.append(
         header,
         textNode("p", "journal-text", readableAnswer(item.text)),
+        journalLinks(item),
         textNode("div", "journal-meeting", item.meeting || t("meeting.no_title")),
       );
       fragment.append(card);
@@ -1089,11 +1835,7 @@ function trafficLight(active) {
 function transcriptDialogue(transcript) {
   if (!transcript?.segments?.length) return "";
   const lines = transcript.segments.map((segment) => {
-    const speaker = segment.source === "microphone"
-      ? t("speaker.me")
-      : (segment.speaker || (segment.voice_id
-        ? t("speaker.voice", { value: segment.voice_id.replace(/^remote-/, "") })
-        : t("speaker.others")));
+    const speaker = speakerLabel(segment);
     const spoken = `[${localTime(segment.timestamp)}] ${speaker}: ${segment.text}`;
     return segment.translation_en ? `${spoken}\nEN: ${segment.translation_en}` : spoken;
   });
@@ -1166,10 +1908,15 @@ function jumpToTranscript(anchorAt) {
 }
 
 function renderMeetingChat(items) {
+  const oldScroll = elements.meetingChatList.scrollTop;
+  const pinned = elements.meetingChatList.scrollHeight - elements.meetingChatList.clientHeight - oldScroll < 72;
+  window.currentMeetingChat = items;
   elements.meetingChatCount.textContent = String(items.length);
-  const signature = JSON.stringify(items);
+  const questionsOnly = document.querySelector("#chat-questions-only").checked;
+  const signature = `${questionsOnly}:${JSON.stringify(items)}`;
   if (signature === meetingChatSignature) return;
   meetingChatSignature = signature;
+  items = questionsOnly ? items.filter(item => (item.text || "").includes("?")) : items;
   const fragment = document.createDocumentFragment();
   if (!items.length) {
     const empty = document.createElement("div");
@@ -1187,14 +1934,15 @@ function renderMeetingChat(items) {
       header.className = "meeting-chat-card-header";
       header.append(
         textNode("strong", "", item.sender || t("meeting_chat.participant")),
-        textNode("time", "", item.displayed_at || localTime(item.captured_at)),
+        textNode("time", "", item.displayed_at || `${uiLanguage === "ru" ? "Обнаружено" : "Detected"}: ${localTime(item.captured_at)}`),
       );
       card.append(header, textNode("p", "", item.text || ""));
+      card.append(textNode("small", "", `${item.source === "export" ? "TXT / JSON" : "OCR"}${(item.text || "").includes("?") ? (uiLanguage === "ru" ? " · Вопрос аудитории — в реестре вопросов" : " · Audience question — in question register") : ""}`));
       fragment.append(card);
     }
   }
   elements.meetingChatList.replaceChildren(fragment);
-  elements.meetingChatList.scrollTop = elements.meetingChatList.scrollHeight;
+  elements.meetingChatList.scrollTop = pinned ? elements.meetingChatList.scrollHeight : oldScroll;
 }
 
 function archiveDate(value) {
@@ -1235,6 +1983,7 @@ async function openArchive() {
     const data = await response.json();
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     archiveMeetings = data.meetings || [];
+    if (data.delivery) renderDeliveryHealth(data.delivery);
     renderArchiveList();
     const preferred = selectedArchiveMeeting || archiveMeetings[0]?.meeting_id;
     if (preferred) await loadArchiveMeeting(preferred);
@@ -1348,17 +2097,50 @@ function renderArchiveDetail(meeting) {
     }, 1800);
   });
   reportActions.append(copy);
+  const names = textNode("button", "quiet-button", t("speakers.title"));
+  names.type = "button";
+  names.disabled = !meeting.transcript?.length;
+  names.addEventListener("click", () => openSpeakerEditor({ ...meeting, segments: meeting.transcript }));
+  reportActions.append(names);
   report.append(reportActions);
   const delivery = document.createElement("p");
   delivery.className = "archive-delivery";
   const statuses = [];
-  if (meeting.report?.drive_status === "uploaded") statuses.push(t("archive.drive_uploaded"));
-  else if (meeting.report?.drive_status === "auth_required") statuses.push(t("archive.drive_auth"));
-  if (meeting.report?.mail_status === "sent") statuses.push(t("archive.mail_sent"));
-  else if (meeting.report?.mail_status) statuses.push(t("archive.mail_pending"));
+  for (const [channel, field] of [["drive", "drive_status"], ["gmail", "mail_status"], ["telegram", "telegram_status"]]) {
+    const raw = meeting.report?.[field] || "not_configured";
+    const state = raw === "uploaded" || raw === "sent" ? "sent"
+      : raw === "auth_required" ? "action_required" : raw === "waiting_for_end" ? "waiting"
+        : raw === "pending" ? "pending" : raw === "not_configured" ? "not_configured" : "failed";
+    statuses.push(`${deliveryChannelNames[channel]}: ${t(`delivery.state.${state}`, { count: 1 })}`);
+  }
   delivery.textContent = statuses.join(" · ");
   report.append(delivery);
   root.append(report);
+
+  if (meeting.call_plan) {
+    const map = document.createElement("div");
+    map.className = "archive-call-plan";
+    for (const link of meeting.call_plan.links || []) {
+      const anchor = document.createElement("a");
+      anchor.href = link.url;
+      anchor.target = "_blank";
+      anchor.rel = "noopener noreferrer";
+      anchor.textContent = link.label;
+      map.append(anchor);
+    }
+    for (const item of meeting.call_plan.items || []) {
+      const row = document.createElement("div");
+      row.className = `call-plan-item ${item.status}`;
+      row.append(
+        textNode("span", "call-plan-marker", item.status === "resolved" ? "✓" : item.status === "clarify" ? "?" : "○"),
+        textNode("span", "call-plan-item-text", item.text),
+        textNode("strong", "call-plan-archive-status", t(`plan.${item.kind}.${item.status}`)),
+      );
+      if (item.evidence) row.append(textNode("small", "call-plan-evidence", t("plan.evidence", { quote: item.evidence })));
+      map.append(row);
+    }
+    root.append(archiveSection(t("plan.tab"), meeting.call_plan.items.length, map, true));
+  }
 
   const journal = document.createElement("div");
   journal.className = "archive-journal";
@@ -1378,6 +2160,7 @@ function renderArchiveDetail(meeting) {
       kind,
       textNode("span", "journal-timing", item.timecode || localTime(item.created_at)),
       textNode("p", "journal-text", readableAnswer(item.text)),
+      journalLinks(item),
     );
     journal.append(card);
   }
@@ -1419,7 +2202,7 @@ function renderArchiveDetail(meeting) {
   }
   for (const item of meeting.transcript || []) {
     const row = document.createElement("article");
-    const speaker = item.speaker || (item.source === "microphone" ? t("speaker.me") : t("speaker.others"));
+    const speaker = speakerLabel(item);
     row.append(
       textNode("strong", "", speaker),
       textNode("time", "", localTime(item.timestamp)),
@@ -1462,10 +2245,22 @@ async function state() {
   if (stateRequestInFlight) return;
   stateRequestInFlight = true;
   try {
-    const response = await fetch("/api/state", { cache: "no-store" });
+    const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
+    const defaultLanguage = data.preferences?.interface_language;
+    if (!hasExplicitUiLanguage && !inheritedUiLanguage && ["en", "ru"].includes(defaultLanguage)) {
+      uiLanguage = defaultLanguage;
+      inheritedUiLanguage = true;
+      transcriptSignature = "";
+      frameSignature = "";
+      renderedMessages = "";
+      journalSignature = "";
+      meetingChatSignature = "";
+      applyLanguage();
+    }
     const project = data.project || {};
+    renderDeliveryHealth(data.delivery || {});
     const scopedRepositories = project.repositories || [];
     const count = repositoryCountLabel(scopedRepositories.length || data.repositories || 0);
     const projectKind = project.kind || "all";
@@ -1483,11 +2278,15 @@ async function state() {
       .map((repo) => `${repo.name}: ${repo.path}`)
       .join("\n");
     elements.repoStatus.title = `${t(hint)}\n${repositoryList}`;
+    stateConnectionFailed = false;
     renderTranscript(data.transcript);
+    renderRecordingHealth(data.recording_health || {});
     renderFrames(data.frames || []);
     renderFrameStatus(data.frame_capture || {});
     renderMessages(data.copilot);
+    renderCallPlan(data.call_plan || null);
     renderJournal(data.journal || []);
+    renderCallBoard(data.call_plan || null, data.journal || []);
     renderMeetingChat(data.meeting_chat || []);
     elements.send.disabled = requestBusy || data.copilot.busy;
     elements.analyze.disabled = requestBusy || data.copilot.busy;
@@ -1501,11 +2300,11 @@ async function state() {
       && data.transcript.segments.length > 0
       && data.copilot.messages.length === 0
       && data.copilot.analysis?.state === "idle";
-    const analysisKey = `${data.transcript.meeting_id}:${data.transcript.status}:${data.transcript.latest_at}`;
+    const analysisKey = `${data.transcript.meeting_id}:${data.transcript.status}:${data.transcript.latest_at}:${(data.meeting_chat || []).length}:${(data.meeting_chat || []).at(-1)?.id || ""}`;
     if (
       elements.autoAnalysis.checked &&
       (data.transcript.live || finishedWithoutAnalysis) &&
-      data.transcript.latest_at &&
+      (data.transcript.latest_at || data.meeting_chat?.length) &&
       analysisKey !== autoAnalysisPrimed &&
       !requestBusy &&
       !data.copilot.busy
@@ -1517,6 +2316,12 @@ async function state() {
     stateConnectionFailed = true;
     elements.liveStatus.classList.add("error");
     elements.liveStatus.lastChild.textContent = t("ui.disconnected");
+    renderRecordingHealth(recordingHealth);
+    if (!elements.captureStatus.hidden) {
+      elements.captureStatus.classList.remove("live");
+      elements.captureStatus.classList.add("error");
+      elements.captureStatus.lastChild.textContent = t("capture.disconnected");
+    }
     elements.help.textContent = String(error);
     elements.help.classList.add("error");
   } finally {
@@ -1529,6 +2334,8 @@ async function post(path, payload) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    ...(path === "/api/recognition/resume" ? { signal: AbortSignal.timeout(10000) }
+      : path.startsWith("/api/google-context/") ? {signal: AbortSignal.timeout(25000)} : {}),
   });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
@@ -1647,6 +2454,8 @@ document.querySelectorAll("[data-content-view]").forEach((button) => {
       void state();
     }
     elements.chat.hidden = view !== "chat";
+    elements.callBoard.hidden = view !== "board";
+    elements.callPlan.hidden = view !== "plan";
     elements.journal.hidden = !journalView;
     elements.meetingChat.hidden = view !== "meeting-chat";
     elements.chatLatest.hidden = view !== "chat" || chatPinnedToLatest;
@@ -1666,6 +2475,26 @@ elements.chatLatest.addEventListener("click", () => {
   chatPinnedToLatest = true;
   elements.chat.scrollTo({ top: elements.chat.scrollHeight, behavior: "smooth" });
   updateChatLatestButton();
+});
+
+document.querySelector("#chat-questions-only").addEventListener("change", () => renderMeetingChat(window.currentMeetingChat || []));
+document.querySelector("#chat-import-file").addEventListener("click", () => document.querySelector("#chat-import-input").click());
+document.querySelector("#chat-import-input").addEventListener("change", async event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  const meetingId = activeTranscript?.meeting_id;
+  const result = document.querySelector("#chat-import-result");
+  try {
+    if (file.size > 2000000) throw new Error(uiLanguage === "ru" ? "Максимум 2 МБ" : "Maximum 2 MB");
+    const response = await fetch("/api/meeting-chat/import", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ meeting_id: meetingId, text: await file.text() }) });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "Import failed");
+    result.textContent = `${uiLanguage === "ru" ? "Добавлено" : "Added"}: ${data.added}`;
+    renderMeetingChat(data.meeting_chat);
+    if (data.added && elements.autoAnalysis.checked) void analyze(true);
+  } catch (error) { result.textContent = error.message; }
+  event.target.value = "";
 });
 
 elements.form.addEventListener("submit", (event) => {
@@ -1688,6 +2517,8 @@ elements.question.addEventListener("keydown", (event) => {
 elements.note.addEventListener("click", () => void saveNote());
 elements.copyDialog.addEventListener("click", () => void copyDialogue());
 elements.deliveryAlert.addEventListener("click", () => elements.archiveButton.click());
+elements.deliveryNoticeDetails.addEventListener("click", () => elements.archiveButton.click());
+elements.deliveryNoticeDismiss.addEventListener("click", () => void acknowledgeDeliveryNotices());
 elements.translationJump.addEventListener("click", () => {
   const latest = activeTranscript?.segments.filter((segment) => segment.translation_en).at(-1);
   if (latest) jumpToTranscript(latest.timestamp);
@@ -1748,9 +2579,10 @@ elements.reset.addEventListener("click", async () => {
 document.querySelectorAll("[data-language]").forEach((button) => {
   button.addEventListener("click", () => {
     const language = button.dataset.language === "en" ? "en" : "ru";
+    hasExplicitUiLanguage = true;
+    localStorage.setItem("meeting-copilot-language", language);
     if (language === uiLanguage) return;
     uiLanguage = language;
-    localStorage.setItem("meeting-copilot-language", uiLanguage);
     applyLanguage();
     transcriptSignature = "";
     frameSignature = "";
@@ -1769,10 +2601,162 @@ document.querySelectorAll("[data-language]").forEach((button) => {
   });
 });
 
+Object.assign(translations.ru, {
+  "settings.open": "Настройки", "google.heading": "Google-аккаунт и источники LLM", "google.sources": "Разрешить LLM искать контекст",
+  "google.manual": "Проверить поиск вручную (необязательно)",
+  "google.connect": "Подключить Google", "google.disconnect": "Отключить Google от Copilot", "google.check": "Проверить подключение",
+  "google.automatic": "После подключения и выбора источников LLM сам формулирует поисковые запросы по вопросу или теме звонка. Репозитории остаются дополнительным источником, а не единственным.",
+  "google.disconnected": "Google отключён от Copilot. Общая авторизация gws сохранена для других функций, включая доставку отчётов.",
+  "google.pending": "Завершите вход в открывшемся браузере, затем нажмите «Проверить подключение».",
+  "google.calendar_note": "При включении Calendar Copilot также сопоставляет подготовку с событиями дня звонка.",
+  "google.privacy": "Выключен по умолчанию. Только чтение. Найденные фрагменты используются в текущем звонке выбранной моделью анализа; при облачной модели покидают компьютер.",
+  "google.save": "Сохранить источники", "google.query": "Участник, компания или тема встречи",
+  "google.search": "Найти для текущего звонка", "google.loading": "Подключаю источники…",
+  "google.searching": "Ищу контекст…", "google.saved": "Источники сохранены; предыдущие результаты очищены.",
+  "google.limits": "Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 файлов, название, описание и ссылка, не полный текст. Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.",
+  "google.account": "Подключён Google: {account}", "google.auth": "Google не подключён к Copilot. Нажмите «Подключить Google»; если gws ещё не настроен, потребуется локальная настройка OAuth-клиента.",
+  "google.empty": "Ничего не найдено", "google.partial": "Показана часть результатов",
+  "google.failed": "Источник недоступен: {source} ({state}). Проверьте gws и разрешения доступа.",
+  "google.no_meeting": "Для поиска начните или откройте текущую запись.",
+  "google.result": "Найдено {count}. Copilot может использовать эти фрагменты в текущей встрече в течение 10 минут.",
+});
+Object.assign(translations.en, {
+  "settings.open": "Settings", "google.heading": "Google account and LLM sources", "google.sources": "Allow LLM context search",
+  "google.manual": "Test search manually (optional)",
+  "google.connect": "Connect Google", "google.disconnect": "Disconnect Google from Copilot", "google.check": "Check connection",
+  "google.automatic": "Once connected and sources are selected, the LLM generates search queries from the question or call topic. Repositories remain an additional source, not the only one.",
+  "google.disconnected": "Google disconnected from Copilot. Shared gws credentials are preserved for other features, including report delivery.",
+  "google.pending": "Complete sign-in in the opened browser, then choose Check connection.",
+  "google.calendar_note": "Enabling Calendar also matches meeting preparation against events on the call date.",
+  "google.privacy": "Off by default. Read-only. Results are used for this call by your selected analysis model; a cloud model receives them outside your computer.",
+  "google.save": "Save sources", "google.query": "Participant, company or meeting topic",
+  "google.search": "Search for this call", "google.loading": "Loading connections…",
+  "google.searching": "Searching context…", "google.saved": "Sources saved; previous results cleared.",
+  "google.limits": "Calendar: past 90 / next 30 days. Gmail: up to 3 messages from the past year, headers and snippets. Drive: up to 5 file titles, descriptions and links, not full contents. Results expire in 10 minutes; source changes clear them. Report delivery is configured separately.",
+  "google.account": "Connected Google: {account}", "google.auth": "Google is not connected to Copilot. Choose Connect Google; an unconfigured gws requires local OAuth client setup.",
+  "google.empty": "No results", "google.partial": "Some results are omitted",
+  "google.failed": "Source unavailable: {source} ({state}). Check gws and access permissions.",
+  "google.no_meeting": "Start a current recording before searching.",
+  "google.result": "Found {count}. Copilot can use these excerpts in this meeting for 10 minutes.",
+});
+let googleBusy = false;
+let googleConnected = false;
+const googleMessage = document.querySelector("#google-message");
+const googleResults = document.querySelector("#google-results");
+function googleControls(busy) {
+  googleBusy = busy;
+  document.querySelectorAll("#google-sources input, #google-save, #google-search, #google-query").forEach(node => { node.disabled = busy || !googleConnected; });
+  document.querySelectorAll("#google-connect, #google-check").forEach(node => { node.disabled = busy; });
+  document.querySelector("#google-disconnect").disabled = busy || !googleConnected;
+  document.querySelector("#google-search-form").setAttribute("aria-busy", String(busy));
+}
+async function loadGoogleContext() {
+  if (googleBusy) return;
+  googleControls(true);
+  const account = document.querySelector("#google-account");
+  account.textContent = t("google.loading");
+  try {
+    const response = await fetch("/api/google-context", {cache: "no-store", signal: AbortSignal.timeout(10000)});
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(`HTTP ${response.status}`);
+    document.querySelectorAll("#google-sources input").forEach(input => { input.checked = data.sources?.[input.value] === true; });
+    googleConnected = data.connected === true;
+    account.dataset.auth = googleConnected ? "connected" : "not_connected";
+    account.dataset.account = data.account || "";
+    account.textContent = googleConnected ? t("google.account", {account: data.account || "gws"}) : data.login_pending ? t("google.pending") : t("google.auth");
+  } catch (error) { account.textContent = String(error); }
+  finally { googleControls(false); }
+}
+const googleSettings = document.querySelector("#google-context-settings");
+document.querySelector("#settings-content").append(googleSettings);
+googleSettings.open = true;
+document.querySelector("#settings-open").addEventListener("click", () => {
+  document.querySelector("#settings-panel").hidden = false;
+  document.querySelector("#settings-open").setAttribute("aria-expanded", "true");
+  void loadGoogleContext();
+});
+document.querySelector("#settings-close").addEventListener("click", () => {
+  document.querySelector("#settings-panel").hidden = true;
+  document.querySelector("#settings-open").setAttribute("aria-expanded", "false");
+  document.querySelector("#settings-open").focus();
+});
+document.querySelector("#google-check").addEventListener("click", () => void loadGoogleContext());
+for (const action of ["connect", "disconnect"]) document.querySelector(`#google-${action}`).addEventListener("click", async () => {
+  if (googleBusy) return;
+  googleControls(true);
+  try {
+    const data = await post(`/api/google-context/${action}`, {});
+    googleConnected = data.connected === true;
+    googleResults.replaceChildren();
+    googleMessage.textContent = data.login_pending ? t("google.pending") : action === "disconnect" ? t("google.disconnected") : "";
+  } catch (error) { googleMessage.textContent = String(error); }
+  finally { googleControls(false); await loadGoogleContext(); }
+});
+document.querySelector("#google-save").addEventListener("click", async () => {
+  if (googleBusy) return;
+  const sources = Object.fromEntries([...document.querySelectorAll("#google-sources input")].map(input => [input.value, input.checked]));
+  googleControls(true);
+  try {
+    await post("/api/google-context/settings", {sources});
+    googleResults.replaceChildren();
+    googleMessage.textContent = t("google.saved");
+  } catch (error) { googleMessage.textContent = String(error); }
+  finally { googleControls(false); }
+});
+document.querySelector("#google-search-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (googleBusy) return;
+  const query = document.querySelector("#google-query").value.trim();
+  googleControls(true);
+  googleResults.replaceChildren();
+  googleMessage.textContent = t("google.searching");
+  try {
+    const snapshot = await fetch("/api/projects", {cache: "no-store"}).then(response => response.json());
+    if (!snapshot.meeting_id) throw new Error(t("google.no_meeting"));
+    const data = await post("/api/google-context/search", {meeting_id: snapshot.meeting_id, query});
+    let count = 0;
+    for (const [source, result] of Object.entries(data.sources || {})) {
+      const section = document.createElement("section");
+      section.append(textNode("h3", "", source === "gmail" ? "Gmail" : source === "drive" ? "Google Drive" : "Google Calendar"));
+      if (result.state !== "ok") section.append(textNode("p", "", t("google.failed", {source, state: result.state})));
+      else if (!result.items.length) section.append(textNode("p", "", t("google.empty")));
+      if (result.limited) section.append(textNode("p", "", t("google.partial")));
+      for (const item of result.items || []) {
+        count++;
+        const row = document.createElement("article");
+        const link = document.createElement(item.url ? "a" : "strong");
+        link.textContent = item.title || item.url || source;
+        if (item.url) {
+          const url = new URL(item.url);
+          if (url.protocol === "https:" && url.hostname.endsWith(".google.com")) {
+            link.href = url.href; link.target = "_blank"; link.rel = "noopener noreferrer";
+          }
+        }
+        row.append(link, textNode("small", "", item.date || ""), textNode("p", "", item.excerpt || ""));
+        section.append(row);
+      }
+      googleResults.append(section);
+    }
+    googleMessage.textContent = t("google.result", {count});
+  } catch (error) { googleMessage.textContent = String(error); }
+  finally { googleControls(false); }
+});
+
 applyLanguage();
 void state();
+// Freshness must expire even when a request never returns. An old response
+// cannot keep either a recording claim or a recovery action alive indefinitely.
+setInterval(() => {
+  if (recordingHealth.checked_at && Date.now() / 1000 - recordingHealth.checked_at >= 20) {
+    renderRecordingHealth(recordingHealth);
+  }
+}, 1000);
 setInterval(() => void state(), 2500);
 window.addEventListener("online", () => void state());
+window.matchMedia("(max-width: 600px)").addEventListener("change", () => {
+  deliverySignature = "";
+  renderDeliveryHealth(deliveryHealth);
+});
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void state();
 });

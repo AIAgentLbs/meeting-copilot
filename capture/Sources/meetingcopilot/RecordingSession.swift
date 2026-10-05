@@ -214,6 +214,7 @@ final class RecordingSession {
         if pausedFor > 0 { meta["paused_seconds"] = Int(pausedFor) }
         if !trackEverStalled.isEmpty { meta["stalled_tracks"] = trackEverStalled.sorted() }
         meta["mic_capture"] = mic.capture.meta
+        if !system.recoveryEvents.isEmpty { meta["system_recoveries"] = system.recoveryEvents }
         // Every route change the mic track survived: headphones connecting,
         // AirPods leaving an ear, a call app taking the device. Each one is a
         // seam in the track, and a transcript that goes strange after one is
@@ -570,6 +571,8 @@ final class RecordingSession {
     /// Keep the tap pointed at the call as its processes come and go, and
     /// notice if that leaves us recording silence.
     private func followCallApp(now: Date) {
+        let callHasOutput = AudioProcesses.matching(families: tapFamilies).contains { $0.runningOutput }
+        system.checkHealth(now: now, callHasOutput: callHasOutput)
         if case .apps = system.scope {
             let settings = Config.autoRecord()
             let mic = MicActivityMonitor.check(

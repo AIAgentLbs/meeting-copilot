@@ -50,6 +50,14 @@ class ReportBriefTests(unittest.TestCase):
         self.assertEqual(people, [])
         self.assertEqual(main, "Не определён по записи")
 
+    def test_audio_loss_preserves_roster_but_does_not_claim_main_speaker(self):
+        people, main = MeetingArchive._front_participants({
+            "capture_warnings": [{"reason": "system-audio-lost"}],
+            "transcript": [{"speaker": "Ana Silva", "text": "A long recognised introduction."}],
+        })
+        self.assertEqual(people[0]["name"], "Ana Silva")
+        self.assertEqual(main, "Не определён по записи")
+
     def test_named_speaker_is_not_declared_main_when_unknown_voice_dominates(self):
         people, main = MeetingArchive._front_participants({
             "participants": [], "meeting_chat": [],

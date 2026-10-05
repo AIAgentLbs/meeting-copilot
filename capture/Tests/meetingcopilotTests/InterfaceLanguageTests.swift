@@ -13,6 +13,62 @@ import Testing
 /// to do with it.
 @Suite(.serialized)
 struct InterfaceLanguageTests {
+    @Test("First launch asks once without resetting existing installations")
+    func firstLaunchChoice() {
+        for configured in [nil, "", "auto", "invalid"] as [String?] {
+            #expect(InterfaceLanguage.needsFirstLaunchChoice(setupPending: true, configured: configured))
+            #expect(!InterfaceLanguage.needsFirstLaunchChoice(setupPending: false, configured: configured))
+        }
+        for configured in ["en", "ru"] {
+            #expect(!InterfaceLanguage.needsFirstLaunchChoice(setupPending: true, configured: configured))
+        }
+    }
+
+    @Test("First-run language is saved before the rest of the interface opens")
+    @MainActor
+    func savesFirstLaunchChoice() {
+        _ = NSApplication.shared
+        let previous = InterfaceLanguage.current
+        defer { InterfaceLanguage.current = previous }
+        var saved: InterfaceLanguage?
+        let confirmed = FirstLaunchLanguage.choose(suggested: .english, save: {
+            saved = $0
+            return true
+        }, present: { alert in
+            let picker = alert.accessoryView as! NSPopUpButton
+            #expect(picker.accessibilityLabel() == "Interface language / Язык интерфейса")
+            #expect(alert.buttons.first?.title == "Continue / Продолжить")
+            picker.selectItem(at: 1)
+            return .alertFirstButtonReturn
+        })
+        #expect(confirmed)
+        #expect(saved == .russian)
+        #expect(InterfaceLanguage.current == .russian)
+        #expect(!InterfaceLanguage.needsFirstLaunchChoice(setupPending: true, configured: saved?.rawValue))
+    }
+
+    @Test("Quit and a failed language save never silently complete setup")
+    @MainActor
+    func languageSaveFailure() {
+        _ = NSApplication.shared
+        let previous = InterfaceLanguage.current
+        defer { InterfaceLanguage.current = previous }
+        var attempts = 0
+        #expect(!FirstLaunchLanguage.choose(suggested: .russian, save: { _ in false }, present: { alert in
+            attempts += 1
+            if attempts == 1 { return .alertFirstButtonReturn }
+            #expect(alert.informativeText.contains("Could not save"))
+            #expect((alert.accessoryView as? NSPopUpButton)?.selectedItem?.title == "Русский")
+            return .alertSecondButtonReturn
+        }))
+        #expect(attempts == 2)
+        #expect(InterfaceLanguage.current == previous)
+        #expect(!FirstLaunchLanguage.choose(suggested: .russian, save: { _ in
+            Issue.record("Quitting must not write settings")
+            return true
+        }, present: { _ in .alertSecondButtonReturn }))
+    }
+
     /// Every branch of the decision, without a config file or a Mac set to
     /// anything in particular.
     @Test("The config decides, and where it says nothing the Mac does")

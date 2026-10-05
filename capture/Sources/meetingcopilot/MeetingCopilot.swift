@@ -9,7 +9,7 @@ struct MeetingCopilot: ParsableCommand {
         abstract: "Local meeting recorder + transcriber. Records mic and system audio as two tracks, then transcribes on-device.",
         subcommands: [
             Run.self, Setup.self, Doctor.self, Install.self, Sessions.self, ProcessSession.self,
-            Record.self, AnalyticsCommand.self,
+            Record.self, AnalyticsCommand.self, TranscribeAudio.self,
         ],
         defaultSubcommand: Run.self
     )
@@ -77,6 +77,10 @@ struct Run: ParsableCommand {
                 + "to meetingcopilot\n"
             FileHandle.standardError.write(Data(warning.utf8))
         }
+
+        // An explicit first-run choice precedes every persistent window and
+        // permission check. Cancelling starts neither the recorder nor setup.
+        guard FirstLaunchLanguage.confirmIfNeeded() else { return }
 
         // Keep the command line pointing at this bundle, so agents and
         // scripts reach the same signed program the app runs.
@@ -647,6 +651,13 @@ final class AppController {
         case .start where session == nil: toggle()
         case .stop where session != nil: toggle()
         case .toggle: toggle()
+        case .resume:
+            guard let session else { return }
+            if session.isPaused { session.resume() }
+            // Recognition is independent of durable capture: rebuilding its
+            // epoch must not stop/recreate the audio files or meeting ID.
+            toggleLive(true)
+            tick()
         case .start, .stop: break
         }
     }
@@ -753,7 +764,9 @@ final class AppController {
             title: context.title ?? context.folderSuffix ?? newSession.dir.lastPathComponent,
             startedAt: newSession.startedAt,
             remoteAttendees: context.remoteAttendees,
-            oneToOneRemoteSpeaker: context.oneToOneRemoteSpeaker
+            meetingLink: context.link,
+            oneToOneRemoteSpeaker: context.oneToOneRemoteSpeaker,
+            recordingDirectory: newSession.dir.path
         )
         Task { [weak self, liveTranscription, liveTranscriptExporter] in
             await liveTranscription.beginRecording(
@@ -858,13 +871,10 @@ final class AppController {
 
     private func showLive(_ snapshot: LiveTranscriptionCoordinator.Snapshot) {
         window.updateLive(snapshot)
-        switch snapshot.status {
-        case .overloaded, .error:
+        if snapshot.status.shouldDetachAudioSinks {
             // The coordinator has closed its queues; detach here as well so
             // the real-time recorders stop making now-unused buffer copies.
             session?.installLiveAudioSinks(mic: nil, system: nil)
-        case .idle, .paused, .loading, .live, .modelMissing:
-            break
         }
     }
 

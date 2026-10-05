@@ -93,8 +93,25 @@ class DeliveryTests(unittest.TestCase):
             result = self.archive.deliver(self.detail, report)
         self.assertEqual(result["drive_status"], "uploaded")
         self.assertEqual(result["mail_status"], "sent")
+        self.assertEqual(result["gmail_message_id"], "sent-id")
         self.assertEqual(result["drive_pdf_url"], links["drive_pdf_url"])
         self.assertEqual(gws.call_args.args[:2], ("gmail", "+send"))
+
+    def test_missing_drive_links_are_repaired_without_resending_successes(self):
+        report_dir = self.archive.reports_root / "meeting-1"
+        report_dir.mkdir()
+        (report_dir / "report.json").write_text(json.dumps({
+            "generated_at": datetime.now().astimezone().isoformat(),
+            "pdf_path": str(self.pdf), "drive_status": "uploaded",
+            "mail_status": "sent", "telegram_status": "sent",
+        }), encoding="utf-8")
+        with patch.object(self.archive, "report_detail", return_value=self.detail), \
+             patch.object(self.archive, "deliver", return_value={
+                 "drive_status": "uploaded", "mail_status": "sent", "telegram_status": "sent",
+             }) as deliver:
+            self.assertEqual(self.archive.retry_pending_deliveries(), 1)
+        self.assertEqual(deliver.call_args.kwargs["previous"]["mail_status"], "sent")
+        self.assertEqual(deliver.call_args.kwargs["previous"]["telegram_status"], "sent")
 
     def test_revised_report_refreshes_drive_without_resending_mail(self):
         detail = {

@@ -14,7 +14,7 @@ struct Record: ParsableCommand {
         abstract: "Start or stop recording in the running meetingcopilot."
     )
 
-    @Argument(help: "start, stop, or toggle.")
+    @Argument(help: "start, stop, toggle, or resume the current recording's live recognition.")
     var action: RecordRequest.Action
 
     func run() throws {
@@ -34,6 +34,7 @@ enum RecordRequest {
         case start
         case stop
         case toggle
+        case resume
     }
 
     private static let request = Notification.Name("com.aiagentlabs.meeting-copilot.record")

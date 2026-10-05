@@ -6,6 +6,52 @@ import Testing
 @testable import meetingcopilot
 
 struct LiveTranscriptTests {
+    @Test("Overload never detaches recognition audio sinks")
+    func overloadKeepsRecognitionInput() {
+        #expect(!LiveRecognitionStatus.overloaded.shouldDetachAudioSinks)
+        #expect(!LiveRecognitionStatus.live.shouldDetachAudioSinks)
+        #expect(LiveRecognitionStatus.error("failed").shouldDetachAudioSinks)
+    }
+
+    @Test("Recognition health uses input/consumption and bounded retries, not word count")
+    func recognitionWatchdogPolicy() {
+        let now = Date(timeIntervalSince1970: 1000)
+        #expect(!RecognitionRecoveryPolicy.stalled(inputAt: now, consumedAt: now, now: now))
+        #expect(RecognitionRecoveryPolicy.stalled(inputAt: now, consumedAt: now.addingTimeInterval(-40), now: now))
+        #expect(!RecognitionRecoveryPolicy.stalled(inputAt: nil, consumedAt: now.addingTimeInterval(-100), now: now))
+        var policy = RecognitionRecoveryPolicy()
+        #expect(policy.decide(needsRecovery: true, now: now) == .retry)
+        #expect(policy.decide(needsRecovery: true, now: now.addingTimeInterval(5)) == .wait)
+        #expect(policy.decide(needsRecovery: true, now: now.addingTimeInterval(90)) == .retry)
+        #expect(policy.decide(needsRecovery: true, now: now.addingTimeInterval(180)) == .retry)
+        #expect(policy.decide(needsRecovery: true, now: now.addingTimeInterval(270)) == .exhausted)
+    }
+    @Test("Stalled recognition is distinguished from slow but progressing consumers")
+    func stalledDecoderDeadline() {
+        let start = Date(timeIntervalSince1970: 1000)
+        #expect(!LiveTranscriptionCoordinator.decoderStalled(lastConsumedAt: start, now: start.addingTimeInterval(29.9)))
+        #expect(LiveTranscriptionCoordinator.decoderStalled(lastConsumedAt: start, now: start.addingTimeInterval(30)))
+        #expect(!LiveTranscriptionCoordinator.decoderStalled(lastConsumedAt: start.addingTimeInterval(25), now: start.addingTimeInterval(30)))
+    }
+
+    @Test("Recognition restart retains speech but rejects the old consumer epoch")
+    func recognitionRestartPreservesMeeting() {
+        var state = LiveTranscriptState()
+        let oldEpoch = state.beginRecording(enabled: true)
+        state.applyPartial(speaker: .you, text: "До перезапуска", startMilliseconds: 100, epoch: oldEpoch)
+        state.setEnabled(false)
+        let newEpoch = state.setEnabled(true)
+        state.applyPartial(speaker: .you, text: "Устаревший callback", startMilliseconds: 200, epoch: oldEpoch)
+        #expect(newEpoch != oldEpoch)
+        #expect(state.entries.count == 2)
+        guard case .speech(let block) = state.entries.first else {
+            Issue.record("Speech lost on recognition restart")
+            return
+        }
+        #expect(block.text == "До перезапуска")
+        #expect(!block.isProvisional)
+    }
+
     @Test("Live transcription is opt-in")
     func configDefaultsOff() {
         #expect(!Config.liveTranscriptionEnabled(in: nil))

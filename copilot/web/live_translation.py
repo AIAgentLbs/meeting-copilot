@@ -28,6 +28,8 @@ class LiveTranslation:
         self.retry_after: dict[tuple[str, str, str], float] = {}
         self.revision = 0
         self.error = ""
+        self.meeting_id = ""
+        self.futures = {}
 
     @staticmethod
     def _language(text: str) -> tuple[str, float]:
@@ -81,6 +83,8 @@ class LiveTranslation:
             if language not in {"en", "ru", "und"} and confidence >= 0.72:
                 translation = self._translate(text)
             with self.lock:
+                if self.meeting_id and key[0] != self.meeting_id:
+                    return
                 self.results[key] = {
                     "text": text, "language": language, "confidence": confidence,
                     "translation_en": translation, "at": time.monotonic(),
@@ -90,11 +94,13 @@ class LiveTranslation:
                 self.retry_after.pop(key, None)
         except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
             with self.lock:
-                self.error = type(exc).__name__
-                self.retry_after[key] = time.monotonic() + 60
+                if key[0] == self.meeting_id:
+                    self.error = type(exc).__name__
+                    self.retry_after[key] = time.monotonic() + 60
         finally:
             with self.lock:
                 self.pending.discard(key)
+                self.futures.pop(key, None)
 
     def annotate(self, transcript: dict) -> dict:
         meeting_id = str(transcript.get("meeting_id") or "")
@@ -102,6 +108,16 @@ class LiveTranslation:
         if not meeting_id:
             return transcript
         with self.lock:
+            if meeting_id != self.meeting_id:
+                self.meeting_id = meeting_id
+                self.results = {key: value for key, value in self.results.items() if key[0] == meeting_id}
+                self.retry_after = {key: value for key, value in self.retry_after.items() if key[0] == meeting_id}
+                self.error = ""
+                self.revision += 1
+                for key, future in list(self.futures.items()):
+                    if future.cancel():
+                        self.futures.pop(key, None)
+                        self.pending.discard(key)
             for segment in segments:
                 key = (meeting_id, str(segment.get("source") or ""),
                        str(segment.get("timestamp") or ""))
@@ -115,7 +131,7 @@ class LiveTranslation:
             # Start with the newest words, then backfill earlier foreign-language
             # passages already visible in this same meeting.
             for segment in reversed(segments):
-                if len(self.pending) >= 40:
+                if len(self.pending) >= 4:
                     break
                 key = (meeting_id, str(segment.get("source") or ""),
                        str(segment.get("timestamp") or ""))
@@ -130,7 +146,7 @@ class LiveTranslation:
                                (provisional and len(text) - len(cached["text"]) < 100)):
                     continue
                 self.pending.add(key)
-                self.pool.submit(self._work, key, text)
+                self.futures[key] = self.pool.submit(self._work, key, text)
             revision, error = self.revision, self.error
         return {**transcript, "segments": segments,
                 "translation_revision": revision, "translation_error": error}

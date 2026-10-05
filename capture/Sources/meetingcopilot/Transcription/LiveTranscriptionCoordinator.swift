@@ -11,21 +11,22 @@ actor LiveTranscriptionCoordinator {
         var buffer: AVAudioPCMBuffer
     }
 
-    enum Status: Sendable, Equatable {
-        case idle
-        case paused
-        case loading
-        case live
-        case modelMissing
-        case overloaded
-        case error(String)
-    }
+    typealias Status = LiveRecognitionStatus
 
     struct Snapshot: Sendable {
         let isRecording: Bool
         let isEnabled: Bool
         let entries: [LiveTranscriptState.Entry]
         let status: Status
+        var captureWarnings: [CaptureWarning] = []
+        var recognitionProgressAt: Date? = nil
+        var recoveryAttempts: Int = 0
+    }
+
+    struct CaptureWarning: Sendable, Encodable {
+        let started_at: String
+        var ended_at: String? = nil
+        let reason = "system-audio-lost"
     }
 
     struct SessionSinks: Sendable {
@@ -53,6 +54,8 @@ actor LiveTranscriptionCoordinator {
     private var attach: (@Sendable (SessionSinks?) -> Void)?
     private var pendingSinks: SessionSinks?
     private var drops: [Date] = []
+    private var lastConsumedAt: [Source: Date] = [:]
+    private var liveLanguage = "auto"
     /// The engine reports one running transcript per speaker and never says
     /// where an utterance ended, so the pause is what ends it here.
     private var partials = CumulativePartials()
@@ -68,6 +71,13 @@ actor LiveTranscriptionCoordinator {
     private var managers: [Source: StreamingNemotronMultilingualAsrManager] = [:]
     private var sharedModels: SharedNemotronMultilingualModels?
     private var currentRemoteVoice: Int?
+    private var lastSystemSignal: Date?
+    private var captureWarnings: [CaptureWarning] = []
+    private var healthTask: Task<Void, Never>?
+    private var pipelineStartedAt = Date()
+    private var recoveryPolicy = RecognitionRecoveryPolicy()
+    private var recoveryExhausted = false
+    private let inputTimes = OSAllocatedUnfairLock(initialState: [Source: Date]())
 
     init(modelStore: LiveTranscriptionModelStore = .init()) {
         self.modelStore = modelStore
@@ -78,7 +88,10 @@ actor LiveTranscriptionCoordinator {
             isRecording: isRecording,
             isEnabled: transcript.isEnabled,
             entries: transcript.entries,
-            status: status
+            status: status,
+            captureWarnings: captureWarnings,
+            recognitionProgressAt: lastConsumedAt.values.max(),
+            recoveryAttempts: recoveryPolicy.attempts.count
         )
     }
 
@@ -92,11 +105,17 @@ actor LiveTranscriptionCoordinator {
         self.update = update
         self.attach = attach
         startedAt = Date()
+        lastSystemSignal = nil
+        captureWarnings = []
         isRecording = true
+        recoveryPolicy = RecognitionRecoveryPolicy()
+        recoveryExhausted = false
+        lastConsumedAt.removeAll()
         status = enabled ? .loading : .paused
         let epoch = transcript.beginRecording(enabled: enabled)
         publish()
         guard enabled else { return }
+        startHealthWatchdog()
         startPipeline(language: language, epoch: epoch)
     }
 
@@ -105,17 +124,25 @@ actor LiveTranscriptionCoordinator {
     /// is loaded and consuming.
     func setEnabled(_ enabled: Bool, language: String) {
         guard isRecording else { return }
-        stopPipeline(releaseSharedModels: false)
+        healthTask?.cancel()
+        healthTask = nil
+        recoveryPolicy = RecognitionRecoveryPolicy()
+        recoveryExhausted = false
+        stopPipeline(releaseSharedModels: enabled)
+        if enabled { transcript.setEnabled(false) }
         let epoch = transcript.setEnabled(enabled)
         status = enabled ? .loading : .paused
         publish()
         guard enabled else { return }
+        startHealthWatchdog()
         startPipeline(language: language, epoch: epoch)
     }
 
     func finishRecording() async {
         transcript.finishRecording()
         isRecording = false
+        healthTask?.cancel()
+        healthTask = nil
         status = .idle
         publish()
         // AppController's closures capture the recording session, while this
@@ -141,6 +168,9 @@ actor LiveTranscriptionCoordinator {
     /// single word had been transcribed. The recorders start feeding the
     /// queues at the moment the model starts consuming them, and not before.
     private func startPipeline(language: String, epoch: Int) {
+        liveLanguage = language
+        pipelineStartedAt = Date()
+        inputTimes.withLock { $0.removeAll() }
         guard modelStore.isReady(language: language) else {
             status = .modelMissing
             publish()
@@ -166,8 +196,8 @@ actor LiveTranscriptionCoordinator {
         continuations = [micPair.continuation, systemPair.continuation]
 
         pendingSinks = SessionSinks(
-            mic: makeSink(continuation: micPair.continuation, epoch: epoch),
-            system: makeSink(continuation: systemPair.continuation, epoch: epoch))
+            mic: makeSink(continuation: micPair.continuation, source: .mic, epoch: epoch),
+            system: makeSink(continuation: systemPair.continuation, source: .system, epoch: epoch))
         loadTask = Task { [weak self] in
             guard let self else { return }
             await self.loadAndConsume(
@@ -181,14 +211,17 @@ actor LiveTranscriptionCoordinator {
 
     nonisolated private func makeSink(
         continuation: AsyncStream<AudioPacket>.Continuation,
+        source: Source,
         epoch: Int
     ) -> LiveAudioBufferRelay.Sink {
-        { [weak self] buffer in
+        let inputTimes = self.inputTimes
+        return { [weak self] buffer in
+            inputTimes.withLock { $0[source] = Date() }
             switch continuation.yield(AudioPacket(buffer: buffer)) {
             case .enqueued:
                 break
             case .dropped:
-                Task { await self?.pipelineOverloaded(epoch: epoch) }
+                Task { await self?.pipelineOverloaded(source: source, epoch: epoch) }
             case .terminated:
                 break
             @unknown default:
@@ -241,6 +274,7 @@ actor LiveTranscriptionCoordinator {
                     remoteDiarizer: remoteDiarizer),
             ]
             status = .live
+            lastConsumedAt = [.mic: Date(), .system: Date()]
             publish()
             if let sinks = pendingSinks {
                 pendingSinks = nil
@@ -278,6 +312,7 @@ actor LiveTranscriptionCoordinator {
             do {
                 for await packet in stream {
                     guard !Task.isCancelled else { return }
+                    await self?.observeAudio(peak: AudioLevel.peak(of: packet.buffer), from: source, epoch: epoch)
                     let seconds = Double(packet.buffer.frameLength)
                         / packet.buffer.format.sampleRate
                     if let diarizer = activeRemoteDiarizer {
@@ -322,6 +357,22 @@ actor LiveTranscriptionCoordinator {
         publish()
     }
 
+    private func observeAudio(peak: Float?, from source: Source, epoch: Int) {
+        guard transcript.epoch == epoch, source == .system, let peak else { return }
+        let now = Date()
+        if peak > 0.00001 {
+            lastSystemSignal = now
+            if let index = captureWarnings.indices.last, captureWarnings[index].ended_at == nil {
+                captureWarnings[index].ended_at = ISO8601DateFormatter().string(from: now)
+                publish()
+            }
+        } else if let lastSystemSignal, now.timeIntervalSince(lastSystemSignal) >= 45,
+                  captureWarnings.last?.ended_at != nil || captureWarnings.isEmpty {
+            captureWarnings.append(CaptureWarning(started_at: ISO8601DateFormatter().string(from: lastSystemSignal)))
+            publish()
+        }
+    }
+
     /// A real voice change closes the current far-end paragraph even if the
     /// speakers handed over without two seconds of silence. Nemotron remains
     /// cumulative; `CumulativePartials` subtracts the closed prefix when the
@@ -349,6 +400,7 @@ actor LiveTranscriptionCoordinator {
     ) async {
         guard transcript.epoch == epoch else { return }
         recoverFromOverloadIfCaughtUp(epoch: epoch)
+        lastConsumedAt[source] = Date()
         guard !spoken else {
             silentSeconds[source] = 0
             return
@@ -376,13 +428,20 @@ actor LiveTranscriptionCoordinator {
     private static let dropWindow: TimeInterval = 5
     private static let dropsBeforeGivingUp = 20
 
-    private func pipelineOverloaded(epoch: Int) {
+    /// Queue pressure alone is not a stalled decoder: slow consumers that
+    /// still make progress must not be restarted on every expensive chunk.
+    static func decoderStalled(lastConsumedAt: Date, now: Date) -> Bool {
+        now.timeIntervalSince(lastConsumedAt) >= 30
+    }
+
+    private func pipelineOverloaded(source: Source, epoch: Int) {
         guard transcript.epoch == epoch else { return }
         let now = Date()
         drops.append(now)
         drops.removeAll { now.timeIntervalSince($0) > Self.dropWindow }
         guard drops.count >= Self.dropsBeforeGivingUp else { return }
 
+        // One independent watchdog owns recovery, not every dropped packet.
         guard status != .overloaded else { return }
         status = .overloaded
         publish()
@@ -402,6 +461,54 @@ actor LiveTranscriptionCoordinator {
         stopPipeline(releaseSharedModels: false)
         transcript.invalidateActiveEpoch()
         status = .error(message)
+        publish()
+    }
+
+    private func startHealthWatchdog() {
+        healthTask?.cancel()
+        healthTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                await self?.checkHealth()
+            }
+        }
+    }
+
+    private func checkHealth() {
+        guard isRecording, transcript.isEnabled else { return }
+        let now = Date()
+        let inputs = inputTimes.withLock { $0 }
+        let needsRecovery: Bool
+        switch status {
+        case .loading:
+            needsRecovery = now.timeIntervalSince(pipelineStartedAt)
+                >= RecognitionRecoveryPolicy.loadingGrace
+        case .live, .overloaded:
+            needsRecovery = [Source.mic, .system].contains {
+                RecognitionRecoveryPolicy.stalled(
+                    inputAt: inputs[$0], consumedAt: lastConsumedAt[$0], now: now)
+            }
+        case .error:
+            needsRecovery = !recoveryExhausted
+        default:
+            needsRecovery = false
+        }
+        switch recoveryPolicy.decide(needsRecovery: needsRecovery, now: now) {
+        case .retry:
+            stopPipeline(releaseSharedModels: true)
+            transcript.setEnabled(false)
+            let epoch = transcript.setEnabled(true)
+            lastConsumedAt = [.mic: now, .system: now]
+            status = .loading
+            startPipeline(language: liveLanguage, epoch: epoch)
+        case .exhausted:
+            recoveryExhausted = true
+            stopPipeline(releaseSharedModels: true)
+            status = .error("Automatic recognition recovery exhausted; audio recording is independent")
+        case .healthy, .wait:
+            break
+        }
+        // Export a heartbeat during silence too. No words is not a dead app.
         publish()
     }
 

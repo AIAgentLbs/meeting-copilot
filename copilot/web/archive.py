@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import math
 import os
 import re
 import shutil
@@ -14,9 +15,14 @@ import tempfile
 import threading
 import time
 from collections import Counter
+from functools import wraps
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from speaker_edits import SpeakerEdits
+from delivery_health import DeliveryHealth, drive_links_ready
+from recording_health import RecordingLocations
+from question_quality import register_question
 
 
 def _json(path: Path, fallback: Any) -> Any:
@@ -56,6 +62,20 @@ def _fmt_seconds(seconds: int | float | None) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+def _shared_indexes(method):
+    """Reuse large indexes only within one operation, never retain history globally."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        if getattr(self._index_state, "values", None) is not None:
+            return method(self, *args, **kwargs)
+        self._index_state.values = {}
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            del self._index_state.values
+    return wrapped
+
+
 class MeetingArchive:
     """Joins transcript, notes, Zoom chat, screenshots and recording metadata."""
 
@@ -72,26 +92,49 @@ class MeetingArchive:
         archive_root: Path,
         reports_root: Path,
         config_root: Path,
+        recording_locations: RecordingLocations | None = None,
+        frames_provider: Callable[[], list[dict]] | None = None,
     ) -> None:
         self.recordings_root = recordings_root
+        self.recording_locations = recording_locations
+        self.frames_provider = frames_provider
         self.archive_root = archive_root
         self.reports_root = reports_root
         self.config_root = config_root
         self.lock = threading.RLock()
+        self._index_state = threading.local()
+        self.speaker_edits = SpeakerEdits(archive_root)
+        self.delivery_monitor = DeliveryHealth(
+            reports_root, config_root / "delivery-health.json", self.delivery_retry_days
+        )
         self.archive_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.reports_root.mkdir(mode=0o700, parents=True, exist_ok=True)
 
     @property
     def journal(self) -> list[dict]:
-        return list(_json(self.config_root / "journal.json", {}).get("items", []))
+        return [item for item in self._index_items("journal.json")
+                if register_question(item)]
+
+    def _index_items(self, filename: str) -> list[dict]:
+        values = getattr(self._index_state, "values", None)
+        if values is None:
+            return list(_json(self.config_root / filename, {}).get("items", []))
+        if filename not in values:
+            values[filename] = list(_json(self.config_root / filename, {}).get("items", []))
+        return values[filename]
+
+    def annotate_speakers(self, snapshot: dict) -> dict:
+        return self.speaker_edits.annotate(snapshot)
 
     @property
     def frames(self) -> list[dict]:
-        return list(_json(self.config_root / "frames.json", {}).get("items", []))
+        if self.frames_provider is not None:
+            return self.frames_provider()
+        return list(self._index_items("frames.json"))
 
     @property
     def meeting_chat(self) -> list[dict]:
-        return list(_json(self.config_root / "meeting-chat.json", {}).get("items", []))
+        return list(self._index_items("meeting-chat.json"))
 
     def sync_transcript(self, transcript: dict) -> None:
         meeting_id = str(transcript.get("meeting_id") or "").strip()
@@ -106,20 +149,41 @@ class MeetingArchive:
             "updated_at": str(transcript.get("updated_at") or ""),
             "latest_at": str(transcript.get("latest_at") or ""),
             "segments": list(transcript.get("segments") or []),
+            "capture_warnings": list(transcript.get("capture_warnings") or []),
         }
         target = self.archive_root / _safe(meeting_id) / "meeting.json"
-        previous = _json(target, {})
-        # Never replace a longer completed transcript with a shorter stale one.
-        if len(previous.get("segments", [])) > len(clean["segments"]):
-            clean["segments"] = previous["segments"]
-        if previous != clean:
-            _atomic_json(target, clean)
+        # Serialize capture refresh with manual corrections. The corrected
+        # meeting.json is the original used by every downstream consumer.
+        with self.speaker_edits.lock:
+            previous = _json(target, {})
+            # Remember the trigger while the temporary recording still exists.
+            # Native discards short automatic sessions before finishing its live
+            # export; the remaining transcript must not re-create a meeting.
+            directory = str(transcript.get("recording_dir") or previous.get("recording_dir") or "")
+            roots = self.recording_locations.roots() if self.recording_locations else [self.recordings_root.resolve()]
+            if directory and any(Path(directory).resolve().is_relative_to(root) for root in roots):
+                clean["recording_dir"] = directory
+                meta = _json(Path(directory) / "meta.json", {}) or _json(Path(directory) / ".recording.json", {})
+                marker_start, session_start = _date(meta.get("started")), _date(clean["started_at"])
+                if marker_start and session_start and abs((marker_start - session_start).total_seconds()) <= 2:
+                    clean["recording_trigger"] = meta.get("trigger", "")
+            if not clean.get("recording_trigger") and previous.get("recording_trigger"):
+                clean["recording_trigger"] = previous["recording_trigger"]
+            if len(previous.get("segments", [])) > len(clean["segments"]):
+                clean["segments"] = previous["segments"]
+            corrected = self.annotate_speakers(clean)
+            clean["segments"] = corrected["segments"]
+            for field in ("speaker_names", "speaker_revision", "speaker_corrected_at"):
+                if field in previous:
+                    clean[field] = previous[field]
+            if previous != clean:
+                _atomic_json(target, clean)
 
     def _recordings(self) -> list[dict]:
         result: list[dict] = []
-        if not self.recordings_root.exists():
-            return result
-        for meta_path in sorted(self.recordings_root.glob("*/meta.json"), reverse=True):
+        roots = self.recording_locations.roots() if self.recording_locations else [self.recordings_root]
+        paths = list(dict.fromkeys(path for root in roots for path in root.glob("*/meta.json")))
+        for meta_path in sorted(paths, reverse=True):
             meta = _json(meta_path, {})
             if not isinstance(meta, dict):
                 continue
@@ -218,13 +282,11 @@ class MeetingArchive:
                 title = recording_title
         return cls._speaker_title(snapshot) if cls._is_generic_title(title) else title
 
-    def display_title(self, snapshot: dict) -> str:
+    def display_title(self, snapshot: dict, frames: list[dict] | None = None) -> str:
         """Human meeting title for live UI; never expose a browser helper process."""
         meeting_id = str(snapshot.get("meeting_id") or "")
-        frames = [
-            item for item in self.frames
-            if str(item.get("meeting_id") or "") == meeting_id
-        ]
+        if frames is None:
+            frames = [item for item in self.frames if str(item.get("meeting_id") or "") == meeting_id]
         return self._best_title(snapshot, frames, None)
 
     def _known_ids(self) -> set[str]:
@@ -266,6 +328,8 @@ class MeetingArchive:
                     "started_at": candidate["started_at"],
                     "ended_at": candidate["ended_at"],
                     "duration_seconds": candidate["duration_seconds"],
+                    "recording_trigger": candidate["meta"].get("trigger", ""),
+                    "stop_reason": candidate["meta"].get("stop_reason", ""),
                     "recording_dir": candidate["dir"],
                     "audio_file": self._audio_file(candidate),
                     "transcript": [], "journal": [], "frames": [], "meeting_chat": [],
@@ -289,22 +353,29 @@ class MeetingArchive:
         duration = int((recording or {}).get("duration_seconds") or 0)
         report_dir = self.reports_root / meeting_id
         report_meta = _json(report_dir / "report.json", {})
-        return {
+        result = {
             "meeting_id": meeting_id,
             "title": title,
             "status": str(snapshot.get("status") or "finished"),
             "started_at": started,
             "ended_at": ended,
             "duration_seconds": duration,
+            "recording_trigger": (recording or {}).get("meta", {}).get("trigger") or snapshot.get("recording_trigger", ""),
+            "stop_reason": (recording or {}).get("meta", {}).get("stop_reason", ""),
+            "recording_discarded": bool(snapshot.get("recording_dir") and not Path(snapshot["recording_dir"]).exists()),
             "recording_dir": (recording or {}).get("dir", ""),
             "audio_file": self._audio_file(recording),
             "transcript": segments,
+            "capture_warnings": list(snapshot.get("capture_warnings") or []),
             "journal": sorted(journal, key=lambda i: str(i.get("created_at") or "")),
             "frames": sorted(frames, key=lambda i: str(i.get("captured_at") or "")),
             "meeting_chat": sorted(chat, key=lambda i: str(i.get("captured_at") or "")),
             "participants": participants,
             "report": report_meta,
         }
+        annotated = self.annotate_speakers({**result, "segments": segments})
+        annotated["transcript"] = annotated.pop("segments")
+        return annotated
 
     @staticmethod
     def _dedupe_items(items: list[dict], time_key: str) -> list[dict]:
@@ -371,6 +442,7 @@ class MeetingArchive:
             last += 1
         return candidates[first:last + 1]
 
+    @_shared_indexes
     def report_detail(self, meeting_id: str) -> dict | None:
         """Build one report payload from all contiguous recorder chunks."""
         target = self.detail(meeting_id)
@@ -429,17 +501,21 @@ class MeetingArchive:
                 return str(path)
         return ""
 
+    @_shared_indexes
     def list_meetings(self) -> list[dict]:
         details = [self.detail(meeting_id) for meeting_id in self._known_ids()]
         meetings = []
         matched_dirs = set()
         for detail in details:
-            if not detail:
+            if not detail or self._short_automatic(detail):
                 continue
             matched_dirs.add(detail.get("recording_dir"))
             meetings.append(self._summary(detail))
         # Keep raw recording-only sessions visible even when no transcript was captured.
         for recording in self._recordings():
+            if self._short_automatic({**recording, "recording_trigger": recording["meta"].get("trigger", ""),
+                                     "stop_reason": recording["meta"].get("stop_reason", "")}):
+                continue
             if recording["dir"] in matched_dirs:
                 continue
             meeting_id = "recording-" + hashlib.sha1(
@@ -493,7 +569,7 @@ class MeetingArchive:
         indexes = {round(index * (len(existing) - 1) / (limit - 1)) for index in range(limit)}
         return [existing[index] for index in sorted(indexes)]
 
-    def generate_report(self, meeting_id: str) -> dict:
+    def generate_report(self, meeting_id: str, *, deliver: bool = True) -> dict:
         with self.lock:
             detail = self.report_detail(meeting_id)
             if detail is None:
@@ -543,11 +619,16 @@ class MeetingArchive:
                 # a slow Drive refresh; a restart must not resend the memo.
                 "mail_status": str(previous_report.get("mail_status") or "not_configured"),
                 "telegram_status": str(previous_report.get("telegram_status") or "not_configured"),
+                "gmail_message_id": previous_report.get("gmail_message_id"),
                 "source_signature": source_signature,
                 "generated_while_recording": not self._ready_for_delivery(detail),
             }
             _atomic_json(report_dir / "report.json", meta)
             delivery = (
+                {"drive_status": "pending",
+                 "mail_status": str(previous_report.get("mail_status") or "not_configured"),
+                 "telegram_status": str(previous_report.get("telegram_status") or "not_configured")}
+                if not deliver else
                 self.deliver(detail, meta, previous=previous_delivery)
                 if self._ready_for_delivery(detail)
                 else {
@@ -605,6 +686,7 @@ class MeetingArchive:
             wants_telegram = bool(settings.get("telegram_account") and settings.get("telegram_config"))
             pending = (
                 (wants_drive and meta.get("drive_status") != "uploaded")
+                or (settings.get("drive_folder_id") and not drive_links_ready(meta))
                 or (wants_mail and meta.get("mail_status") != "sent")
                 or (wants_telegram and meta.get("telegram_status") != "sent")
             )
@@ -627,26 +709,13 @@ class MeetingArchive:
         return retried
 
     def delivery_health(self) -> dict:
-        """Expose recent delivery failures without revealing addresses or report data."""
+        """Expose all configured channels without sending or querying providers."""
         settings = _json(self.config_root / "delivery.json", {})
-        if not isinstance(settings, dict) or not settings.get("email_to"):
-            return {"mail_configured": False, "mail_pending": 0, "mail_auth_required": False}
-        now = datetime.now().astimezone()
-        pending = 0
-        auth_required = False
-        for path in self.reports_root.glob("*/report.json"):
-            meta = _json(path, {})
-            generated = _date(str(meta.get("generated_at") or ""))
-            if not generated or (now - generated).total_seconds() > self.delivery_retry_days * 86400:
-                continue
-            if meta.get("mail_status") != "sent":
-                pending += 1
-                auth_required |= meta.get("mail_status") == "auth_required"
-        return {
-            "mail_configured": True,
-            "mail_pending": pending,
-            "mail_auth_required": auth_required,
-        }
+        return self.delivery_monitor.snapshot(settings if isinstance(settings, dict) else {})
+
+    def check_delivery_health(self) -> dict:
+        settings = _json(self.config_root / "delivery.json", {})
+        return self.delivery_monitor.refresh(settings if isinstance(settings, dict) else {})
 
     @staticmethod
     def _print_pdf(html_path: Path, pdf_path: Path) -> None:
@@ -702,6 +771,8 @@ class MeetingArchive:
             "product_name": MeetingArchive.product_name,
             "title": detail.get("title", ""),
             "segments": detail.get("transcript", []),
+            "speaker_revision": detail.get("speaker_revision", 0),
+            "capture_warnings": detail.get("capture_warnings", []),
             "journal": detail.get("journal", []),
             "frames": [
                 {key: item.get(key) for key in ("id", "captured_at", "speaker", "participant_labels", "path")}
@@ -714,7 +785,17 @@ class MeetingArchive:
             json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
 
+    def _capture_active(self) -> bool:
+        markers = (self.recording_locations.markers() if self.recording_locations
+                   else self.recordings_root.glob("*/.recording.json"))
+        return any(markers)
+
+    @_shared_indexes
     def needs_report(self, meeting_id: str) -> bool:
+        # Archive sync still runs during recording. Only report generation is
+        # deferred, as before; check the marker before scanning the full history.
+        if self._capture_active():
+            return False
         detail = self.report_detail(meeting_id)
         if not detail or not self._ready_for_delivery(detail):
             return False
@@ -726,9 +807,11 @@ class MeetingArchive:
         )
 
     def _ready_for_delivery(self, detail: dict) -> bool:
+        if self._short_automatic(detail):
+            return False
         # Long calls may be split into chunks. An active capture marker means
         # no chunk is final even if its exporter says "finished".
-        if any(self.recordings_root.glob("*/.recording.json")):
+        if self._capture_active():
             return False
         if detail.get("status") not in {"finished", "complete", "completed", "stopped", "idle"}:
             return False
@@ -737,6 +820,36 @@ class MeetingArchive:
             return False
         ended = _date(str(detail.get("ended_at") or ""))
         return bool(ended and (datetime.now().astimezone() - ended).total_seconds() >= 120)
+
+    def _short_automatic(self, detail: dict) -> bool:
+        """A provisional/short auto capture is not a meeting or deliverable.
+
+        Keep manual/unknown-origin recordings, and evaluate merged reports on
+        their whole duration rather than discarding short reconnect fragments.
+        This hides records without deleting any historical source data.
+        """
+        if detail.get("recording_trigger") not in {"mic-activity", "calendar"}:
+            return False
+        if detail.get("recording_discarded") and len(detail.get("source_meeting_ids") or []) <= 1:
+            return True
+        settings = _json(self.config_root / "config.json", {}).get("auto_record") or {}
+        if not isinstance(settings, dict):
+            settings = {}
+        def number(key: str, default: float) -> float:
+            value = settings.get(key, default)
+            return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0 else default
+        minimum = number("min_duration_seconds", 300)
+        duration = float(detail.get("duration_seconds") or 0)
+        if not duration:
+            start = _date(detail.get("started_at"))
+            end = _date(detail.get("ended_at"))
+            if start and end:
+                duration = max(0, (end - start).total_seconds())
+        # Match native's exclusion of the stop-rule's trailing quiet period.
+        quiet = {"call-ended": number("stop_delay_seconds", 15),
+                 "silence": number("silence_stop_minutes", 10) * 60,
+                 "calendar-event-ended": 60}.get(detail.get("stop_reason"), 0)
+        return duration - quiet < minimum
 
     @staticmethod
     def _drive_items(
@@ -979,6 +1092,8 @@ class MeetingArchive:
                 "drive_folder_url", "drive_html_url", "drive_pdf_url"
             ) if previous.get(key)
         }
+        if settings.get("drive_folder_id") and not drive_links_ready(previous):
+            drive_links = {}
 
         gog = shutil.which("gog")
         gws = shutil.which("gws")
@@ -1043,6 +1158,7 @@ class MeetingArchive:
                 drive_status = "failed"
 
         mail_status = str(previous.get("mail_status") or "not_configured")
+        gmail_message_id = previous.get("gmail_message_id")
         if gog and drive_status == "uploaded" and not drive_links:
             drive_links = self._drive_links(
                 gog, google_account, reports_folder_id, folder_name
@@ -1087,6 +1203,8 @@ class MeetingArchive:
                     "--body", body, "--attach", report["pdf_path"], timeout=180,
                 )
                 mail_status = "sent" if sent and sent.get("id") else "failed"
+                if mail_status == "sent":
+                    gmail_message_id = sent["id"]
 
         telegram_status = str(previous.get("telegram_status") or "not_configured")
         telegram_message_id = previous.get("telegram_message_id")
@@ -1130,6 +1248,7 @@ class MeetingArchive:
             **drive_links,
             "drive_links_status": "ready" if drive_links else "unavailable",
             "mail_status": mail_status,
+            "gmail_message_id": gmail_message_id,
             "telegram_status": telegram_status,
             "telegram_message_id": telegram_message_id,
         }
@@ -1188,7 +1307,7 @@ class MeetingArchive:
     def _known_speaker(value: object) -> bool:
         name = str(value or "").strip()
         return bool(name) and not (
-            name.casefold() in {"я", "me", "you", "собеседник", "собеседники", "participant", "участник"}
+            name.casefold() in {"я", "me", "you", "собеседник", "собеседники", "participant", "участник", "голос не подтверждён", "распределить"}
             or re.fullmatch(r"(?:спикер|speaker|remote|участник)[ -]?\d+", name, re.IGNORECASE)
         )
 
@@ -1238,7 +1357,7 @@ class MeetingArchive:
             for label in item.get("participant_labels", []):
                 label = str(label or "").strip()
                 if cls._known_speaker(label) and meet_label_counts[label] >= 2:
-                    person(label)["seen"].add("аккаунт Meet")
+                    person(label)["seen"].add("аккаунт Teams" if item.get("participant_platform") == "teams" else "аккаунт Meet")
 
         for item in detail.get("meeting_chat", []):
             name = str(item.get("sender") or "").strip()
@@ -1262,7 +1381,8 @@ class MeetingArchive:
         spoken = [item for item in ranked if item["speech"] > 0]
         main = (
             spoken[0]["name"]
-            if spoken and spoken[0]["speech"] >= max(speech_by_label.values(), default=0)
+            if not detail.get("capture_warnings") and spoken
+            and spoken[0]["speech"] >= max(speech_by_label.values(), default=0)
             else "Не определён по записи"
         )
         return ranked, main
@@ -1299,9 +1419,13 @@ class MeetingArchive:
         )
         sources = Counter(str(item.get("source") or "") for item in detail.get("transcript", []))
         audio_identity_note = (
+            '<p class="uncertain">Потеряна системная дорожка собеседника. '
+            'На отмеченном участке голос не подтверждён; подпись «Я» не означает, '
+            'что эту реплику произнесли вы. Пропавшее аудио восстановить из текста нельзя.</p>'
+            if detail.get("capture_warnings") else
             f'<p class="uncertain">Фрагменты стенограммы: удалённый звук — {sources["system"]}, '
             f'локальный микрофон — {sources["microphone"]}. Удалённый канал не разделён '
-            'надёжно между аккаунтами Meet.</p>'
+            'надёжно между участниками.</p>'
             if main_speaker == "Не определён по записи" and sources["system"] else ""
         )
         roster = "".join(

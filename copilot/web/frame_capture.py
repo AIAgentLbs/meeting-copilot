@@ -43,6 +43,10 @@ def main() -> None:
             transcript.refresh()
             try:
                 item = frames.capture(transcript.snapshot())
+                if item.get("discarded"):
+                    print(f"frame discarded · {item['reason']}", flush=True)
+                    next_capture = time.monotonic() + 15
+                    continue
                 speaker = item.get("speaker") or "speaker unknown"
                 print(f"frame {item['captured_at']} · {speaker}", flush=True)
             except Exception as exc:

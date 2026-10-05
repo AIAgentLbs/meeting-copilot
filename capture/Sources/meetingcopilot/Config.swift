@@ -315,7 +315,7 @@ enum Config {
         /// one.
         var stopDelay: TimeInterval = 15
         /// Auto-recordings shorter than this are deleted, not transcribed.
-        var minDuration: TimeInterval = 45
+        var minDuration: TimeInterval = 300
         /// Hard ceiling on any auto-recording.
         var maxDuration: TimeInterval = 300 * 60
         /// Silence on *both* tracks for this long ends the session regardless

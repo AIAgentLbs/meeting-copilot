@@ -17,18 +17,28 @@
         <div class="meeting-title" id="meeting-title" data-i18n="meeting.connecting">Подключение к записи...</div>
       </div>
       <div class="status-strip" aria-live="polite">
+        <span class="status" id="capture-status" hidden><i></i><span></span></span>
         <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
         <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-haspopup="dialog">История встреч</button>
-        <button class="delivery-alert" id="delivery-alert" type="button" hidden></button>
+        <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
         <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
+        <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
         <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
           <button data-language="ru" type="button">RU</button>
           <button data-language="en" type="button">EN</button>
         </div>
         <button class="quiet-button" id="refresh-button" type="button" data-i18n="common.refresh">Обновить</button>
+        <button class="quiet-button" id="swap-panels" type="button" data-i18n="nav.swap_panels" aria-pressed="false">Поменять панели</button>
       </div>
     </header>
 
+    <section id="settings-panel" class="settings-panel" hidden aria-labelledby="settings-heading">
+      <div class="repo-dialog-header">
+        <h2 id="settings-heading" data-i18n="settings.open">Настройки</h2>
+        <button class="quiet-button" id="settings-close" type="button" data-i18n="common.close">Закрыть</button>
+      </div>
+      <div id="settings-content"></div>
+    </section>
     <main class="workspace">
       <section class="transcript-pane" aria-labelledby="transcript-heading">
         <div class="pane-header">
@@ -39,6 +49,7 @@
           <div class="transcript-actions">
             <button class="quiet-button translation-jump" id="translation-jump" type="button" hidden></button>
             <button class="quiet-button copy-dialog-button" id="copy-dialog" type="button" data-i18n="transcript.copy">Копировать диалог</button>
+            <button class="quiet-button" id="speaker-edit" type="button" data-i18n="speakers.open">Имена</button>
             <div class="view-tabs transcript-tabs" role="group" aria-label="Вид левой панели" data-i18n-aria-label="aria.transcript_view">
               <button class="active" data-transcript-view="transcript" type="button"><span data-i18n="transcript.tab">Стенограмма</span></button>
               <button data-transcript-view="frames" type="button"><span data-i18n="frames.tab">Кадры</span> <span id="frame-count">0</span></button>
@@ -50,6 +61,10 @@
             </div>
           </div>
         </div>
+        <section class="recognition-notice" id="recognition-notice" hidden aria-label="Состояние расшифровки" data-i18n-aria-label="recognition.heading">
+          <span id="recognition-notice-text" role="status" aria-live="polite" aria-atomic="true"></span>
+          <button class="quiet-button" id="recognition-resume" type="button" data-i18n="recognition.resume">Возобновить расшифровку</button>
+        </section>
         <div class="transcript" id="transcript" aria-live="polite">
           <div class="empty-state">
             <strong data-i18n="transcript.empty_title">Жду стенограмму</strong>
@@ -76,9 +91,16 @@
           </div>
         </div>
 
+        <section class="delivery-notice" id="delivery-notice" hidden>
+          <span id="delivery-notice-text" role="status" aria-live="polite" aria-atomic="true"></span>
+          <button class="quiet-button" id="delivery-notice-details" type="button" data-i18n="delivery.details">Подробнее</button>
+          <button class="quiet-button" id="delivery-notice-dismiss" type="button" data-i18n="delivery.dismiss">Прочитано</button>
+        </section>
         <div class="copilot-content">
           <div class="workspace-filters" id="workspace-filters" role="tablist" aria-label="Чат и сигналы" data-i18n-aria-label="aria.workspace_filter">
-            <button class="active" data-content-view="chat" role="tab" type="button" data-i18n="view.chat">Чат</button>
+            <button class="active" data-content-view="board" role="tab" aria-selected="true" type="button" data-i18n="board.tab">Обзор звонка</button>
+            <button data-content-view="plan" id="call-plan-tab" role="tab" type="button" hidden><span data-i18n="plan.tab">Подготовка</span><span class="tab-count" id="call-plan-count">0</span></button>
+            <button data-content-view="chat" role="tab" type="button" data-i18n="view.chat">Чат</button>
             <button data-content-view="questions" role="tab" type="button"><span data-i18n="journal.questions">Вопросы</span><span class="tab-count" id="questions-count">0</span></button>
             <button data-content-view="objections" role="tab" type="button"><span data-i18n="journal.objections">Риски и возражения</span><span class="tab-count" id="objections-count">0</span></button>
             <button data-content-view="decisions" role="tab" type="button"><span data-i18n="journal.decisions">Решения</span><span class="tab-count" id="decisions-count">0</span></button>
@@ -87,7 +109,9 @@
             <button data-content-view="meeting-chat" role="tab" type="button"><span data-i18n="view.meeting_chat">Чат встречи</span><span class="tab-count" id="meeting-chat-count">0</span></button>
           </div>
           <div class="workspace-view">
-            <div class="chat" id="chat" aria-live="polite">
+            <section class="call-board" id="call-board" aria-label="Обзор звонка" data-i18n-aria-label="board.tab"></section>
+            <div class="call-plan" id="call-plan" hidden aria-live="polite"></div>
+            <div class="chat" id="chat" hidden aria-live="polite">
               <div class="welcome" id="welcome">
                 <h3 data-i18n="welcome.title">Спросите по ходу разговора</h3>
                 <p data-i18n="welcome.text">Ответ будет проверен по локальным источникам. Репозитории открываются только для чтения.</p>
@@ -104,6 +128,12 @@
               <div class="journal-list" id="journal-list" aria-live="polite"></div>
             </div>
             <div class="meeting-chat" id="meeting-chat" hidden>
+              <div class="meeting-chat-tools">
+                <button id="chat-import-file" class="quiet-button" type="button" data-i18n="meeting_chat.import">Импорт TXT / JSON</button>
+                <input id="chat-import-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
+                <label><input id="chat-questions-only" type="checkbox"><span data-i18n="meeting_chat.questions">Только вопросы аудитории</span></label>
+                <span id="chat-import-result" role="status"></span>
+              </div>
               <div class="meeting-chat-note" data-i18n="meeting_chat.note">Сообщения извлекаются из видимой панели Zoom Chat и сохраняются только локально.</div>
               <div class="meeting-chat-list" id="meeting-chat-list" aria-live="polite"></div>
             </div>
@@ -151,6 +181,36 @@
         </div>
         <p class="project-help" id="project-help" data-i18n="project.loading">Загружаю варианты…</p>
         <div class="project-options" id="project-options"></div>
+        <details class="google-context-settings" id="google-context-settings">
+          <summary data-i18n="google.heading">Google: поиск контекста</summary>
+          <p data-i18n="google.privacy">Выключен по умолчанию. Только чтение. Найденные фрагменты используются в текущем звонке выбранной моделью анализа; при облачной модели покидают компьютер.</p>
+          <p id="google-account" role="status" aria-live="polite"></p>
+          <div class="google-connection-actions">
+            <button class="quiet-button" id="google-connect" type="button" data-i18n="google.connect">Подключить Google</button>
+            <button class="quiet-button" id="google-disconnect" type="button" data-i18n="google.disconnect">Отключить Google от Copilot</button>
+            <button class="quiet-button" id="google-check" type="button" data-i18n="google.check">Проверить подключение</button>
+          </div>
+          <p data-i18n="google.automatic">После подключения и выбора источников LLM сам формулирует поисковые запросы по вопросу или теме звонка. Репозитории остаются дополнительным источником, а не единственным.</p>
+          <p data-i18n="google.calendar_note">При включении Calendar Copilot также сопоставляет подготовку с событиями дня звонка.</p>
+          <fieldset id="google-sources">
+            <legend data-i18n="google.sources">Где искать</legend>
+            <label><input type="checkbox" value="calendar" /> Google Calendar</label>
+            <label><input type="checkbox" value="gmail" /> Gmail</label>
+            <label><input type="checkbox" value="drive" /> Google Drive</label>
+          </fieldset>
+          <button class="quiet-button" type="button" id="google-save" data-i18n="google.save">Сохранить источники</button>
+          <details id="google-manual-search">
+            <summary data-i18n="google.manual">Проверить поиск вручную (необязательно)</summary>
+          <form id="google-search-form" class="google-search-form">
+            <label for="google-query" data-i18n="google.query">Участник, компания или тема встречи</label>
+            <input id="google-query" type="search" minlength="2" maxlength="160" required autocomplete="off" />
+            <button class="quiet-button" id="google-search" type="submit" data-i18n="google.search">Найти для текущего звонка</button>
+          </form>
+          </details>
+          <p data-i18n="google.limits">Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 файлов, название, описание и ссылка, не полный текст. Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.</p>
+          <p id="google-message" role="status" aria-live="polite"></p>
+          <div id="google-results"></div>
+        </details>
         <div class="repo-dialog-footer">
           <span data-i18n="project.local_note">Поиск идёт только по выбранным локальным репозиториям.</span>
           <button class="quiet-button" id="project-edit-repos" type="button" data-i18n="project.edit_repos">Изменить набор репозиториев</button>
@@ -191,6 +251,11 @@
           </div>
           <button class="icon-button" id="archive-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
         </div>
+        <section class="delivery-summary" id="delivery-summary" aria-labelledby="delivery-summary-title" hidden>
+          <h3 id="delivery-summary-title" data-i18n="delivery.heading">Доставка отчётов</h3>
+          <dl class="delivery-channels" id="delivery-channels"></dl>
+          <p class="delivery-summary-note" data-i18n="delivery.local_note">Запись и отчёт остаются локально. Ошибки доставки не останавливают звонок.</p>
+        </section>
         <div class="archive-layout">
           <aside class="archive-list" id="archive-list"></aside>
           <section class="archive-detail" id="archive-detail">
@@ -200,6 +265,31 @@
             </div>
           </section>
         </div>
+      </div>
+    </dialog>
+    <dialog class="speaker-dialog" id="speaker-dialog">
+      <div class="speaker-dialog-shell">
+        <div class="repo-dialog-header">
+          <div><h2 data-i18n="speakers.title">Участники и реплики</h2><p id="speaker-edit-help"></p></div>
+          <button class="icon-button" id="speaker-edit-close" type="button" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="speaker-editor-body">
+          <h3 data-i18n="speakers.rename_title">Переименовать во всей встрече</h3>
+          <div id="speaker-name-list"></div>
+          <h3 data-i18n="speakers.assign_title">Исправить, кто говорит</h3>
+          <div class="speaker-selection-actions">
+            <button class="quiet-button" id="speaker-select-pending" type="button" data-i18n="speakers.select_pending">Выбрать неразмеченные</button>
+            <button class="quiet-button" id="speaker-select-clear" type="button" data-i18n="speakers.clear_selection">Снять выбор</button>
+            <span id="speaker-selection-count" aria-live="polite"></span>
+          </div>
+          <div class="speaker-assignment-controls">
+            <select id="speaker-assignment-target" data-i18n-aria-label="speakers.target"></select>
+            <input id="speaker-assignment-name" maxlength="80" data-i18n-placeholder="speakers.new_name" data-i18n-aria-label="speakers.new_name">
+            <button class="send-button" id="speaker-assignment-save" type="button" data-i18n="speakers.assign">Назначить выбранным</button>
+          </div>
+          <div id="speaker-utterance-list"></div>
+        </div>
+        <div class="repo-dialog-footer"><span id="speaker-edit-status" role="status"></span></div>
       </div>
     </dialog>
     <script src="/app.js" defer></script>

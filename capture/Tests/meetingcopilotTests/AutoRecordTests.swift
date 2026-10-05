@@ -14,6 +14,11 @@ import Testing
 struct AutoRecordTests {
     private let settings = Config.AutoRecordSettings()
 
+    @Test("Automatic meeting minimum defaults to five minutes")
+    func fiveMinuteDefault() {
+        #expect(settings.minDuration == 300)
+    }
+
     /// The case from the issue: nineteen seconds of Zoom, then ninety seconds
     /// of meetingcopilot waiting to be sure the call was over, kept as a 99-second
     /// recording with 29 MB of audio and nothing in it.

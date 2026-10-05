@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreAudio
 import Foundation
 import os.lock
@@ -55,6 +55,11 @@ final class SystemAudioRecorder {
     private let queue = DispatchQueue(label: "com.aiagentlabs.meeting-copilot.system-tap")
     private let liveAudio = LiveAudioBufferRelay()
     private(set) var isRecording = false
+    private var outputDevice: AudioObjectID?
+    private var lastRecoveryAt: Date?
+    private var recoveryAttempts = 0
+    private(set) var recoveryEvents: [[String: String]] = []
+    private var converter: AVAudioConverter?
 
     // Thread-safe shared state: accessed from both the main thread and the
     // IOProc callback (background serial queue) without further sync.
@@ -67,6 +72,8 @@ final class SystemAudioRecorder {
         var levelMeasurable = true
         var bufferCount = 0
         var highestPeak: Float = 0
+        var lastBufferAt: Date?
+        var lastNonzeroAt: Date?
         var muted = false
     }
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -148,6 +155,74 @@ final class SystemAudioRecorder {
         }
 
         isRecording = true
+        outputDevice = AudioDevices.defaultOutput()
+    }
+
+    /// File growth is not proof of capture: a dead tap can keep writing zeroes.
+    /// Rebuild on an output-route change, stalled callbacks, or sustained
+    /// digital silence while a call process is still playing. Preserve the
+    /// open file, installed live sink and clock; never truncate earlier audio.
+    func checkHealth(now: Date = Date(), callHasOutput: Bool) {
+        guard isRecording, let outputFile = file else { return }
+        let currentOutput = AudioDevices.defaultOutput()
+        let signal = state.withLock { ($0.lastBufferAt, $0.lastNonzeroAt, $0.muted) }
+        guard !signal.2 else { return }
+        if let recovered = lastRecoveryAt, let nonzero = signal.1, nonzero > recovered {
+            recoveryAttempts = 0
+        }
+        guard Self.shouldRecover(
+            now: now, firstBufferAt: firstBufferAt, lastBufferAt: signal.0,
+            lastNonzeroAt: signal.1, outputChanged: currentOutput != outputDevice,
+            callHasOutput: callHasOutput, lastRecoveryAt: lastRecoveryAt,
+            attempts: recoveryAttempts
+        ) else { return }
+        recoveryAttempts += 1
+        lastRecoveryAt = now
+        outputDevice = currentOutput
+        if let procID { AudioDeviceStop(aggregateID, procID) }
+        cleanup(preserveFile: true)
+        do {
+            let (description, objects) = Self.describe(scope)
+            var newTap = AudioObjectID(kAudioObjectUnknown)
+            let status = AudioHardwareCreateProcessTap(description, &newTap)
+            guard status == noErr else { throw RecorderError.tapCreationFailed(status) }
+            tapID = newTap
+            tappedObjects = objects
+            let format = try tapStreamFormat()
+            converter = format == outputFile.processingFormat ? nil
+                : AVAudioConverter(from: format, to: outputFile.processingFormat)
+            if format != outputFile.processingFormat && converter == nil {
+                throw RecorderError.tapFormatUnreadable(-1)
+            }
+            try createAggregateDevice(tapUUID: description.uuid)
+            // Account for the capture gap before resumed audio, not at EOF.
+            if let start = firstBufferAt {
+                let missing = Int64(Date().timeIntervalSince(start) * outputFile.processingFormat.sampleRate) - outputFile.length
+                if missing > 0, missing < Int64(outputFile.processingFormat.sampleRate * 120),
+                   let pad = AVAudioPCMBuffer(pcmFormat: outputFile.processingFormat, frameCapacity: AVAudioFrameCount(missing)) {
+                    pad.frameLength = AVAudioFrameCount(missing)
+                    if let silence = AudioLevel.silence(like: pad) { try outputFile.write(from: silence) }
+                }
+            }
+            try installIOProc(format: format)
+            recoveryEvents.append(["at": ISO8601DateFormatter().string(from: now), "status": "restarted"])
+            FileHandle.standardError.write(Data("system tap rebuilt after capture/route loss\n".utf8))
+        } catch {
+            cleanup(preserveFile: true)
+            recoveryEvents.append(["at": ISO8601DateFormatter().string(from: now), "status": "failed", "error": String(describing: error)])
+            FileHandle.standardError.write(Data("system tap recovery failed: \(error)\n".utf8))
+        }
+    }
+
+    static func shouldRecover(
+        now: Date, firstBufferAt: Date?, lastBufferAt: Date?, lastNonzeroAt: Date?,
+        outputChanged: Bool, callHasOutput: Bool, lastRecoveryAt: Date?, attempts: Int
+    ) -> Bool {
+        CaptureRecoveryPolicy.shouldRecover(
+            now: now, firstBufferAt: firstBufferAt, lastBufferAt: lastBufferAt,
+            lastNonzeroAt: lastNonzeroAt, outputChanged: outputChanged,
+            callHasOutput: callHasOutput, lastRecoveryAt: lastRecoveryAt, attempts: attempts
+        )
     }
 
     /// Stop capturing and finalize the file. Idempotent.
@@ -327,7 +402,9 @@ final class SystemAudioRecorder {
         let peak = AudioLevel.peak(of: buffer)
         let muted: Bool = state.withLock { s in
             s.bufferCount += 1
+            s.lastBufferAt = Date()
             if let peak {
+                if peak > 0.00001 { s.lastNonzeroAt = Date() }
                 s.highestPeak = max(s.highestPeak, peak)
                 if peak >= AudioLevel.speechThreshold { s.lastSoundAt = Date() }
             } else {
@@ -344,14 +421,28 @@ final class SystemAudioRecorder {
             outgoing = silent
         }
         do {
-            try file.write(from: outgoing)
+            if let converter {
+                let capacity = AVAudioFrameCount(ceil(Double(outgoing.frameLength) * file.processingFormat.sampleRate / outgoing.format.sampleRate)) + 32
+                guard let converted = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: capacity) else { return }
+                let input = ConversionInput(buffer: outgoing)
+                var error: NSError?
+                converter.convert(to: converted, error: &error) { _, status in
+                    guard input.take() else { status.pointee = .noDataNow; return nil }
+                    status.pointee = .haveData
+                    return input.buffer
+                }
+                if let error { throw error }
+                try file.write(from: converted)
+            } else {
+                try file.write(from: outgoing)
+            }
             liveAudio.forward(outgoing)
         } catch {
             FileHandle.standardError.write(Data("system track write failed: \(error)\n".utf8))
         }
     }
 
-    private func cleanup() {
+    private func cleanup(preserveFile: Bool = false) {
         if let procID, aggregateID != kAudioObjectUnknown {
             AudioDeviceDestroyIOProcID(aggregateID, procID)
         }
@@ -364,6 +455,20 @@ final class SystemAudioRecorder {
             AudioHardwareDestroyProcessTap(tapID)
             tapID = AudioObjectID(kAudioObjectUnknown)
         }
-        file = nil
+        converter = nil
+        if !preserveFile { file = nil }
+    }
+
+    private final class ConversionInput: @unchecked Sendable {
+        let buffer: AVAudioPCMBuffer
+        private let supplied = OSAllocatedUnfairLock(initialState: false)
+        init(buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+        func take() -> Bool {
+            supplied.withLock { used in
+                guard !used else { return false }
+                used = true
+                return true
+            }
+        }
     }
 }

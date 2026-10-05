@@ -9,7 +9,9 @@ actor LiveTranscriptExporter {
         let title: String
         let startedAt: Date
         let remoteAttendees: [String]
+        let meetingLink: String?
         let oneToOneRemoteSpeaker: String?
+        var recordingDirectory: String? = nil
     }
 
     private struct Segment: Encodable {
@@ -38,7 +40,12 @@ actor LiveTranscriptExporter {
         let startedAt: String
         let updatedAt: String
         let remoteAttendees: [String]
+        let meetingLink: String?
         let segments: [Segment]
+        let captureWarnings: [LiveTranscriptionCoordinator.CaptureWarning]
+        let recordingDirectory: String?
+        let recognitionProgressAt: String?
+        let recoveryAttempts: Int
 
         enum CodingKeys: String, CodingKey {
             case version, source, title, status, segments
@@ -46,6 +53,11 @@ actor LiveTranscriptExporter {
             case startedAt = "started_at"
             case updatedAt = "updated_at"
             case remoteAttendees = "remote_attendees"
+            case meetingLink = "meeting_link"
+            case captureWarnings = "capture_warnings"
+            case recordingDirectory = "recording_dir"
+            case recognitionProgressAt = "recognition_progress_at"
+            case recoveryAttempts = "recovery_attempts"
         }
     }
 
@@ -88,7 +100,12 @@ actor LiveTranscriptExporter {
             startedAt: Self.iso(context.startedAt),
             updatedAt: Self.iso(now),
             remoteAttendees: context.remoteAttendees,
-            segments: segments
+            meetingLink: context.meetingLink,
+            segments: segments,
+            captureWarnings: snapshot.captureWarnings,
+            recordingDirectory: context.recordingDirectory,
+            recognitionProgressAt: snapshot.recognitionProgressAt.map(Self.iso),
+            recoveryAttempts: snapshot.recoveryAttempts
         )
 
         do {

@@ -34,8 +34,8 @@ enum InterfaceLanguage: String, CaseIterable, Sendable {
     static var configuredValues: [String] { [automatic] + allCases.map(\.rawValue) }
 
     /// The language in force. English until the application says otherwise:
-    /// `Run` resolves it once at startup, before a window exists, and nothing
-    /// changes it afterwards.
+    /// `Run` resolves it at startup, and a fresh installation confirms its
+    /// choice before the main windows exist. It stays fixed afterwards.
     ///
     /// Which is also what makes the test suite readable. A test looks for the
     /// row that says "Keep the audio after transcribing", and it finds it on
@@ -52,6 +52,12 @@ enum InterfaceLanguage: String, CaseIterable, Sendable {
         current = choose(
             configured: Config.interfaceLanguage(),
             preferred: Locale.preferredLanguages)
+    }
+
+    /// Only a new setup without an explicit supported choice needs asking.
+    /// Completed installations keep their existing automatic behaviour.
+    static func needsFirstLaunchChoice(setupPending: Bool, configured: String?) -> Bool {
+        setupPending && configured.flatMap(InterfaceLanguage.init(rawValue:)) == nil
     }
 
     /// The whole decision, as a function of its two inputs and nothing else —
