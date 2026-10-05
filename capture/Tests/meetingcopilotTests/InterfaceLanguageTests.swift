@@ -54,19 +54,21 @@ struct InterfaceLanguageTests {
         let previous = InterfaceLanguage.current
         defer { InterfaceLanguage.current = previous }
         var attempts = 0
-        #expect(!FirstLaunchLanguage.choose(suggested: .russian, save: { _ in false }, present: { alert in
+        let failedSave = FirstLaunchLanguage.choose(suggested: .russian, save: { _ in false }, present: { alert in
             attempts += 1
             if attempts == 1 { return .alertFirstButtonReturn }
             #expect(alert.informativeText.contains("Could not save"))
             #expect((alert.accessoryView as? NSPopUpButton)?.selectedItem?.title == "Русский")
             return .alertSecondButtonReturn
-        }))
+        })
+        #expect(!failedSave)
         #expect(attempts == 2)
         #expect(InterfaceLanguage.current == previous)
-        #expect(!FirstLaunchLanguage.choose(suggested: .russian, save: { _ in
+        let quit = FirstLaunchLanguage.choose(suggested: .russian, save: { _ in
             Issue.record("Quitting must not write settings")
             return true
-        }, present: { _ in .alertSecondButtonReturn }))
+        }, present: { _ in .alertSecondButtonReturn })
+        #expect(!quit)
     }
 
     /// Every branch of the decision, without a config file or a Mac set to
