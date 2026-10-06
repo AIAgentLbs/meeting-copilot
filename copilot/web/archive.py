@@ -340,7 +340,13 @@ class MeetingArchive:
         times = [
             parsed for parsed in map(self._item_time, [*journal, *frames, *chat]) if parsed
         ]
-        recording = self._match_recording(times, str(snapshot.get("started_at") or ""))
+        # Capture's explicit directory is authoritative, including while only
+        # .recording.json exists. Never substitute a nearby finished dictation.
+        capture_directory = str(snapshot.get("recording_dir") or "")
+        recording = (
+            next((item for item in self._recordings() if item["dir"] == capture_directory), None)
+            if capture_directory else self._match_recording(times, str(snapshot.get("started_at") or ""))
+        )
         title = self._best_title(snapshot, frames, recording)
         segments = list(snapshot.get("segments") or [])
         started = str(snapshot.get("started_at") or (recording or {}).get("started_at") or "")
@@ -351,6 +357,8 @@ class MeetingArchive:
             or ""
         )
         duration = int((recording or {}).get("duration_seconds") or 0)
+        if not duration and (start_time := _date(started)) and (end_time := _date(ended)):
+            duration = max(0, int((end_time - start_time).total_seconds()))
         report_dir = self.reports_root / meeting_id
         report_meta = _json(report_dir / "report.json", {})
         result = {
@@ -363,7 +371,7 @@ class MeetingArchive:
             "recording_trigger": (recording or {}).get("meta", {}).get("trigger") or snapshot.get("recording_trigger", ""),
             "stop_reason": (recording or {}).get("meta", {}).get("stop_reason", ""),
             "recording_discarded": bool(snapshot.get("recording_dir") and not Path(snapshot["recording_dir"]).exists()),
-            "recording_dir": (recording or {}).get("dir", ""),
+            "recording_dir": (recording or {}).get("dir") or capture_directory,
             "audio_file": self._audio_file(recording),
             "transcript": segments,
             "capture_warnings": list(snapshot.get("capture_warnings") or []),

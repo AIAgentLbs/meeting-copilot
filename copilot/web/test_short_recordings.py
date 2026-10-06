@@ -26,6 +26,30 @@ class ShortRecordingTests(unittest.TestCase):
         for trigger in ("manual", "", None):
             self.assertFalse(self.archive._short_automatic({"recording_trigger": trigger, "duration_seconds": 10}))
 
+    def test_live_call_does_not_inherit_previous_short_recording(self):
+        previous = self.recordings / "previous"
+        previous.mkdir()
+        (previous / "meta.json").write_text(json.dumps({
+            "started": "2026-10-06T14:34:07Z", "ended": "2026-10-06T14:35:08Z",
+            "duration_seconds": 61, "trigger": "mic-activity", "stop_reason": "call-ended",
+        }))
+        current = self.recordings / "current"
+        current.mkdir()
+        (current / ".recording.json").write_text(json.dumps({
+            "started": "2026-10-06T14:40:19Z", "trigger": "mic-activity",
+        }))
+        self.archive.sync_transcript({
+            "meeting_id": "current", "status": "recording", "recording_dir": str(current),
+            "started_at": "2026-10-06T14:40:19Z", "latest_at": "2026-10-06T15:09:29Z",
+            "segments": [{"source": "system", "timestamp": "2026-10-06T15:09:29Z", "text": "Fixture"}],
+        })
+        detail = self.archive.detail("current")
+        self.assertFalse(self.archive._short_automatic(detail), "a long active call must be eligible for analysis")
+        self.assertEqual(detail["recording_dir"], str(current))
+        self.assertEqual(detail["duration_seconds"], 1750)
+        self.assertEqual(detail["ended_at"], "2026-10-06T15:09:29Z")
+        self.assertEqual(detail["stop_reason"], "")
+
     def test_wait_before_stopping_does_not_make_dictation_a_meeting(self):
         for reason, quiet in (("call-ended", 15), ("silence", 600), ("calendar-event-ended", 60)):
             for duration, expected in ((quiet + 299, True), (quiet + 300, False)):
