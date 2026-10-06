@@ -12,7 +12,7 @@
       <div class="brand-block">
         <div class="brand-lockup">
           <div class="brand">Meeting Copilot</div>
-          <div class="brand-company">by aiagentlbs.com</div>
+          <a class="brand-company" href="https://aiagentlbs.com/" target="_blank" rel="noopener noreferrer">by aiagentlbs.com</a>
         </div>
         <div class="meeting-title" id="meeting-title" data-i18n="meeting.connecting">Подключение к записи...</div>
       </div>
@@ -143,11 +143,12 @@
         <div class="composer-wrap" id="composer-wrap">
           <div class="analysis-row">
             <label class="switch-label">
-              <input id="auto-analysis" type="checkbox" checked />
-              <span data-i18n="analysis.auto">Автоанализ важных новых реплик</span>
+              <input id="auto-analysis" type="checkbox" aria-describedby="analysis-help" checked />
+              <span data-i18n="analysis.auto">Анализировать разговор автоматически</span>
             </label>
-            <button class="quiet-button" id="analyze-button" type="button" data-i18n="analysis.now">Анализ сейчас</button>
+            <button class="quiet-button" id="analyze-button" type="button" aria-describedby="analysis-help" data-i18n="analysis.now">Проанализировать сейчас</button>
           </div>
+          <div class="note-help" id="analysis-help" data-i18n="analysis.help">Находит вопросы, риски и решения в расшифровке. Галочка включает автоматические проверки новых реплик; кнопка запускает одну проверку сейчас. На запись звука не влияет.</div>
           <div class="analysis-status" id="analysis-status" data-i18n="analysis.initial">Автоанализ ещё не запускался</div>
           <form class="composer" id="chat-form">
             <label for="question" data-i18n="composer.label">Вопрос или заметка к текущему созвону</label>
@@ -160,10 +161,11 @@
                 data-i18n-placeholder="composer.placeholder"
               ></textarea>
               <div class="composer-buttons">
-                <button class="note-button" id="note-button" type="button">Заметка @ --:--</button>
+                <button class="note-button" id="note-button" type="button" aria-describedby="note-help" data-i18n="note.button">Сохранить заметку</button>
                 <button class="send-button" id="send-button" type="submit" data-i18n="composer.ask">Спросить</button>
               </div>
             </div>
+            <div class="note-help" id="note-help">Сохранит введённый текст в «Мои заметки» с отметкой времени звонка. Ответ от ИИ не запрашивается.</div>
             <div class="composer-help" id="composer-help" data-i18n="composer.help">Enter спрашивает · ⌘Enter сохраняет заметку · Shift+Enter переносит строку</div>
           </form>
         </div>

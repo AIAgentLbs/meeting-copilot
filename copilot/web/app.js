@@ -189,8 +189,9 @@ const translations = {
     "meeting_chat.note": "Видимый Zoom Chat и импорт экспорта · сообщения сохраняются отдельно от скриншотов. Скрытая история автоматически не прокручивается.",
     "meeting_chat.import": "Импорт TXT / JSON",
     "meeting_chat.questions": "Только вопросы аудитории",
-    "analysis.auto": "Автоанализ важных новых реплик",
-    "analysis.now": "Анализ сейчас",
+    "analysis.auto": "Анализировать разговор автоматически",
+    "analysis.now": "Проанализировать сейчас",
+    "analysis.help": "Находит вопросы, риски и решения в расшифровке. Галочка включает автоматические проверки новых реплик; кнопка запускает одну проверку сейчас. На запись звука не влияет.",
     "analysis.initial": "Автоанализ ещё не запускался",
     "composer.label": "Вопрос или заметка к текущему созвону",
     "composer.placeholder": "Спросите Copilot или запишите мысль по ходу разговора.",
@@ -201,7 +202,8 @@ const translations = {
     "repos.search": "Имя, путь или remote URL",
     "repos.help": "Список берётся из локального каталога — клонирования и сетевых Git-команд нет.",
     "repos.save": "Сохранить набор",
-    "note.button": "Заметка @ {time}",
+    "note.button": "Сохранить заметку",
+    "note.help": "Сохранит введённый текст в «Мои заметки» с отметкой времени звонка. {time} — время от начала встречи. Ответ от ИИ не запрашивается.",
     "age.none": "нет реплик",
     "age.now": "только что",
     "age.seconds": "{value} сек назад",
@@ -415,8 +417,9 @@ const translations = {
     "meeting_chat.note": "Visible Zoom Chat and imported exports · messages are saved independently of screenshots. Hidden history is not scrolled automatically.",
     "meeting_chat.import": "Import TXT / JSON",
     "meeting_chat.questions": "Audience questions only",
-    "analysis.auto": "Auto-analyse important new utterances",
+    "analysis.auto": "Analyse the conversation automatically",
     "analysis.now": "Analyse now",
+    "analysis.help": "Finds questions, risks and decisions in the transcript. The checkbox enables automatic checks of new utterances; the button runs one check now. Does not affect audio recording.",
     "analysis.initial": "Auto-analysis has not run yet",
     "composer.label": "Question or note for the current meeting",
     "composer.placeholder": "Ask Copilot or capture a thought during the conversation.",
@@ -427,7 +430,8 @@ const translations = {
     "repos.search": "Name, path, or remote URL",
     "repos.help": "The list comes from the local catalog—no clone, pull, or fetch is performed.",
     "repos.save": "Save selection",
-    "note.button": "Note @ {time}",
+    "note.button": "Save note",
+    "note.help": "Saves the entered text to My notes with a meeting timestamp. {time} is the time since the meeting started. Does not request an AI answer.",
     "age.none": "no utterances",
     "age.now": "just now",
     "age.seconds": "{value}s ago",
@@ -597,6 +601,7 @@ function applyLanguage() {
   const googleAccount = document.querySelector("#google-account");
   if (googleAccount?.dataset.auth) googleAccount.textContent = googleAccount.dataset.auth === "connected"
     ? t("google.account", {account: googleAccount.dataset.account || "gws"}) : t("google.auth");
+  document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(activeTranscript) });
 }
 
 let sourceFilter = "all";
@@ -1075,6 +1080,7 @@ function renderTranscript(transcript) {
     elements.translationJump.title = t("transcript.translation_hint", { time: localTime(latestTranslation.timestamp) });
   }
   elements.note.textContent = t("note.button", { time: timecodeLabel(transcript) });
+  document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(transcript) });
   elements.meetingTitle.textContent = transcript.display_meeting || transcript.meeting || "Встреча";
   elements.liveStatus.classList.toggle("live", Boolean(transcript.live));
   elements.liveStatus.classList.toggle("error", Boolean(transcript.error || transcript.status === "error"));

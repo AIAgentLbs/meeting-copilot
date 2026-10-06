@@ -362,6 +362,8 @@ input:focus-visible + span {
   font-weight: 750;
   letter-spacing: 0.055em;
   text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .brand {
@@ -1826,6 +1828,13 @@ textarea::placeholder {
   .send-button {
     color: #142019;
   }
+}
+
+.note-help {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .composer-help {
