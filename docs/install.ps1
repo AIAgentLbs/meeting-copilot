@@ -1,6 +1,6 @@
 param(
     [string]$PackagePath,
-    [string]$ExpectedSha256 = '05f7b492c6bfd9fc7fc068f2700db3c0de3c4e2686a8c2906adcf245aa63f8c4',
+    [string]$ExpectedSha256 = '89c600f994e37c1522f0bc1c9ad191a7860c6103269b3323cf8d1a2bb0220266',
     [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA 'MeetingCopilot'),
     [string]$UserRoot = $env:USERPROFILE,
     [switch]$SkipModels,
@@ -10,8 +10,8 @@ param(
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
-$version='0.1.0-windows-beta.1'
-$url='https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v0.1.0/meeting-copilot-windows-x64.zip'
+$version='0.1.1-windows-beta.1'
+$url='https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v0.1.1/meeting-copilot-windows-v0.1.1-x64.zip'
 $utf8=[Text.UTF8Encoding]::new($false)
 $script:copilotDownloadPython=$null
 function Download-VerifiedInput([string]$Url,[string]$Target){
@@ -93,6 +93,16 @@ try {
     }
     [IO.File]::WriteAllText("$InstallRoot\current.json",(@{version=$version;directory=$destination}|ConvertTo-Json),$utf8)
     if(-not $NoShortcuts){
+        # Separate tools installation leaves a parallel user's Codex session untouched.
+        $tools=Join-Path $InstallRoot 'tools'
+        $native=Get-ChildItem "$tools\node_modules" -Filter codex.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        if(-not $native){
+            $npm=Get-Command npm.cmd -ErrorAction SilentlyContinue
+            if($npm){
+                & $npm.Source install --prefix $tools @openai/codex@0.160.1 --no-audit --no-fund
+                if($LASTEXITCODE -ne 0){throw 'Could not install the compatible private Codex CLI'}
+            }
+        }
         $shell=New-Object -ComObject WScript.Shell
         $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Meeting Copilot.lnk'))
         $shortcut.TargetPath="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
