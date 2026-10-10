@@ -85,9 +85,6 @@ enum SpeakerNamer {
             preference: settings.backend, anthropicModel: settings.model
         )
         var allTransient = true
-        var lastBackend = settings.backend
-        var lastModel: String?
-        var lastReason = Analytics.Reason.unknown
 
         for backend in backends {
             do {
@@ -119,19 +116,11 @@ enum SpeakerNamer {
                 log("named \(merged.namedCount) of \(labels.count) speaker(s)")
                 let finished = finish(merged, transcript: transcript, dir: dir, log: log)
                 if finished != nil {
-                    Analytics.track(.speakerNamesFinished, [
-                        .backend: .text(backend.name),
-                        .model: .text(AnalyticsCatalogue.summaryModel(
-                            backend: backend.name, model: backend.model)),
-                    ])
                 }
                 return finished
             } catch {
                 let transient = LLMError.isTransient(error)
                 allTransient = allTransient && transient
-                lastBackend = backend.name
-                lastModel = backend.model
-                lastReason = Analytics.reason(for: error)
                 log(LLMError.isUsageLimit(error)
                     ? "\(backend.name) is out of allowance — trying the next backend"
                     : "naming via \(backend.name) failed: \(error)")
@@ -141,14 +130,6 @@ enum SpeakerNamer {
         SessionState.update(dir, with: [
             SessionState.Key.speakersStatus:
                 allTransient ? SessionState.deferred : "failed",
-        ])
-        Analytics.track(.speakerNamesFailed, [
-            .backend: .text(lastBackend),
-            .model: .text(AnalyticsCatalogue.summaryModel(
-                backend: lastBackend, model: lastModel)),
-            .reason: .text(lastReason.rawValue),
-            .outcome: .text((allTransient
-                ? Analytics.Outcome.deferred : .gaveUp).rawValue),
         ])
         log(allTransient
             ? "no backend could be reached — naming deferred, will be retried later"

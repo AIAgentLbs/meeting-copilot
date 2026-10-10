@@ -115,6 +115,18 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((share / "web/previous").is_file())
         self.assertFalse((self.root / "compiled").exists())
 
+    def test_reinstall_removes_only_retired_usage_settings_and_state(self):
+        _, share, config = self.seed_existing()
+        (config / "config.json").write_text(json.dumps({"analytics": True, "keep_audio": True}))
+        for name in ("analytics.json", "analytics-pending.json"):
+            (config / name).write_text("synthetic-retired-state")
+        result = self.run_install()
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(json.loads((config / "config.json").read_text()), {"keep_audio": True})
+        for name in ("analytics.json", "analytics-pending.json"):
+            self.assertFalse((config / name).exists())
+        self.assertEqual((share / "recordings/keep.txt").read_text(), "synthetic-recording")
+
     def test_compile_failure_never_replaces_app(self):
         app, _, _ = self.seed_existing()
         result = self.run_install(MOCK_COMPILE_FAIL="1")

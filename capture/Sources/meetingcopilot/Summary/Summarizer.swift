@@ -36,11 +36,6 @@ enum Summarizer {
         let backends = LLMBackend.available(preference: settings.backend)
         guard !backends.isEmpty else {
             log("summary skipped — no backend available")
-            Analytics.track(.summaryFailed, [
-                .backend: .text(settings.backend),
-                .reason: .text(Analytics.Reason.noKey.rawValue),
-                .outcome: .text(Analytics.Outcome.deferred.rawValue),
-            ])
             return nil
         }
         // Whether every failure so far was of a kind that passes. If they all
@@ -48,7 +43,6 @@ enum Summarizer {
         // off: a meeting summarized on a plane should still get its summary
         // that evening.
         var allTransient = true
-        var lastReason = Analytics.Reason.unknown
 
         // Whatever we know about the meeting, above the transcript. Names in
         // particular: given a participant list, the summarizer writes "Anna
@@ -67,11 +61,6 @@ enum Summarizer {
                 )
                 log("summary written by \(backend.name)")
                 SessionState.update(dir, with: [SessionState.Key.summaryStatus: nil])
-                Analytics.track(.summaryFinished, [
-                    .backend: .text(backend.name),
-                    .model: .text(AnalyticsCatalogue.summaryModel(
-                        backend: backend.name, model: backend.model)),
-                ])
                 return backend.name
             } catch {
                 // Falling through is the expected path when a subscription is
@@ -79,13 +68,6 @@ enum Summarizer {
                 // healthy hand-off reads like something broke.
                 let transient = LLMError.isTransient(error)
                 allTransient = allTransient && transient
-                lastReason = Analytics.reason(for: error)
-                Analytics.track(.summaryBackendFailed, [
-                    .backend: .text(backend.name),
-                    .model: .text(AnalyticsCatalogue.summaryModel(
-                        backend: backend.name, model: backend.model)),
-                    .reason: .text(lastReason.rawValue),
-                ])
                 log(LLMError.isUsageLimit(error)
                     ? "\(backend.name) is out of allowance — trying the next backend"
                     : "summary via \(backend.name) failed: \(error)")
@@ -101,12 +83,6 @@ enum Summarizer {
         log(allTransient
             ? "no backend could be reached — summary deferred, will be retried later"
             : "every backend failed for good — giving up on the summary")
-        Analytics.track(.summaryFailed, [
-            .backend: .text(settings.backend),
-            .reason: .text(lastReason.rawValue),
-            .outcome: .text((allTransient
-                ? Analytics.Outcome.deferred : .gaveUp).rawValue),
-        ])
         return nil
     }
 

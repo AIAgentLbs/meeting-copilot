@@ -566,7 +566,6 @@ enum Config {
         case .unchanged: return true
         case .written:
             NotificationCenter.default.post(name: didChange, object: nil)
-            Analytics.settingChanged(path: path, value: value)
             return true
         }
     }

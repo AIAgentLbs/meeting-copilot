@@ -52,10 +52,9 @@ not credentials to paste into this documentation.
   `speaker_names.enabled`, `user_name`, `speaker_names.backend`,
   `speaker_names.model`.
 - Interface/behavior: `interface_language`, `dock_icon`, `menu_bar_icon`,
-  `window`, `on_stop`, `analytics`.
+  `window`, `on_stop`.
 
 Short automatic recordings use a 300-second minimum by default; intentional
 manual recordings are preserved. Interface language is chosen on first
-launch and is separate from speech/summary language. Optional usage statistics
-are currently on unless disabled; read [the exact disclosure](docs/analytics.md)
-and use `meetingcopilot analytics off` or the setup switch to opt out.
+launch and is separate from speech/summary language. This distribution does
+not collect or send product-usage statistics.

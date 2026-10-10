@@ -57,9 +57,6 @@ final class RecordingsWindow: NSObject {
 
     func show() {
         if !panel.isVisible {
-            Analytics.track(.artifactOpened, [
-                .artifact: .text(Analytics.Artifact.recordingsWindow.rawValue),
-            ])
         }
         reload()
         panel.makeKeyAndOrderFront(nil)
@@ -418,9 +415,6 @@ final class RecordingsWindow: NSObject {
 
     @objc private func openFolderClicked() {
         guard let item = selected else { return }
-        Analytics.track(.artifactOpened, [
-            .artifact: .text(Analytics.Artifact.sessionFolder.rawValue),
-        ])
         NSWorkspace.shared.activateFileViewerSelecting([item.dir])
     }
 

@@ -14,7 +14,6 @@ import Foundation
 struct LLMBackend {
     let name: String
     /// Exact local/configured model used for the call. It stays local;
-    /// analytics allow-lists it before sending anything.
     let model: String?
     /// (system prompt, user prompt) → completion text.
     let call: (String, String) async throws -> String

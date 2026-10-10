@@ -71,8 +71,6 @@ struct ProcessSession: ParsableCommand {
         ).standardizedFileURL
 
         let item = try Self.prepare(dir)
-        Analytics.start(surface: .cli)
-        defer { Analytics.flushOnExit() }
         print(item.summaryLine)
 
         switch PostProcessor.plan(for: item, again: again) {
