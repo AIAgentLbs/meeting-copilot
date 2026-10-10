@@ -65,7 +65,7 @@ ZOOM_WINDOW_FILE = HOME / ".config/meeting-copilot/zoom-window.json"
 FRAME_TRIGGER_FILE = HOME / ".config/meeting-copilot/capture-frame.trigger"
 RECOGNITION_GUARD = default_guard()
 RECORDING_LOCATIONS = RECOGNITION_GUARD.health.locations
-CODEX = Path(shutil.which("codex") or "/usr/local/bin/codex")
+CODEX = Path(os.environ.get("MEETING_COPILOT_CODEX") or shutil.which("codex") or "/usr/local/bin/codex")
 JOURNAL_BLOCK_RE = re.compile(
     r"(?m)^(FACT|CONTRADICTION|HISTORY|RISK|OBJECTION|INCOMING_QUESTION|OPEN_QUESTION|COMMITMENT|DECISION|ASK|URL|PRODUCT|SERVICE)"
     r"\s*(?:[—:–-]\s*|\n+)"

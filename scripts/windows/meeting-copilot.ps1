@@ -13,10 +13,21 @@ $env:PYTHONIOENCODING='utf-8'
 foreach($file in @($capture,$python,$server,"$config\config.json","$config\SESSION.md")){
     if(-not(Test-Path $file -PathType Leaf)){throw "Missing installation component: $file"}
 }
-$codex=Get-Command codex.exe,codex.cmd -ErrorAction SilentlyContinue | Select-Object -First 1
-if(-not $codex){throw 'Codex CLI is required. Install/sign in to Codex, then open Meeting Copilot again'}
-& $codex.Source login status *> $null
-if($LASTEXITCODE -ne 0){throw 'Codex needs sign-in. Run codex login, then open Meeting Copilot again'}
+$native=Get-ChildItem "$env:LOCALAPPDATA\MeetingCopilot\tools\node_modules" -Filter codex.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+if($native){$codexPath=$native.FullName}else{$cmd=Get-Command codex.exe,codex.cmd -ErrorAction SilentlyContinue | Select-Object -First 1;$codexPath=$cmd.Source}
+if(-not $codexPath){throw 'Codex CLI is required. Install/sign in to Codex, then open Meeting Copilot again'}
+$env:MEETING_COPILOT_CODEX=$codexPath
+$info=[Diagnostics.ProcessStartInfo]::new()
+$info.FileName=if($codexPath.EndsWith('.cmd')){"$env:SystemRoot\System32\cmd.exe"}else{$codexPath}
+$info.Arguments=if($codexPath.EndsWith('.cmd')){"/d /s /c `"`"$codexPath`" login status`""}else{'login status'}
+$info.UseShellExecute=$false
+$info.RedirectStandardOutput=$true
+$info.RedirectStandardError=$true
+$info.CreateNoWindow=$true
+$auth=[Diagnostics.Process]::Start($info)
+$out=$auth.StandardOutput.ReadToEndAsync();$err=$auth.StandardError.ReadToEndAsync()
+if(-not $auth.WaitForExit(15000)){$auth.Kill();throw 'Codex login check timed out'}
+if($auth.ExitCode -ne 0){throw 'Codex needs sign-in. Run codex login, then open Meeting Copilot again'}
 & $python "$root\refresh-repos.py" --config-root $config
 if($LASTEXITCODE -ne 0){throw 'Read-only repository inventory failed'}
 if($check){
