@@ -2,9 +2,9 @@
 set -euo pipefail
 
 REPO="AIAgentLbs/meeting-copilot"
-VERSION="v0.1.8"
+VERSION="v0.1.9"
 ASSET="meeting-copilot-macos.zip"
-SHA256="2575dbe3cae77a0afdddceda1ddb321541ce58b89b9f914dac4a8f6e098fac19"
+SHA256="74a269a92d60e61dec235b8ca05e6c5f8a2e5b6b75010bb2ef6f11039a081c4d"
 SHARE="${MEETING_COPILOT_SHARE_ROOT:-$HOME/.local/share/meeting-copilot}"
 CONFIG="${MEETING_COPILOT_CONFIG_ROOT:-$HOME/.config/meeting-copilot}"
 BIN="${MEETING_COPILOT_BIN_ROOT:-$HOME/.local/bin}"
@@ -81,6 +81,22 @@ for dir in web; do
 done
 install -m 0755 "$tmp/release/payload/bin/meeting-copilot" "$BIN/meeting-copilot"
 install -m 0755 "$tmp/release/payload/config/refresh-repos.py" "$CONFIG/refresh-repos.py"
+# One-time removal of retired usage-reporting state; preserve all other settings.
+python3 - "$CONFIG" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+config = root / "config.json"
+if config.is_file():
+    value = json.loads(config.read_text())
+    if "analytics" in value:
+        del value["analytics"]
+        temporary = config.with_name("config.json.statistics-removal.tmp")
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+        temporary.chmod(0o600)
+        temporary.replace(config)
+for name in ("analytics.json", "analytics-pending.json"):
+    (root / name).unlink(missing_ok=True)
+PY
 [[ -f "$CONFIG/SESSION.md" ]] || install -m 0644 "$tmp/release/payload/config/SESSION.md" "$CONFIG/SESSION.md"
 [[ -f "$CONFIG/delivery.json.example" ]] || install -m 0600 "$tmp/release/payload/config/delivery.json.example" "$CONFIG/delivery.json.example"
 
