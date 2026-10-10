@@ -112,9 +112,7 @@ ENTITY_MENTIONS = (
     ("PRODUCT", "Instagram", re.compile(r"(?i)\binstagram\b|\bинст(?:а|е|ой)?\b")),
     ("PRODUCT", "TikTok", re.compile(r"(?i)\btik\s*tok\b|\bтикток(?:е|а|ом)?\b")),
 )
-PROCESS_ENV = os.environ | {
-    "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-}
+PROCESS_ENV = os.environ | ({"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"} if os.name != "nt" else {})
 
 SELF_INTRO_PATTERNS = (
     re.compile(r"(?iu)\bменя\s+зовут\s+([^\s,.;:!?]{2,40})"),
@@ -1969,6 +1967,7 @@ ASK формулируй как одну короткую реплику, кот
                 "--json",
                 "-",
             ]
+        command[1:1] = ["--model", "gpt-6.1-sol", "--ask-for-approval", "never"]
         result = subprocess.run(
             command,
             input=prompt,

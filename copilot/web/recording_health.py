@@ -6,7 +6,24 @@ existing `record resume` command after matching a live owner and meeting clock.
 from __future__ import annotations
 
 import argparse
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    import msvcrt
+    class fcntl:
+        LOCK_EX = 1
+        LOCK_NB = 2
+        @staticmethod
+        def flock(file, flags):
+            file.seek(0)
+            if not file.read(1):
+                file.write("0")
+                file.flush()
+            file.seek(0)
+            try:
+                msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as error:
+                raise BlockingIOError() from error
 import json
 import math
 import os
@@ -35,11 +52,32 @@ def epoch(value) -> float:
 def owner_alive(pid) -> bool:
     if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 1:
         return False
+    if os.name == "nt":
+        return windows_owner_alive(pid)
     try:
         os.kill(pid, 0)
         return True
     except (OSError, ValueError):
         return False
+
+
+def windows_owner_alive(pid: int) -> bool:
+    # os.kill(pid, 0) terminates a process on Windows. Query only.
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return False
+    try:
+        code = wintypes.DWORD()
+        return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+    finally:
+        kernel.CloseHandle(handle)
 
 
 class RecordingLocations:
@@ -79,7 +117,7 @@ class RecordingLocations:
             tracks = {}
             for kind in ("mic", "system"):
                 name = files.get(kind)
-                if not isinstance(name, str) or Path(name).name != name or not name.endswith(".caf"):
+                if not isinstance(name, str) or Path(name).name != name or not name.endswith((".caf", ".wav")):
                     continue
                 track = path.parent / name
                 if not self.contains(track):
@@ -163,7 +201,7 @@ class RecognitionGuard:
         with self.lock:
             # Protect the command AND persisted cooldown from another process.
             self.state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-            with self.state_file.with_suffix(".lock").open("a") as lease:
+            with self.state_file.with_suffix(".lock").open("a+") as lease:
                 os.chmod(lease.name, 0o600)
                 try:
                     fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -268,8 +306,11 @@ def default_guard() -> RecognitionGuard:
     home = Path.home()
     root = home / ".local/share/meeting-copilot"
     locations = RecordingLocations(home / ".config/meeting-copilot/config.json", root / "recordings")
-    binaries = [Path("/Applications/Meeting Copilot Capture.app/Contents/MacOS/MeetingCopilotCapture"),
-                home / "Applications/Meeting Copilot Capture.app/Contents/MacOS/MeetingCopilotCapture"]
+    if os.name == "nt":
+        binaries = [Path(__file__).resolve().parents[1] / "capture/MeetingCopilotCapture.exe"]
+    else:
+        binaries = [Path("/Applications/Meeting Copilot Capture.app/Contents/MacOS/MeetingCopilotCapture"),
+                    home / "Applications/Meeting Copilot Capture.app/Contents/MacOS/MeetingCopilotCapture"]
     binary = next((candidate for candidate in binaries if candidate.is_file()), binaries[0])
     return RecognitionGuard(RecordingHealth(locations), root / "meeting-copilot-live.json",
                             root / "recording-health.json", binary, notifier=notify_owner)

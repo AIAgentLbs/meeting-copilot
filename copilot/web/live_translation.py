@@ -58,7 +58,7 @@ class LiveTranslation:
             "<transcript>\n" + text + "\n</transcript>"
         )
         result = subprocess.run(
-            [str(CODEX), "exec", "--ignore-user-config", "--ephemeral",
+            [str(CODEX), "--model", "gpt-6.1-sol", "--ask-for-approval", "never", "exec", "--ignore-user-config", "--ephemeral",
              "--sandbox", "read-only", "--skip-git-repo-check", "--json", "-"],
             input=prompt, text=True, capture_output=True, timeout=90,
             check=False,
