@@ -13,11 +13,17 @@ try {
     $hash=(Get-FileHash "$temp\package.zip" -Algorithm SHA256).Hash
     & $Installer -PackagePath "$temp\package.zip" -ExpectedSha256 $hash -InstallRoot "$temp\installed" -UserRoot "$temp\user" -SkipModels -NoLaunch -NoShortcuts
     if(-not(Test-Path "$temp\installed\versions\fixture\capture\MeetingCopilotCapture.exe")){throw 'Ready-to-run capture not installed'}
-    Set-Content "$temp\user\.config\meeting-copilot\config.json" '{"preserve":"fixture"}'
+    Set-Content "$temp\user\.config\meeting-copilot\config.json" '{"preserve":"fixture","analytics":true}'
+    $retiredRoot="$temp\user\.local\share\meeting-copilot\capture-data"
+    New-Item -ItemType Directory $retiredRoot -Force|Out-Null
+    Set-Content "$retiredRoot\analytics.json" '{"synthetic":"identity"}'
+    Set-Content "$retiredRoot\analytics-pending.json" '[{"synthetic":"event"}]'
     & $Installer -PackagePath "$temp\package.zip" -ExpectedSha256 $hash -InstallRoot "$temp\installed" -UserRoot "$temp\user" -SkipModels -NoLaunch -NoShortcuts
     if((Get-Content "$temp\user\.config\meeting-copilot\config.json" -Raw) -notmatch 'preserve'){throw 'Existing user settings overwritten'}
+    if((Get-Content "$temp\user\.config\meeting-copilot\config.json" -Raw) -match 'analytics'){throw 'Retired usage setting was preserved'}
+    if((Test-Path "$retiredRoot\analytics.json") -or (Test-Path "$retiredRoot\analytics-pending.json")){throw 'Retired usage state was preserved'}
     $rejected=$false
     try { & $Installer -PackagePath "$temp\package.zip" -ExpectedSha256 ('0'*64) -InstallRoot "$temp\bad" -UserRoot "$temp\user" -SkipModels -NoLaunch -NoShortcuts } catch {$rejected=$true}
     if(-not $rejected -or (Test-Path "$temp\bad\current.json")){throw 'Bad checksum was accepted'}
-    Write-Output 'Windows installer tests: 3 passed (install, preserve settings, reject checksum)'
+    Write-Output 'Windows installer tests: 5 passed (install, preserve settings, remove retired setting/state, reject checksum)'
 } finally {Remove-Item -LiteralPath $temp -Recurse -Force}
