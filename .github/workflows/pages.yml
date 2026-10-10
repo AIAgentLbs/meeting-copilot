@@ -30,6 +30,7 @@ jobs:
           cp docs/index.html docs/styles.css docs/site.js _site/
           cp docs/ru/index.html _site/ru/
           cp install.sh _site/install.sh
+          cp docs/install.ps1 _site/install.ps1
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
