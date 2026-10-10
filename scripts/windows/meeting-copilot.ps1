@@ -17,6 +17,8 @@ $native=Get-ChildItem "$env:LOCALAPPDATA\MeetingCopilot\tools\node_modules" -Fil
 if($native){$codexPath=$native.FullName}else{$cmd=Get-Command codex.exe,codex.cmd -ErrorAction SilentlyContinue | Select-Object -First 1;$codexPath=$cmd.Source}
 if(-not $codexPath){throw 'Codex CLI is required. Install/sign in to Codex, then open Meeting Copilot again'}
 $env:MEETING_COPILOT_CODEX=$codexPath
+$codexTools=Join-Path (Split-Path (Split-Path $codexPath)) 'codex-path'
+if(Test-Path "$codexTools\rg.exe"){$env:PATH="$codexTools;$env:PATH"}
 $info=[Diagnostics.ProcessStartInfo]::new()
 $info.FileName=if($codexPath.EndsWith('.cmd')){"$env:SystemRoot\System32\cmd.exe"}else{$codexPath}
 $info.Arguments=if($codexPath.EndsWith('.cmd')){"/d /s /c `"`"$codexPath`" login status`""}else{'login status'}
