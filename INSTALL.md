@@ -28,11 +28,11 @@ need first-run checks. It does not install Homebrew or sign into providers.
 
 ## What the command installs
 
-Currently **v0.1.8**, from the explicit GitHub Release URL. Its ZIP is verified
+Currently **v0.1.9**, from the explicit GitHub Release URL. Its ZIP is verified
 against SHA-256:
 
 ```text
-2575dbe3cae77a0afdddceda1ddb321541ce58b89b9f914dac4a8f6e098fac19
+74a269a92d60e61dec235b8ca05e6c5f8a2e5b6b75010bb2ef6f11039a081c4d
 ```
 
 This digest was compared with the downloaded ZIP and GitHub asset metadata.
@@ -50,7 +50,7 @@ running `MeetingCopilotCapture` process. It checks again after staging.
 An existing app and web directory are preserved as timestamped backups.
 Existing private settings, repository selection and recordings are retained.
 The published script and the package are versioned separately: `main` includes
-newer work that is not necessarily inside the v0.1.8 download.
+newer work that is not necessarily inside the v0.1.9 download.
 
 ## First run
 
@@ -82,7 +82,7 @@ The ZIP includes `release.json` with the runtime source revision and file hashes
 
 Automatic in-app updates are not enabled in this beta. The one-line command
 installs the version pinned in `install.sh`; repeating it today reinstalls
-v0.1.8. After a new tested release is published, maintainers must update the
+v0.1.9. After a new tested release is published, maintainers must update the
 script's version and SHA-256 together and deploy the page and script. Then
 finish your call, quit Capture and rerun the same command.
 

@@ -13,14 +13,14 @@ already have locally.
 
 Project page: [English](https://aiagentlbs.github.io/meeting-copilot/) ·
 [Русский](https://aiagentlbs.github.io/meeting-copilot/ru/).
-The command currently installs the checked, pinned **v0.1.8** package, not
+The command currently installs the checked, pinned **v0.1.9** package, not
 unreleased features from `main`. It requires Apple Silicon, macOS 15+, Python
 3.10+, Apple Command Line Tools and an authenticated Codex CLI. Google Chrome
 is required for PDF reports. Quit Capture before reinstalling.
 
-v0.1.8 includes the freshly compiled Swift app, the matched web payload and a
+v0.1.9 includes the freshly compiled Swift app, the matched web payload and a
 source/hash manifest. It is ad-hoc signed, not notarized; automatic updates
-remain disabled. See [release notes](docs/releases/v0.1.8.md) for scope and gates.
+remain disabled. See [release notes](docs/releases/v0.1.9.md) for scope and gates.
 
 ```sh
 curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash

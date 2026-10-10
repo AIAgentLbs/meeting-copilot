@@ -23,7 +23,7 @@
         <h1>Your meeting,<br><em>with receipts.</em></h1>
         <p class="lede">Record the conversation without a meeting bot. Keep the transcript beside relevant decisions, documents and history from your selected local repositories.</p>
         <div class="actions"><a class="button" href="#install">Install for macOS</a><a class="text-link" href="#how">See the evidence flow ↓</a></div>
-        <p class="fine">Public beta v0.1.8 for Apple Silicon Macs running macOS 15 or later.</p>
+        <p class="fine">Public beta v0.1.9 for Apple Silicon Macs running macOS 15 or later.</p>
       </div>
       <div class="evidence-stage" aria-label="Live transcript connected to repository evidence">
         <div class="live-chip">Illustrative example</div>
@@ -47,7 +47,7 @@
 
     <section class="section split shell" id="privacy">
       <div><h2>Your connections.<br>Your choice.</h2></div>
-      <div class="privacy-copy"><p>Recording and transcription run on your Mac. The interface is served at <code>127.0.0.1</code>, and recordings and reports are saved in your user directory.</p><p>AI analysis in this beta uses your authenticated Codex CLI. Relevant conversation and repository excerpts may be sent to its configured AI service; the product does not promise that nothing leaves your Mac.</p><ul><li>Repository access is read-only</li><li>No automatic clone, pull or fetch</li><li>External report delivery is optional</li></ul><p>Fully offline AI, a choice of local transcription models and additional API/subscription connectors are planned, not included in v0.1.8.</p></div>
+      <div class="privacy-copy"><p>Recording and transcription run on your Mac. The interface is served at <code>127.0.0.1</code>, and recordings and reports are saved in your user directory.</p><p>AI analysis in this beta uses your authenticated Codex CLI. Relevant conversation and repository excerpts may be sent to its configured AI service; the product does not promise that nothing leaves your Mac.</p><ul><li>Repository access is read-only</li><li>No automatic clone, pull or fetch</li><li>External report delivery is optional</li></ul><p>Fully offline AI, a choice of local transcription models and additional API/subscription connectors are planned, not included in v0.1.9.</p></div>
     </section>
 
     <section class="section shell install" id="install">
@@ -57,7 +57,7 @@
       <p class="install-note">Missing Apple tools? Run <code>xcode-select --install</code> and finish the system dialog first. Install Python with your usual package manager; see the <a href="https://developers.openai.com/codex/cli">Codex CLI setup guide</a> for AI access.</p>
       <div class="terminal"><div class="terminal-top"><span></span><span></span><span></span><b>Terminal</b></div><div class="command"><code id="install-command">curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash</code><button type="button" data-copy="install-command">Copy</button></div></div>
       <p class="copy-status" role="status" aria-live="polite"></p>
-      <p class="install-note">Downloads <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/v0.1.8">v0.1.8</a>, checks its SHA-256, and preserves private settings and recordings. You can <a href="install.sh">inspect the script</a> before running it. Quit Meeting Copilot Capture before installing over an existing copy.</p>
+      <p class="install-note">Downloads <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/v0.1.9">v0.1.9</a>, checks its SHA-256, and preserves private settings and recordings. You can <a href="install.sh">inspect the script</a> before running it. Quit Meeting Copilot Capture before installing over an existing copy.</p>
       <ol class="setup-steps"><li>Approve Microphone and Screen &amp; System Audio Recording for Meeting Copilot Capture in macOS settings.</li><li>Run <code>~/.local/bin/meeting-copilot</code>. The interface opens at <code>http://127.0.0.1:43121</code>.</li><li>Select the relevant repositories, make a short test call, then check the saved audio and transcript.</li></ol>
       <details class="install-help"><summary>Updating and troubleshooting</summary><p>Automatic in-app updates are not enabled in this beta. The command installs the version explicitly pinned in the script. After a newer tested release is published and the script is updated, finish your call, quit Capture and run the same command.</p><p>If a prerequisite, download, checksum or helper compilation fails, the installer stops before replacing your current app. Existing app and web files are backed up during a reinstall. Recordings and delivery settings are not deleted.</p><p>If macOS blocks launch, review the downloaded app in Privacy &amp; Security. Do not disable Gatekeeper globally. For audio permission problems, check the exact installed app, quit it and reopen it.</p><p><a href="https://github.com/AIAgentLbs/meeting-copilot/blob/main/INSTALL.md">Full installation instructions</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/issues">Report a problem</a></p></details>
     </section>

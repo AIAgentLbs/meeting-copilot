@@ -1,6 +1,8 @@
 # Privacy
 
 Meeting Copilot is local-first. The UI listens on the loopback interface only.
+Product-usage statistics are not collected or sent. There is no telemetry
+switch, installation tracking identifier, event queue or usage-reporting sender.
 Audio files, screenshot files, repository manifests and generated reports stay
 on the Mac unless the user explicitly configures external delivery. Transcript
 text and OCR excerpts may be sent to the authenticated Codex CLI for chat and
