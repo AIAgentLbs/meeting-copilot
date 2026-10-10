@@ -13,7 +13,13 @@ $ProgressPreference='SilentlyContinue'
 $version='0.1.0-windows-beta.1'
 $url='https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v0.1.0/meeting-copilot-windows-x64.zip'
 $utf8=[Text.UTF8Encoding]::new($false)
+$script:copilotDownloadPython=$null
 function Download-VerifiedInput([string]$Url,[string]$Target){
+    if($script:copilotDownloadPython){
+        $code="import sys,urllib.request,shutil; r=urllib.request.urlopen(sys.argv[1],timeout=60); f=open(sys.argv[2],'wb'); shutil.copyfileobj(r,f); f.close(); r.close()"
+        & $script:copilotDownloadPython -c $code $Url $Target
+        if($LASTEXITCODE -eq 0){return}
+    }
     $curl=Get-Command curl.exe -ErrorAction SilentlyContinue
     if($curl){
         & $curl.Source --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --silent --show-error --output $Target $Url
@@ -56,6 +62,7 @@ try {
     $destination=Join-Path $InstallRoot "versions\$version"
     New-Item -ItemType Directory -Force $destination,$configRoot,$dataRoot | Out-Null
     Copy-Item "$temporary\payload\*" $destination -Recurse -Force
+    $script:copilotDownloadPython=Join-Path $destination 'python\python.exe'
     if(-not(Test-Path "$configRoot\config.json")){
         $settings=@{recordings_dir=(Join-Path $dataRoot 'recordings'); keep_audio=$true; analytics=$false; system_audio='all'; start_at_login=$false; interface_language='auto'; auto_record=@{enabled=$true;min_duration_seconds=300}; transcription=@{enabled=$true;engine='local';local_engine='parakeet'}; live_transcription=@{enabled=$true}; summary=@{enabled=$false;backend='none'}; speaker_names=@{backend='none'}}
         [IO.File]::WriteAllText("$configRoot\config.json",($settings|ConvertTo-Json -Depth 8),$utf8)
