@@ -13,6 +13,13 @@ $ProgressPreference='SilentlyContinue'
 $version='0.1.0-windows-beta.1'
 $url='https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v0.1.0/meeting-copilot-windows-x64.zip'
 $utf8=[Text.UTF8Encoding]::new($false)
+function Download-VerifiedInput([string]$Url,[string]$Target){
+    $curl=Get-Command curl.exe -ErrorAction SilentlyContinue
+    if($curl){
+        & $curl.Source --fail --location --retry 3 --retry-delay 2 --connect-timeout 30 --silent --show-error --output $Target $Url
+        if($LASTEXITCODE -ne 0){throw 'Download failed after bounded retries'}
+    } else {Invoke-WebRequest -UseBasicParsing $Url -OutFile $Target}
+}
 if([Environment]::Is64BitOperatingSystem -ne $true){throw 'Windows x64 is required'}
 if([int](Get-CimInstance Win32_OperatingSystem).BuildNumber -lt 26100){throw 'Windows 11 24H2 or newer is required'}
 $configRoot=Join-Path $UserRoot '.config\meeting-copilot'
@@ -28,7 +35,7 @@ try {
     if(-not $PackagePath){
         $PackagePath=Join-Path $temporary 'package.zip'
         Write-Host 'Downloading the ready-to-run Windows package (no compiler required)...'
-        Invoke-WebRequest -UseBasicParsing $url -OutFile $PackagePath
+        Download-VerifiedInput $url $PackagePath
     }
     if($ExpectedSha256 -notmatch '^[a-fA-F0-9]{64}$'){throw 'The published package checksum is not configured'}
     if((Get-FileHash $PackagePath -Algorithm SHA256).Hash -ne $ExpectedSha256){throw 'Package SHA-256 mismatch. Nothing installed'}
@@ -72,7 +79,7 @@ try {
             $target=Join-Path $modelRoot $model.name
             if((Test-Path $target) -and (Get-FileHash $target -Algorithm SHA256).Hash -eq $model.hash){continue}
             Write-Host ("Downloading and verifying local speech model: "+$model.name)
-            Invoke-WebRequest -UseBasicParsing $model.url -OutFile "$target.download"
+            Download-VerifiedInput $model.url "$target.download"
             if((Get-FileHash "$target.download" -Algorithm SHA256).Hash -ne $model.hash){throw 'Speech model checksum mismatch'}
             Move-Item "$target.download" $target -Force
         }
