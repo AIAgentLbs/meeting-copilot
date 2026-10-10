@@ -1,5 +1,20 @@
 # Meeting Copilot delivery follow-up
 
+## Windows beta acceptance gaps
+
+- Keep the full Python suite platform-aware: three security tests currently
+  assume POSIX mode 0600, and a recorder test assumes POSIX path spelling.
+  Windows ACL checks must replace, not silently skip, the security assertions.
+- Optional screen OCR/active-tile detection requires Pillow and NumPy, not
+  shipped in the minimal embedded Python package. Do not claim that feature
+  works on Windows until dependencies and an actual UI test are included.
+- Add packaged-application audio and recognition-resume smoke testing to the
+  release gate, in addition to native unit tests and installer fixture tests.
+- Verify extended real-call reconnects and report/PDF/delivery parity before
+  promoting the unsigned Windows technical beta to a stable release.
+- Add signed distribution and a verified in-app update mechanism. The current
+  beta updates by re-running the published installer after finishing the call.
+
 ## Repository meeting history
 
 Requested: after a meeting ends, identify the relevant selected GitHub/GitLab
