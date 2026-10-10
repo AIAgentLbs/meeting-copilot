@@ -43,7 +43,6 @@ enum SetupPermissions {
         _ = await AVCaptureDevice.requestAccess(for: .audio)
         ThisTurn.forget()
         let answer = microphone()
-        Analytics.track(answer == .granted ? .micGranted : .micDenied)
         return answer
     }
 
@@ -158,9 +157,6 @@ enum SetupPermissions {
             // moment is meetingcopilot itself.
             try recorder.start(writingTo: scratch, scope: .everything)
         } catch {
-            Analytics.track(.systemAudioSilent, [
-                .reason: .text(Analytics.Reason.refused.rawValue),
-            ])
             return .refused("\(error)")
         }
 
@@ -168,7 +164,6 @@ enum SetupPermissions {
         recorder.stop()
 
         let result: SystemAudioResult = recorder.lastSoundAt == nil ? .silent : .heard
-        Analytics.track(result == .heard ? .systemAudioHeard : .systemAudioSilent)
         return result
     }
 

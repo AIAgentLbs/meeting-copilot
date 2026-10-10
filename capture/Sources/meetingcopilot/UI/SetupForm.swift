@@ -170,7 +170,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         return label
     }()
     private let autoRecord = NSSwitch()
-    private let analytics = NSSwitch()
 
     /// What the last look for `claude`, `codex` and ollama found, by card.
     /// Empty until that look finishes, and a missing answer is not "absent":
@@ -223,9 +222,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         // without anyone opening this form again.
         form.addArrangedSubview(SetupLayout.box([autoRecordRow()]))
 
-        // Last in the form so the default-on reporting choice is visible on
-        // first setup and remains easy to change when setup is reopened.
-        form.addArrangedSubview(SetupLayout.box([analyticsRow()]))
 
         for view in form.arrangedSubviews {
             view.widthAnchor.constraint(
@@ -629,23 +625,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
                 lines: 2, width: 520))
     }
 
-    private func analyticsRow() -> NSView {
-        analytics.target = self
-        analytics.action = #selector(analyticsToggled)
-        return SetupLayout.row(
-            leading: analytics,
-            title: SetupLayout.title(localised(
-                "Send usage statistics",
-                "Отправлять статистику об использовании")),
-            detail: SetupLayout.detail(
-                localised(
-                    "Feature usage with a random installation identifier; no meeting content.",
-                    "Использование функций со случайным идентификатором установки; без содержимого встреч."),
-                lines: 2, width: 520),
-            trailing: [link(
-                localised("What exactly", "Что именно"),
-                "https://github.com/AIAgentLbs/meeting-copilot/blob/main/PRIVACY.md")])
-    }
 
     private func link(_ title: String, _ url: String) -> NSButton {
         SetupLayout.link(title, url, target: self, action: #selector(linkClicked(_:)))
@@ -815,7 +794,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             refresh()
             return
         }
-        Analytics.track(.modelDownloadStarted, [.asset: .text("nemotron-live")])
         liveDownloading = true
         liveStatus.stringValue = localised("preparing download…", "готовлюсь скачивать…")
         refresh()
@@ -830,13 +808,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
                     }
                 }
                 if liveModelStore.isReady(language: prompt) {
-                    Analytics.track(.modelDownloadFinished, [.asset: .text("nemotron-live")])
                     liveStatus.stringValue = localised("downloaded", "скачана")
                 } else {
-                    Analytics.track(.modelDownloadFailed, [
-                        .asset: .text("nemotron-live"),
-                        .reason: .text(Analytics.Reason.noModel.rawValue),
-                    ])
                     liveStatus.stringValue = localised(
                         "download incomplete — turn off and on to retry",
                         "скачалось не всё — выключите и включите, чтобы повторить")
@@ -844,10 +817,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             } catch is CancellationError {
                 liveStatus.stringValue = localised("download paused", "скачивание остановлено")
             } catch {
-                Analytics.track(.modelDownloadFailed, [
-                    .asset: .text("nemotron-live"),
-                    .reason: .text(Analytics.reason(for: error).rawValue),
-                ])
                 liveStatus.stringValue =
                     localised("download failed: ", "не удалось скачать: ")
                         + error.localizedDescription
@@ -863,9 +832,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             path: ["auto_record", "enabled"], value: autoRecord.state == .on ? nil : false)
     }
 
-    @objc private func analyticsToggled() {
-        Config.update(path: ["analytics"], value: analytics.state == .on ? nil : false)
-    }
 
     @objc private func summariesToggled() {
         Config.update(path: ["summary", "enabled"], value: summariesOn.state == .on ? nil : false)
@@ -961,8 +927,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private func downloadParakeetIfNeeded() {
         guard !parakeetIsHere() else { return }
         guard parakeetProgress == nil else { return }
-        let asset = Config.transcriptionModel() == "v2" ? "parakeet-v2" : "parakeet-v3"
-        Analytics.track(.modelDownloadStarted, [.asset: .text(asset)])
         watchParakeetSize()
         // So the footer button says what is happening from the first second,
         // rather than at the end of it.
@@ -970,12 +934,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         Task {
             do {
                 try await fetchParakeet()
-                Analytics.track(.modelDownloadFinished, [.asset: .text(asset)])
             } catch {
-                Analytics.track(.modelDownloadFailed, [
-                    .asset: .text(asset),
-                    .reason: .text(Analytics.reason(for: error).rawValue),
-                ])
                 parakeetStatus.stringValue =
                     localised("download failed: ", "не удалось скачать: ") + "\(error)"
             }
@@ -1365,7 +1324,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
 
         let autoRecordOn = (config["auto_record"] as? [String: Any])?["enabled"] as? Bool ?? true
         autoRecord.state = autoRecordOn ? .on : .off
-        analytics.state = AnalyticsIdentity.isEnabled(in: config) ? .on : .off
 
         highlightNextGrant()
         onStateChange?()

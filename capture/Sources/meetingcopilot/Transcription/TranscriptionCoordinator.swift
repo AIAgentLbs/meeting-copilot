@@ -186,7 +186,6 @@ actor TranscriptionCoordinator {
     /// One session from end to end: the transcript, then the banner and the
     /// hook that say it happened.
     private func transcribeAndAnnounce(_ dir: URL) async throws {
-        var fallbackUsed = false
         do {
             try await transcribe(dir)
         } catch {
@@ -197,16 +196,9 @@ actor TranscriptionCoordinator {
                   Platform.supportsLocalModels,
                   engineIsCloud(), Self.looksLikeNetworkTrouble(error)
             else { throw error }
-            let from = engine?.name ?? Config.transcriptionEngine()
             log(dir, "cloud transcription failed (\(error)) — retrying locally")
             await engine?.release()
             engine = ParakeetEngine()
-            Analytics.track(.transcriptFallback, [
-                .fromEngine: .text(from),
-                .toEngine: .text("parakeet"),
-                .reason: .text(Analytics.reason(for: error).rawValue),
-            ])
-            fallbackUsed = true
             try await engine?.prepare()
             try await transcribe(dir)
         }
@@ -218,13 +210,6 @@ actor TranscriptionCoordinator {
         // Outside `transcribe` rather than at the end of it because both take
         // the session's claim, and a claim held while asking for a second one
         // would refuse itself.
-        let engineName = engine?.name ?? Config.transcriptionEngine()
-        Analytics.track(.transcriptFinished, [
-            .engine: .text(engineName),
-            .model: .text(AnalyticsCatalogue.transcriptionModel(
-                engine: engineName, provenance: engine?.model ?? "")),
-            .fallbackUsed: .flag(fallbackUsed),
-        ])
         await PostProcessor.finish(dir)
         notifyUser(
             title: localised("meetingcopilot — transcript ready", "meetingcopilot — расшифровка готова"),
@@ -273,20 +258,6 @@ actor TranscriptionCoordinator {
         let attempts =
             (SessionState.value(dir, SessionState.Key.transcriptionAttempts) as? Int ?? 0) + 1
         let gaveUp = permanent || attempts >= Self.maxAttempts
-        let engineName = engine?.name ?? Config.transcriptionEngine()
-        let reason: Analytics.Reason = {
-            if Self.looksLikeNetworkTrouble(error) { return .noNetwork }
-            if permanent { return .refused }
-            return Analytics.reason(for: error)
-        }()
-        Analytics.track(.transcriptFailed, [
-            .engine: .text(engineName),
-            .model: .text(AnalyticsCatalogue.transcriptionModel(
-                engine: engineName, provenance: engine?.model ?? "")),
-            .reason: .text(reason.rawValue),
-            .outcome: .text((gaveUp
-                ? Analytics.Outcome.gaveUp : .deferred).rawValue),
-        ])
         var fields: [String: Any?] = [SessionState.Key.transcriptionAttempts: attempts]
 
         if gaveUp {

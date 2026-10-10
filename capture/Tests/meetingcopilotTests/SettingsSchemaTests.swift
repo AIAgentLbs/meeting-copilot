@@ -199,7 +199,6 @@ struct SettingsSchemaTests {
             "menu_bar_icon",
             "dock_icon",
             // The final, default-on switch in both Setup and Settings.
-            "analytics",
         ])
     }
 

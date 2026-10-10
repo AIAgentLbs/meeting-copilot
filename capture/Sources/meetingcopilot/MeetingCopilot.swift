@@ -9,7 +9,7 @@ struct MeetingCopilot: ParsableCommand {
         abstract: "Local meeting recorder + transcriber. Records mic and system audio as two tracks, then transcribes on-device.",
         subcommands: [
             Run.self, Setup.self, Doctor.self, Install.self, Sessions.self, ProcessSession.self,
-            Record.self, AnalyticsCommand.self, TranscribeAudio.self,
+            Record.self, TranscribeAudio.self,
         ],
         defaultSubcommand: Run.self
     )
@@ -101,7 +101,6 @@ struct Run: ParsableCommand {
 
         // Start after any handoff or move from the disk image, but before the
         // first setup window can report that it appeared.
-        Analytics.start(surface: .app)
 
         // Non-blocking: permissions prompt on first recording, so warnings at
         // startup are informational, not fatal.
@@ -375,7 +374,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         onTerminate?()
-        Analytics.flushOnExit()
     }
 
     /// The app menu's **Setup…**, kept so that it can be taken away once the
@@ -535,9 +533,6 @@ final class AppController {
 
         Notifications.install { [weak self] folder in
             if let folder {
-                Analytics.track(.artifactOpened, [
-                    .artifact: .text(Analytics.Artifact.sessionFolder.rawValue),
-                ])
                 NSWorkspace.shared.open(folder)
             } else {
                 self?.showWindow()
@@ -737,12 +732,6 @@ final class AppController {
                 )
             }
         } catch {
-            Analytics.track(.recordingStartFailed, [
-                .trigger: .text(trigger.rawValue),
-                .component: .text(
-                    (error as? RecordingSession.StartFailure)?.analyticsComponent ?? "unknown"),
-                .reason: .text(Analytics.reason(for: error).rawValue),
-            ])
             FileHandle.standardError.write(Data("recording start failed: \(error)\n".utf8))
             notifyUser(
                 title: localised(
@@ -964,9 +953,6 @@ final class AppController {
 
     private func openFolder() {
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-        Analytics.track(.artifactOpened, [
-            .artifact: .text(Analytics.Artifact.recordingsRoot.rawValue),
-        ])
         NSWorkspace.shared.open(root)
     }
 
