@@ -1,6 +1,6 @@
 param([Parameter(Mandatory)][string]$BuildRoot,[Parameter(Mandatory)][string]$PayloadRoot,[Parameter(Mandatory)][string]$CopilotRevision,[Parameter(Mandatory)][string]$CaptureRevision)
 $ErrorActionPreference='Stop'
-$stage=Join-Path $BuildRoot 'package-v0.1.3'
+$stage=Join-Path $BuildRoot 'package-v0.1.4'
 if(Test-Path $stage){throw 'Use a fresh package staging directory'}
 New-Item -ItemType Directory "$stage\capture","$stage\python","$stage\web" -Force | Out-Null
 Copy-Item "$BuildRoot\capture\*" "$stage\capture" -Recurse
@@ -22,7 +22,7 @@ foreach($file in Get-ChildItem $stage -Recurse -File){
     if($file.Name -in @('repos.json','active-repos.json','config.json','report.json','meeting.json','delivery.json') -or $file.Extension -in @('.wav','.caf','.log','.gguf')){throw "Private/runtime data cannot enter package: $relative"}
     $files[$relative]=(Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLower()
 }
-$manifest=@{version='0.1.3-windows-beta.1';architecture='x64';channel='technical-beta';signed=$false;source_revision=$CopilotRevision;capture_revision=$CaptureRevision;native_runtime_source='Amanu windows-v0.6.6 (checksum-pinned)';sha256=$files}
+$manifest=@{version='0.1.4-windows-beta.1';architecture='x64';channel='technical-beta';signed=$false;source_revision=$CopilotRevision;capture_revision=$CaptureRevision;native_runtime_source='Amanu windows-v0.6.6 (checksum-pinned)';sha256=$files}
 [IO.File]::WriteAllText("$stage\release.json",($manifest|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-Compress-Archive "$stage\*" "$BuildRoot\meeting-copilot-windows-v0.1.3-x64.zip" -CompressionLevel Optimal
-Get-FileHash "$BuildRoot\meeting-copilot-windows-v0.1.3-x64.zip" -Algorithm SHA256 | Select-Object Hash | ConvertTo-Json
+Compress-Archive "$stage\*" "$BuildRoot\meeting-copilot-windows-v0.1.4-x64.zip" -CompressionLevel Optimal
+Get-FileHash "$BuildRoot\meeting-copilot-windows-v0.1.4-x64.zip" -Algorithm SHA256 | Select-Object Hash | ConvertTo-Json

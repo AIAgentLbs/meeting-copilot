@@ -64,7 +64,7 @@ try {
     Copy-Item "$temporary\payload\*" $destination -Recurse -Force
     $script:copilotDownloadPython=Join-Path $destination 'python\python.exe'
     if(-not(Test-Path "$configRoot\config.json")){
-        $settings=@{recordings_dir=(Join-Path $dataRoot 'recordings'); keep_audio=$true; analytics=$false; system_audio='all'; start_at_login=$false; interface_language='auto'; auto_record=@{enabled=$true;min_duration_seconds=300}; transcription=@{enabled=$true;engine='local';local_engine='parakeet'}; live_transcription=@{enabled=$true}; summary=@{enabled=$false;backend='none'}; speaker_names=@{backend='none'}}
+        $settings=@{recordings_dir=(Join-Path $dataRoot 'recordings'); keep_audio=$true; system_audio='all'; start_at_login=$false; interface_language='auto'; auto_record=@{enabled=$true;min_duration_seconds=300}; transcription=@{enabled=$true;engine='local';local_engine='parakeet'}; live_transcription=@{enabled=$true}; summary=@{enabled=$false;backend='none'}; speaker_names=@{backend='none'}}
         [IO.File]::WriteAllText("$configRoot\config.json",($settings|ConvertTo-Json -Depth 8),$utf8)
     }
     if(Test-Path "$configRoot\SESSION.md"){
@@ -75,6 +75,20 @@ try {
     Copy-Item "$destination\SESSION.md" "$configRoot\SESSION.md" -Force
     foreach($name in @('repos.json','active-repos.json')){
         if(-not(Test-Path "$configRoot\$name")){[IO.File]::WriteAllText("$configRoot\$name",'{"repositories":[]}',$utf8)}
+    }
+    # One-time removal of retired telemetry state; preserve every other setting.
+    $settingsFile=Join-Path $configRoot 'config.json'
+    $existing=Get-Content $settingsFile -Raw -Encoding UTF8|ConvertFrom-Json
+    if($existing.PSObject.Properties.Name -contains 'analytics'){
+        $existing.PSObject.Properties.Remove('analytics')
+        [IO.File]::WriteAllText("$settingsFile.statistics-removal.tmp",($existing|ConvertTo-Json -Depth 100),$utf8)
+        Move-Item -LiteralPath "$settingsFile.statistics-removal.tmp" -Destination $settingsFile -Force
+    }
+    foreach($folder in @($configRoot,(Join-Path $dataRoot 'capture-data'))){
+        foreach($name in @('analytics.json','analytics-pending.json')){
+            $retired=Join-Path $folder $name
+            if(Test-Path $retired -PathType Leaf){Remove-Item -LiteralPath $retired}
+        }
     }
     if(-not $SkipModels){
         $modelRoot=Join-Path $dataRoot 'capture-data\models'
