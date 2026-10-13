@@ -1,6 +1,7 @@
 # New meeting within continuous recording
 
-Status: proposed design, awaiting owner review. Product code is unchanged.
+Status: owner requested implementation on 2026-10-13. Implementation plan is
+prepared for review; product code is unchanged.
 
 ## Approved intent
 

@@ -15,8 +15,9 @@
   original audio; isolate transcript, AI jobs/context, journal, screenshots,
   chat, reports and history. Prevent archive continuous-chain merging across
   explicit boundaries and keep recovery targeting the physical recording ID.
-  Design awaiting owner review:
+  Owner requested implementation on 2026-10-13; implementation plan awaits review:
   [2026-10-13 continuous meeting boundary specification](superpowers/specs/2026-10-13-continuous-meeting-boundary-design.md).
+  [Implementation plan](superpowers/plans/2026-10-13-continuous-meeting-boundary.md).
   Product implementation and live installation are not yet completed.
 
 ## Windows beta acceptance gaps
