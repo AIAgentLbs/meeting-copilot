@@ -1,5 +1,16 @@
 # Meeting Copilot delivery follow-up
 
+## Continuous recording meeting boundaries
+
+- Implement the owner's requested Start new meeting from now action without
+  restarting Capture. Persist independent logical meeting intervals over the
+  original audio; isolate transcript, AI jobs/context, journal, screenshots,
+  chat, reports and history. Prevent archive continuous-chain merging across
+  explicit boundaries and keep recovery targeting the physical recording ID.
+  Design awaiting owner review:
+  [2026-10-13 continuous meeting boundary specification](superpowers/specs/2026-10-13-continuous-meeting-boundary-design.md).
+  Product implementation and live installation are not yet completed.
+
 ## Windows beta acceptance gaps
 
 - Keep the full Python suite platform-aware: three security tests currently
