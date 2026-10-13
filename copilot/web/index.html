@@ -20,6 +20,7 @@
         <span class="status" id="capture-status" hidden><i></i><span></span></span>
         <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
         <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-haspopup="dialog">История встреч</button>
+        <button class="quiet-button" id="new-meeting-button" type="button" data-i18n="meeting.new" aria-haspopup="dialog" aria-describedby="new-meeting-help" disabled>Начать новую встречу</button>
         <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
         <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
         <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
@@ -31,6 +32,22 @@
         <button class="quiet-button" id="swap-panels" type="button" data-i18n="nav.swap_panels" aria-pressed="false">Поменять панели</button>
       </div>
     </header>
+
+    <div class="meeting-boundary-bar">
+      <span id="new-meeting-help" data-i18n="meeting.new_help">Сохранит текущую встречу отдельно и начнёт новую. Запись звука не прервётся.</span>
+      <span id="new-meeting-status" role="status" aria-live="polite"></span>
+    </div>
+    <dialog id="new-meeting-dialog" class="meeting-boundary-dialog" aria-labelledby="new-meeting-heading" aria-describedby="new-meeting-explanation">
+      <h2 id="new-meeting-heading" data-i18n="meeting.new">Начать новую встречу</h2>
+      <p id="new-meeting-explanation" data-i18n="meeting.new_explanation">Текущая встреча останется в истории. Новая стенограмма и карта будут собираться с момента подтверждения. Звук продолжит записываться в исходный файл.</p>
+      <label for="new-meeting-title" data-i18n="meeting.new_title">Название новой встречи (необязательно)</label>
+      <input id="new-meeting-title" maxlength="200" type="text" autocomplete="off" />
+      <p id="new-meeting-error" role="alert"></p>
+      <div class="meeting-boundary-actions">
+        <button class="quiet-button" id="new-meeting-cancel" type="button" data-i18n="meeting.cancel">Отмена</button>
+        <button class="primary-button" id="new-meeting-confirm" type="button" data-i18n="meeting.new">Начать новую встречу</button>
+      </div>
+    </dialog>
 
     <section id="settings-panel" class="settings-panel" hidden aria-labelledby="settings-heading">
       <div class="repo-dialog-header">

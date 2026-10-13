@@ -1,4 +1,11 @@
 const elements = {
+  newMeeting: document.querySelector("#new-meeting-button"),
+  newMeetingDialog: document.querySelector("#new-meeting-dialog"),
+  newMeetingTitle: document.querySelector("#new-meeting-title"),
+  newMeetingConfirm: document.querySelector("#new-meeting-confirm"),
+  newMeetingCancel: document.querySelector("#new-meeting-cancel"),
+  newMeetingError: document.querySelector("#new-meeting-error"),
+  newMeetingStatus: document.querySelector("#new-meeting-status"),
   swapPanels: document.querySelector("#swap-panels"),
   meetingTitle: document.querySelector("#meeting-title"),
   liveStatus: document.querySelector("#live-status"),
@@ -639,6 +646,86 @@ let callBoardSignature = "";
 const boardExpanded = new Set();
 
 Object.assign(translations.ru, {
+  "meeting.new": "Начать новую встречу", "meeting.cancel": "Отмена",
+  "meeting.new_help": "Сохранит текущую встречу отдельно и начнёт новую. Запись звука не прервётся.",
+  "meeting.new_explanation": "Текущая встреча останется в истории. Новая стенограмма и карта будут собираться с момента подтверждения. Звук продолжит записываться в исходный файл.",
+  "meeting.new_title": "Название новой встречи (необязательно)",
+  "meeting.saving": "Сохраняю разделение…",
+  "meeting.new_success": "Начата встреча «{title}». Предыдущая сохранена в истории.",
+  "meeting.new_retry": "Не удалось подтвердить разделение. Нажмите ещё раз — повтор не создаст лишнюю встречу.",
+  "meeting.new_conflict": "Состояние записи изменилось. Проверьте текущую встречу и подтвердите ещё раз.",
+  "meeting.audio_range": "Часть непрерывной записи: {start} — {end}. Исходный звук сохранён локально; в отчёт не включается звук других встреч.",
+  "meeting.ongoing": "продолжается",
+});
+Object.assign(translations.en, {
+  "meeting.new": "Start new meeting", "meeting.cancel": "Cancel",
+  "meeting.new_help": "Save this meeting separately and start a new one. Audio recording will continue.",
+  "meeting.new_explanation": "This meeting will remain in history. The new transcript and map will start when you confirm. Audio will continue in the original recording file.",
+  "meeting.new_title": "New meeting title (optional)",
+  "meeting.saving": "Saving meeting boundary…",
+  "meeting.new_success": "Started “{title}”. The previous meeting is saved in history.",
+  "meeting.new_retry": "Could not confirm the split. Retry — the same request will not create another meeting.",
+  "meeting.new_conflict": "Recording state changed. Check the current meeting and confirm again.",
+  "meeting.audio_range": "Continuous recording range: {start} — {end}. Original audio stays local; other meetings’ audio is not included in this report.",
+  "meeting.ongoing": "ongoing",
+});
+let boundaryBusy = false;
+let boundaryRequest = null;
+elements.newMeeting.addEventListener("click", () => {
+  boundaryRequest = null;
+  elements.newMeetingTitle.value = "";
+  elements.newMeetingTitle.disabled = false;
+  elements.newMeetingError.textContent = "";
+  elements.newMeetingDialog.showModal();
+  elements.newMeetingTitle.focus();
+});
+elements.newMeetingCancel.addEventListener("click", () => {
+  if (!boundaryBusy) elements.newMeetingDialog.close();
+});
+elements.newMeetingDialog.addEventListener("cancel", event => {
+  if (boundaryBusy) event.preventDefault();
+});
+elements.newMeetingConfirm.addEventListener("click", async () => {
+  if (boundaryBusy || !activeTranscript?.meeting_id) return;
+  boundaryRequest ||= { expected_meeting_id: activeTranscript.meeting_id,
+    request_id: crypto.randomUUID(), title: elements.newMeetingTitle.value.trim() };
+  boundaryBusy = true;
+  elements.newMeetingTitle.disabled = true;
+  elements.newMeetingConfirm.disabled = true;
+  elements.newMeetingCancel.disabled = true;
+  elements.newMeetingConfirm.textContent = t("meeting.saving");
+  elements.newMeetingError.textContent = "";
+  try {
+    const response = await fetch("/api/meeting/new", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(boundaryRequest), signal: AbortSignal.timeout(12000) });
+    if (!response.ok) {
+      if (response.status === 409) {
+        boundaryRequest = null;
+        elements.newMeetingTitle.disabled = false;
+        await state();
+        throw new Error(t("meeting.new_conflict"));
+      }
+      throw new Error(t("meeting.new_retry"));
+    }
+    const result = await response.json();
+    transcriptSignature = frameSignature = renderedMessages = journalSignature = meetingChatSignature = callPlanSignature = callBoardSignature = "";
+    boardExpanded.clear();
+    autoAnalysisPrimed = false;
+    elements.newMeetingStatus.textContent = t("meeting.new_success", { title: result.title });
+    elements.newMeetingDialog.close();
+    await state();
+  } catch (error) {
+    elements.newMeetingError.textContent = error.message === t("meeting.new_conflict") ? error.message : t("meeting.new_retry");
+  } finally {
+    boundaryBusy = false;
+    elements.newMeetingConfirm.disabled = false;
+    elements.newMeetingCancel.disabled = false;
+    elements.newMeetingConfirm.textContent = t("meeting.new");
+    renderRecordingHealth(recordingHealth);
+  }
+});
+
+Object.assign(translations.ru, {
   "delivery.heading": "Доставка отчётов", "delivery.button": "Доставка",
   "delivery.attention": "Доставка · проблем: {count}", "delivery.details": "Подробнее",
   "delivery.dismiss": "Прочитано", "delivery.dismiss_failed": "Не удалось сохранить. Повторите.",
@@ -715,8 +802,9 @@ Object.assign(translations.en, {
 function renderRecordingHealth(health = {}) {
   recordingHealth = health;
   const capture = health.capture;
-  const matched = health.meeting_id && health.meeting_id === activeTranscript?.meeting_id;
+  const matched = health.meeting_id && health.meeting_id === (activeTranscript?.physical_meeting_id || activeTranscript?.meeting_id);
   const fresh = !stateConnectionFailed && Number.isFinite(health.checked_at) && Date.now() / 1000 - health.checked_at < 20;
+  elements.newMeeting.disabled = boundaryBusy || !matched || !fresh || !capture?.audio_recording;
   elements.captureStatus.hidden = !matched || !capture;
   elements.captureStatus.classList.toggle("live", Boolean(fresh && capture?.audio_recording));
   elements.captureStatus.classList.toggle("error", Boolean(!fresh || capture?.state === "stalled"));
@@ -2046,6 +2134,12 @@ function archiveSection(title, count, content, open = false) {
 
 function renderArchiveDetail(meeting) {
   const root = document.createDocumentFragment();
+  if (meeting.explicit_boundary && meeting.audio_range) {
+    root.append(textNode("p", "archive-audio-range", t("meeting.audio_range", {
+      start: archiveDuration(meeting.audio_range.start_seconds),
+      end: meeting.audio_range.end_seconds == null ? t("meeting.ongoing") : archiveDuration(meeting.audio_range.end_seconds),
+    })));
+  }
   const heading = document.createElement("div");
   heading.className = "archive-detail-heading";
   heading.append(

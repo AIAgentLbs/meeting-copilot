@@ -19,6 +19,43 @@
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
 }
 
+.meeting-boundary-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 24px;
+  padding: 8px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+#new-meeting-status { color: var(--accent-strong); }
+.meeting-boundary-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+  color: var(--text);
+}
+.meeting-boundary-dialog::backdrop { background: rgb(20 22 20 / 42%); }
+.meeting-boundary-dialog h2 { margin: 0 0 12px; font-size: 22px; }
+.meeting-boundary-dialog p { line-height: 1.5; }
+.meeting-boundary-dialog label { display: block; margin: 20px 0 8px; }
+.meeting-boundary-dialog input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong);
+  border-radius: 6px; background: var(--surface); color: var(--text); font: inherit;
+}
+.meeting-boundary-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.meeting-boundary-actions button { min-height: 44px; }
+.meeting-boundary-actions .primary-button { background: var(--accent-strong); color: var(--surface-strong); padding: 10px 16px; border: 0; border-radius: 6px; cursor: pointer; }
+.meeting-boundary-actions button:disabled { opacity: 0.6; cursor: wait; }
+#new-meeting-error { color: var(--danger); }
+.archive-audio-range { line-height: 1.5; color: var(--text); }
+
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
