@@ -656,6 +656,9 @@ Object.assign(translations.ru, {
   "meeting.new_conflict": "Состояние записи изменилось. Проверьте текущую встречу и подтвердите ещё раз.",
   "meeting.audio_range": "Часть непрерывной записи: {start} — {end}. Исходный звук сохранён локально; в отчёт не включается звук других встреч.",
   "meeting.ongoing": "продолжается",
+  "meeting.crossing": "Реплика пересекает границу встреч; сохранена целиком в части, где началась.",
+  "meeting.unassigned": "Время неизвестно; принадлежность к части встречи не подтверждена.",
+  "meeting.inferred_time": "Дата сообщения восстановлена по времени в чате и дате записи.",
 });
 Object.assign(translations.en, {
   "meeting.new": "Start new meeting", "meeting.cancel": "Cancel",
@@ -668,6 +671,9 @@ Object.assign(translations.en, {
   "meeting.new_conflict": "Recording state changed. Check the current meeting and confirm again.",
   "meeting.audio_range": "Continuous recording range: {start} — {end}. Original audio stays local; other meetings’ audio is not included in this report.",
   "meeting.ongoing": "ongoing",
+  "meeting.crossing": "This utterance crosses the meeting boundary; kept whole in the section where it started.",
+  "meeting.unassigned": "Time unknown; assignment to this meeting section is unverified.",
+  "meeting.inferred_time": "Message date inferred from chat time and recording date.",
 });
 let boundaryBusy = false;
 let boundaryRequest = null;
@@ -1256,6 +1262,8 @@ function renderTranscript(transcript) {
       } else {
         body.append(textNode("p", "text", segment.text));
       }
+      if (segment.spans_boundary) body.append(textNode("small", "boundary-provenance", t("meeting.crossing")));
+      if (segment.boundary_unassigned) body.append(textNode("small", "boundary-provenance", t("meeting.unassigned")));
       speaker.append(textNode("time", "", localTime(segment.timestamp)));
       row.append(speaker, body);
       fragment.append(row);
@@ -2028,6 +2036,8 @@ function renderMeetingChat(items) {
         textNode("time", "", item.displayed_at || `${uiLanguage === "ru" ? "Обнаружено" : "Detected"}: ${localTime(item.captured_at)}`),
       );
       card.append(header, textNode("p", "", item.text || ""));
+      if (item.boundary_unassigned) card.append(textNode("small", "boundary-provenance", t("meeting.unassigned")));
+      if (item.time_inferred) card.append(textNode("small", "boundary-provenance", t("meeting.inferred_time")));
       card.append(textNode("small", "", `${item.source === "export" ? "TXT / JSON" : "OCR"}${(item.text || "").includes("?") ? (uiLanguage === "ru" ? " · Вопрос аудитории — в реестре вопросов" : " · Audience question — in question register") : ""}`));
       fragment.append(card);
     }
@@ -2288,6 +2298,8 @@ function renderArchiveDetail(meeting) {
       textNode("time", "", item.displayed_at || localTime(item.captured_at)),
       textNode("p", "", item.text),
     );
+    if (item.boundary_unassigned) card.append(textNode("small", "boundary-provenance", t("meeting.unassigned")));
+    if (item.time_inferred) card.append(textNode("small", "boundary-provenance", t("meeting.inferred_time")));
     meetingChat.append(card);
   }
   root.append(archiveSection(t("archive.meeting_chat"), meeting.meeting_chat?.length || 0, meetingChat));
@@ -2305,6 +2317,8 @@ function renderArchiveDetail(meeting) {
       textNode("time", "", localTime(item.timestamp)),
       textNode("p", "", item.text),
     );
+    if (item.spans_boundary) row.append(textNode("small", "boundary-provenance", t("meeting.crossing")));
+    if (item.boundary_unassigned) row.append(textNode("small", "boundary-provenance", t("meeting.unassigned")));
     transcript.append(row);
   }
   root.append(archiveSection(t("archive.transcript"), meeting.transcript?.length || 0, transcript));

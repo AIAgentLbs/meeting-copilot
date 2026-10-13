@@ -104,3 +104,19 @@ class LogicalServerTests(unittest.TestCase):
         self.session.bind_meeting("second")
         self.session.record_analysis(answer="old signal", meeting_id="physical")
         self.assertEqual(self.session.snapshot("second")["analysis"]["state"], "idle")
+
+    def test_import_continuous_chat_routes_each_message_by_its_time(self):
+        self.transcript.updated_at = "2026-01-01T10:10:00Z"
+        second = self.boundaries.split(self.transcript.physical_snapshot(), "physical", "chat", "Second", "2026-01-01T10:05:00Z")["meeting_id"]
+        journal = server.MeetingJournal(self.root / "journal.json")
+        chat = server.MeetingChat(self.root / "chat.json")
+        messages = server.parse_chat_export(json.dumps([
+            {"sender": "Example", "text": "Old content", "timestamp": "2026-01-01T10:02:00Z"},
+            {"sender": "Example", "text": "New content", "timestamp": "2026-01-01T10:08:00Z"},
+            {"sender": "Example", "text": "Unknown content"}]))
+        with patch.object(server, "JOURNAL", journal):
+            chat.add_many(messages, second, "Second", "", "export")
+        self.assertEqual([item["text"] for item in chat.snapshot(second)], ["New content"])
+        old = chat.snapshot("physical")
+        self.assertEqual([item["text"] for item in old], ["Old content", "Unknown content"])
+        self.assertTrue(old[-1]["boundary_unassigned"])

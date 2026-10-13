@@ -184,6 +184,25 @@ class MeetingArchive:
             if previous != clean:
                 _atomic_json(target, clean)
 
+    def reconcile_boundaries(self, boundaries) -> None:
+        """Finalize sessions whose stop export was missed, using native metadata."""
+        roots = self.recording_locations.roots() if self.recording_locations else [self.recordings_root.resolve()]
+        for physical_id, logical_ids in boundaries.open_sessions().items():
+            first = _json(self.archive_root / _safe(physical_id) / "meeting.json", {})
+            directory = str(first.get("recording_dir") or "")
+            if not directory or not any(Path(directory).resolve().is_relative_to(root) for root in roots):
+                continue
+            meta = _json(Path(directory) / "meta.json", {})
+            ended = meta.get("ended")
+            if not _date(ended):
+                continue
+            snapshots = [_json(self.archive_root / _safe(identity) / "meeting.json", {}) for identity in logical_ids]
+            physical = {**first, "meeting_id": physical_id, "status": "finished", "ended_at": ended,
+                        "started_at": first.get("physical_started_at") or first.get("started_at"),
+                        "updated_at": ended, "segments": [segment for snap in snapshots for segment in snap.get("segments", [])]}
+            for part in boundaries.project(physical):
+                self.sync_transcript(part)
+
     def _recordings(self) -> list[dict]:
         result: list[dict] = []
         roots = self.recording_locations.roots() if self.recording_locations else [self.recordings_root]
@@ -1420,6 +1439,15 @@ class MeetingArchive:
 
     def _report_html(self, detail: dict, frames: list[dict]) -> str:
         esc = lambda value: html.escape(str(value or ""))
+        def provenance(item):
+            notes = []
+            if item.get("spans_boundary"):
+                notes.append("Реплика пересекает границу встреч; сохранена целиком в части, где началась.")
+            if item.get("boundary_unassigned"):
+                notes.append("Время неизвестно; принадлежность к части встречи не подтверждена.")
+            if item.get("time_inferred"):
+                notes.append("Дата сообщения восстановлена по времени в чате и дате записи.")
+            return ''.join('<small class="provenance">' + esc(note) + '</small>' for note in notes)
         title = esc(detail["title"])
         started = _date(detail["started_at"])
         date_label = started.astimezone().strftime("%d.%m.%Y %H:%M") if started else "—"
@@ -1527,7 +1555,7 @@ class MeetingArchive:
 
         chat_html = "".join(
             f'<article class="chat"><strong>{esc(item.get("sender") or "Участник")}</strong>'
-            f'<span>{esc(item.get("displayed_at") or "")}</span><p>{esc(item.get("text"))}</p></article>'
+            f'<span>{esc(item.get("displayed_at") or "")}</span><p>{esc(item.get("text"))}</p>{provenance(item)}</article>'
             for item in detail["meeting_chat"]
         )
         frames_html = "".join(
@@ -1538,8 +1566,9 @@ class MeetingArchive:
         )
         transcript_html = "".join(
             f'<article class="utterance"><div><strong>{esc(item.get("speaker") or ("Я" if item.get("source") == "microphone" else "Собеседник"))}</strong>'
-            f'<time>{esc((_date(item.get("timestamp")) or datetime.now().astimezone()).strftime("%H:%M:%S"))}</time></div>'
+            f'<time>{esc(_date(item.get("timestamp")).strftime("%H:%M:%S") if _date(item.get("timestamp")) else "Время неизвестно")}</time></div>'
             f'<p>{esc(item.get("text"))}</p>'
+            f'{provenance(item)}'
             f'{"<p class=\"translated\"><strong>EN:</strong> " + esc(item.get("translation_en")) + "</p>" if item.get("translation_en") else ""}'
             f'</article>' for item in detail["transcript"]
         )

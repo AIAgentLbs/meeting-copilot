@@ -95,6 +95,12 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(store.route_event({"meeting_id": "p1", "created_at": "2026-01-01T10:06:00Z", "logical_event": True})["meeting_id"], "p1")
         self.assertTrue(store.route_event({"meeting_id": "p1"})["boundary_unassigned"])
 
+    def test_capture_started_in_second_part_routes_by_actual_third_part_time(self):
+        store = self.store()
+        second = self.split(store)["meeting_id"]
+        third = self.split(store, expected=second, token="two", at="2026-01-01T10:10:00Z")["meeting_id"]
+        self.assertEqual(store.route_event({"meeting_id": second, "captured_at": "2026-01-01T10:11:00Z"})["meeting_id"], third)
+
     def test_inactive_token_reuse_and_nonmonotonic_rejected(self):
         store = self.store()
         result = self.split(store)

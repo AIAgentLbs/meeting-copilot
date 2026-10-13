@@ -9,13 +9,15 @@ const assert = require('assert/strict');
   let identity = 'physical', requests = [], conflict = false, loseResponse = false;
   const state = () => ({
     transcript: { meeting_id: identity, physical_meeting_id: 'physical', meeting: identity === 'physical' ? 'Example' : 'Second',
-      status: 'recording', started_at: new Date().toISOString(), segments: [], live: true, latest_age_seconds: 0 },
+      status: 'recording', started_at: new Date().toISOString(), segments: [{timestamp:new Date().toISOString(),source:'system',text:'Synthetic crossing',spans_boundary:true}], live: true, latest_age_seconds: 0 },
     copilot: { busy: false, messages: [], analysis: { state: 'idle' } },
     recording_health: { meeting_id: 'physical', checked_at: Date.now()/1000, state: 'healthy', capture: { audio_recording: true, state: 'recording' } },
     frames: [], journal: [], meeting_chat: [], project: { repositories: [], kind: 'all' }, preferences: { interface_language: 'ru' }, delivery: {},
   });
   const server = http.createServer((req, res) => {
     if (req.url === '/api/state') { res.setHeader('Content-Type', 'application/json'); return res.end(JSON.stringify(state())); }
+    if (req.url === '/api/archive') return res.end(JSON.stringify({ok:true,meetings:[{meeting_id:'second',title:'Second',started_at:new Date().toISOString(),transcript_count:1,journal_count:0,frame_count:0}]}));
+    if (req.url === '/api/archive/second') return res.end(JSON.stringify({ok:true,meeting:{meeting_id:'second',title:'Second',started_at:new Date().toISOString(),duration_seconds:300,explicit_boundary:true,audio_range:{start_seconds:300,end_seconds:600},transcript:state().transcript.segments,journal:[],frames:[],meeting_chat:[]}}));
     if (req.url === '/api/meeting/new') {
       let body = ''; req.on('data', data => body += data); req.on('end', () => {
         const request = JSON.parse(body); requests.push(request);
@@ -40,6 +42,7 @@ const assert = require('assert/strict');
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const button = page.locator('#new-meeting-button');
     await button.waitFor({timeout:3000});
+    await page.locator('.boundary-provenance').filter({hasText:'Реплика пересекает границу'}).waitFor({timeout:3000});
     await button.click();
     await page.locator('#new-meeting-cancel').click();
     assert.equal(requests.length,0,'Cancel must not write');
@@ -60,6 +63,11 @@ const assert = require('assert/strict');
     await page.locator('#new-meeting-error').filter({hasText:/./}).waitFor();
     assert.equal(await page.locator('#new-meeting-dialog').evaluate(el=>el.open),true);
     await page.locator('#new-meeting-cancel').click();
+    await page.locator('#archive-button').click();
+    await page.locator('.archive-item').first().click();
+    await page.locator('#archive-detail .archive-audio-range').filter({hasText:'5:00'}).waitFor();
+    assert.equal(await page.locator('#archive-detail .boundary-provenance').count(),1,'History must disclose crossing speech');
+    await page.locator('#archive-close').click();
     await page.locator('[data-language="en"]').click();
     await button.click();
     assert.equal(await page.locator('#new-meeting-heading').textContent(),'Start new meeting');

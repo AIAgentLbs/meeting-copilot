@@ -165,18 +165,31 @@ class MeetingBoundaries:
                     return physical_id
         return logical_id
 
+    def open_sessions(self):
+        with self.lock:
+            return {identity: [part["meeting_id"] for part in parts]
+                    for identity, parts in self.data["sessions"].items() if parts[-1]["end"] is None}
+
+    def closed_ids(self):
+        with self.lock:
+            return [part["meeting_id"] for parts in self.data["sessions"].values()
+                    for part in parts if part["end"] is not None]
+
     def route_event(self, item: dict) -> dict:
         """Route timestamped physical events without mutating persisted originals."""
         if item.get("logical_event"):
             return dict(item)
         with self.lock:
-            parts = self.data["sessions"].get(item.get("meeting_id"))
+            physical_id = self.physical_id(item.get("physical_meeting_id") or item.get("meeting_id"))
+            parts = self.data["sessions"].get(physical_id)
             if not parts:
                 return dict(item)
+            if item.get("boundary_unassigned"):
+                return {**item, "meeting_id": parts[0]["meeting_id"], "physical_meeting_id": physical_id}
             stamp = next((item[k] for k in ("anchor_at", "captured_at", "timestamp", "created_at") if epoch(item.get(k)) is not None), None)
             if stamp is None:
-                return {**item, "boundary_unassigned": True}
+                return {**item, "meeting_id": parts[0]["meeting_id"], "physical_meeting_id": physical_id, "boundary_unassigned": True}
             for part in parts:
                 if interval_contains(part, stamp):
-                    return {**item, "physical_meeting_id": item["meeting_id"], "meeting_id": part["meeting_id"]}
-            return {**item, "boundary_unassigned": True}
+                    return {**item, "physical_meeting_id": physical_id, "meeting_id": part["meeting_id"]}
+            return {**item, "meeting_id": parts[0]["meeting_id"], "physical_meeting_id": physical_id, "boundary_unassigned": True}

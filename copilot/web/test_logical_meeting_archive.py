@@ -73,3 +73,15 @@ class LogicalArchiveTests(unittest.TestCase):
 
     def test_intentional_short_split_is_not_discarded_as_dictation(self):
         self.assertFalse(self.archive._short_automatic({"explicit_boundary": True, "recording_trigger": "mic-activity", "duration_seconds": 30}))
+
+    def test_restart_reconciles_old_open_interval_from_completed_native_metadata(self):
+        self.physical["status"] = "recording"
+        self.sync()
+        restarted = MeetingBoundaries(self.store.path)
+        reconcile = getattr(self.archive, "reconcile_boundaries", None)
+        self.assertIsNotNone(reconcile, "completed physical metadata must close persisted intervals")
+        reconcile(restarted)
+        second = self.archive.detail(self.second)
+        self.assertEqual(second["status"], "finished")
+        self.assertEqual(second["logical_interval"]["end"], "2026-01-01T10:20:00Z")
+        self.assertTrue(self.archive.needs_report(self.second))

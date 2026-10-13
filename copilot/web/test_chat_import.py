@@ -1,6 +1,10 @@
 import json
 import tempfile
 import unittest
+try:
+    from chat_import import normalize_chat_times
+except ImportError:
+    normalize_chat_times = None
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +13,18 @@ from chat_import import parse_chat_export
 
 
 class ChatImportTests(unittest.TestCase):
+    def test_absolute_times_survive_and_unknown_time_is_not_import_time(self):
+        rows = parse_chat_export(json.dumps([{"sender": "Example", "text": "old", "timestamp": "2026-01-01T10:02:00Z"}]))
+        self.assertEqual(rows[0].get("captured_at"), "2026-01-01T10:02:00Z")
+        self.assertIsNotNone(normalize_chat_times)
+        unknown = normalize_chat_times([{"sender": "Example", "text": "untimed"}], {"started_at": "2026-01-01T10:00:00Z", "updated_at": "2026-01-01T11:00:00Z"})
+        self.assertTrue(unknown[0]["boundary_unassigned"])
+
+    def test_time_of_day_is_bounded_to_physical_recording(self):
+        self.assertIsNotNone(normalize_chat_times)
+        rows = normalize_chat_times([{"displayed_at": "10:02", "text": "old"}],
+            {"started_at": "2026-01-01T10:00:00+00:00", "updated_at": "2026-01-01T11:00:00+00:00"}, local_timezone=False)
+        self.assertEqual(rows[0]["captured_at"], "2026-01-01T10:02:00+00:00")
     def test_zoom_and_multiline(self):
         rows = parse_chat_export('17:42:01 From Анна to Everyone:\tКак связать CRM?\nИ второй вопрос\n17:43:00 Иван: Спасибо')
         self.assertEqual(rows[0]['sender'], 'Анна')

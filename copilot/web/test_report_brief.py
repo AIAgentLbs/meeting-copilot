@@ -8,6 +8,15 @@ from archive import MeetingArchive
 
 
 class ReportBriefTests(unittest.TestCase):
+    def test_report_discloses_crossing_and_unassigned_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = MeetingArchive(root / "recordings", root / "archive", root / "reports", root / "config")
+            page = archive._report_html({"meeting_id": "sample", "title": "Example", "started_at": "2026-01-01T10:00:00Z", "duration_seconds": 300, "transcript": [
+                {"timestamp": "2026-01-01T10:02:00Z", "text": "crossing", "spans_boundary": True},
+                {"text": "unknown", "boundary_unassigned": True}], "journal": [], "meeting_chat": []}, [])
+        self.assertIn("Реплика пересекает границу встреч", page)
+        self.assertIn("Время неизвестно", page)
     def test_people_summary_topics_and_actions_precede_toc(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

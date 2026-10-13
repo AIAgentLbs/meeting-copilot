@@ -31,7 +31,7 @@ from google_context import GoogleContext
 from call_plan import CallPlans
 from live_translation import LiveTranslation
 from frame_relevance import frame_relevance
-from chat_import import parse_chat_export
+from chat_import import parse_chat_export, normalize_chat_times
 from interface_preferences import interface_preferences
 from question_quality import register_question, useful_question
 from recording_health import default_guard
@@ -1011,6 +1011,9 @@ class MeetingChat:
         source: str = "ocr",
     ) -> int:
         added = 0
+        physical = TRANSCRIPT.physical_snapshot()
+        if BOUNDARIES.physical_id(meeting_id) == physical.get("meeting_id"):
+            messages = normalize_chat_times(messages, physical)
         with self.lock:
             existing = {
                 (
@@ -1028,7 +1031,11 @@ class MeetingChat:
                                        if item.get("meeting_id") == meeting_id)),
                 ) if source == "ocr" else sender
                 displayed_at = str(message.get("displayed_at", "")).strip()
-                key = (meeting_id, sender, displayed_at, text)
+                routed = BOUNDARIES.route_event({"meeting_id": BOUNDARIES.physical_id(meeting_id),
+                    "captured_at": message.get("captured_at", ""),
+                    "boundary_unassigned": bool(message.get("boundary_unassigned"))})
+                target_id = routed["meeting_id"]
+                key = (target_id, sender, displayed_at, text)
                 if (
                     not text or not sender or key in existing
                     or (source == "ocr" and not self._valid(sender, text))
@@ -1036,7 +1043,7 @@ class MeetingChat:
                     continue
                 self.items.append({
                     "id": str(uuid.uuid4()),
-                    "meeting_id": meeting_id,
+                    "meeting_id": target_id,
                     "meeting": meeting or "Без названия",
                     "sender": sender,
                     "text": text,
@@ -1044,6 +1051,8 @@ class MeetingChat:
                     "captured_at": str(message.get("captured_at") or datetime.now().astimezone().isoformat(timespec="seconds")),
                     "frame_id": frame_id,
                     "source": source,
+                    "boundary_unassigned": bool(routed.get("boundary_unassigned")),
+                    "time_inferred": bool(message.get("time_inferred")),
                 })
                 existing.add(key)
                 added += 1
@@ -1056,9 +1065,14 @@ class MeetingChat:
                 temporary.write_text(payload, encoding="utf-8")
                 temporary.chmod(0o600)
                 temporary.replace(self.path)
-        for item in self.snapshot(meeting_id):
+        affected_ids = {BOUNDARIES.route_event({"meeting_id": BOUNDARIES.physical_id(meeting_id),
+                        "captured_at": message.get("captured_at", ""),
+                        "boundary_unassigned": bool(message.get("boundary_unassigned"))})["meeting_id"] for message in messages}
+        for item in self.snapshot():
+            if item.get("meeting_id") not in affected_ids or item.get("boundary_unassigned"):
+                continue
             if "?" in item.get("text", ""):
-                JOURNAL.add("OPEN_QUESTION", item["text"], meeting_id, meeting, "meeting_chat",
+                JOURNAL.add("OPEN_QUESTION", item["text"], item["meeting_id"], meeting, "meeting_chat",
                             speaker=item["sender"], evidence=f"Чат · {item.get('displayed_at') or 'время неизвестно'} · {item['id']}")
         return added
 
@@ -1236,6 +1250,12 @@ class TranscriptState:
                     and status in {"idle", "finished"}
                 ):
                     return
+                previous_id = self.meeting_id
+            if previous_id != meeting_id and previous_id in BOUNDARIES.open_sessions():
+                for part in self.snapshots():
+                    ARCHIVE.sync_transcript(part)
+                ARCHIVE.reconcile_boundaries(BOUNDARIES)
+            with self.lock:
                 self.meeting = meeting
                 self.meeting_id = meeting_id
                 self.segments = segments
@@ -2172,14 +2192,23 @@ def annotated_snapshot():
 
 def archive_loop() -> None:
     """Persist live state and finalize reports even when no browser is open."""
+    last_history_check = 0.0
     while not TRANSCRIPT.stop.is_set():
         try:
+            ARCHIVE.reconcile_boundaries(BOUNDARIES)
             for part in TRANSCRIPT.snapshots():
                 snapshot = ARCHIVE.annotate_speakers(TRANSLATIONS.annotate(FRAMES.annotate(part)))
                 ARCHIVE.sync_transcript(snapshot)
                 meeting_id = str(snapshot.get("meeting_id") or "")
                 if meeting_id and ARCHIVE.needs_report(meeting_id):
                     ARCHIVE.generate_report(meeting_id)
+            # Old physical sessions can finish while this web service is down.
+            # Revisit their logical reports at a bounded cadence, not each poll.
+            if time.monotonic() - last_history_check >= 60:
+                last_history_check = time.monotonic()
+                for meeting_id in BOUNDARIES.closed_ids():
+                    if ARCHIVE.needs_report(meeting_id):
+                        ARCHIVE.generate_report(meeting_id)
         except Exception as exc:
             print(f"meeting archive update failed: {exc}", flush=True)
         TRANSCRIPT.stop.wait(10)
