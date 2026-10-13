@@ -857,6 +857,8 @@ class MeetingArchive:
         their whole duration rather than discarding short reconnect fragments.
         This hides records without deleting any historical source data.
         """
+        if detail.get("explicit_boundary"):
+            return False
         if detail.get("recording_trigger") not in {"mic-activity", "calendar"}:
             return False
         if detail.get("recording_discarded") and len(detail.get("source_meeting_ids") or []) <= 1:

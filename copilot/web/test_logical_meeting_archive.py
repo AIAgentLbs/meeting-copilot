@@ -59,3 +59,17 @@ class LogicalArchiveTests(unittest.TestCase):
         self.sync()
         self.assertTrue(self.archive.needs_report("p1"))
         self.assertFalse(self.archive.needs_report(self.second))
+
+    def test_capture_events_route_and_manual_old_note_stays_old(self):
+        self.archive.event_router = self.store.route_event
+        self.sync()
+        for filename in ("frames.json", "meeting-chat.json", "journal.json"):
+            (self.config / filename).write_text(json.dumps({"items": [
+                {"id": "event", "meeting_id": "p1", "captured_at": "2026-01-01T10:08:00Z", "text": "new event", "category": "URL"},
+                {"id": "note", "meeting_id": "p1", "created_at": "2026-01-01T10:09:00Z", "text": "old note", "category": "NOTE", "logical_event": True}]}))
+        for collection in ("frames", "meeting_chat", "journal"):
+            self.assertEqual([item["id"] for item in self.archive.detail(self.second)[collection]], ["event"])
+            self.assertEqual([item["id"] for item in self.archive.detail("p1")[collection]], ["note"])
+
+    def test_intentional_short_split_is_not_discarded_as_dictation(self):
+        self.assertFalse(self.archive._short_automatic({"explicit_boundary": True, "recording_trigger": "mic-activity", "duration_seconds": 30}))
