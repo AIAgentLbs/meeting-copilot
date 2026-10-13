@@ -88,6 +88,13 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(store.project(self.physical)[-1]["logical_interval"]["end"], "2026-01-01T10:09:00Z")
         self.assertEqual(len(store.project({**self.physical, "meeting_id": "p2"})), 1)
 
+    def test_event_time_routes_old_physical_frames_and_preserves_logical_note(self):
+        store = self.store()
+        second = self.split(store)["meeting_id"]
+        self.assertEqual(store.route_event({"meeting_id": "p1", "captured_at": "2026-01-01T10:06:00Z"})["meeting_id"], second)
+        self.assertEqual(store.route_event({"meeting_id": "p1", "created_at": "2026-01-01T10:06:00Z", "logical_event": True})["meeting_id"], "p1")
+        self.assertTrue(store.route_event({"meeting_id": "p1"})["boundary_unassigned"])
+
     def test_inactive_token_reuse_and_nonmonotonic_rejected(self):
         store = self.store()
         result = self.split(store)

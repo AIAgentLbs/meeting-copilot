@@ -45,6 +45,11 @@ class CallPlanTests(unittest.TestCase):
         later = {**self.meeting, "meeting_id": "meeting-c", "started_at": "2026-09-30T08:04:00Z"}
         self.assertIsNone(self.plan.snapshot(later))
 
+    def test_explicit_new_logical_meeting_does_not_reuse_old_preparation(self):
+        self.plan.snapshot(self.meeting)
+        new = {**self.meeting, "meeting_id": "new-part", "physical_meeting_id": "meeting-a", "explicit_boundary": True}
+        self.assertIsNone(self.plan.snapshot(new))
+
     def test_generic_capture_title_uses_tentative_near_time_only(self):
         generic = {**self.meeting, "meeting_id": "generic", "meeting": "Google Chrome Helper", "remote_attendees": []}
         self.assertEqual(self.plan.snapshot(generic)["match"], "time-only")

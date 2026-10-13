@@ -94,10 +94,12 @@ class MeetingArchive:
         config_root: Path,
         recording_locations: RecordingLocations | None = None,
         frames_provider: Callable[[], list[dict]] | None = None,
+        event_router: Callable[[dict], dict] | None = None,
     ) -> None:
         self.recordings_root = recordings_root
         self.recording_locations = recording_locations
         self.frames_provider = frames_provider
+        self.event_router = event_router or (lambda item: item)
         self.archive_root = archive_root
         self.reports_root = reports_root
         self.config_root = config_root
@@ -118,9 +120,9 @@ class MeetingArchive:
     def _index_items(self, filename: str) -> list[dict]:
         values = getattr(self._index_state, "values", None)
         if values is None:
-            return list(_json(self.config_root / filename, {}).get("items", []))
+            return [self.event_router(item) for item in _json(self.config_root / filename, {}).get("items", [])]
         if filename not in values:
-            values[filename] = list(_json(self.config_root / filename, {}).get("items", []))
+            values[filename] = [self.event_router(item) for item in _json(self.config_root / filename, {}).get("items", [])]
         return values[filename]
 
     def annotate_speakers(self, snapshot: dict) -> dict:

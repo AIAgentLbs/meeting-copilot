@@ -228,6 +228,8 @@ class CallPlans:
         plans = [plan for plan in self._plans(transcript) if self._valid(plan)]
         if bound_id:
             return next((plan for plan in plans if plan["id"] == bound_id), None)
+        if transcript.get("explicit_boundary") and transcript.get("physical_meeting_id") != meeting_id:
+            return None
         confirmed = next((plan for plan in plans if self._matches(plan, transcript)), None)
         if confirmed:
             return confirmed

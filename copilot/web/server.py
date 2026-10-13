@@ -18,13 +18,14 @@ import threading
 import time
 import uuid
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from archive import MeetingArchive
+from meeting_boundaries import MeetingBoundaries, BoundaryConflict, BoundaryUnavailable
 from calendar_meetings import CalendarMeetings
 from google_context import GoogleContext
 from call_plan import CallPlans
@@ -59,6 +60,14 @@ RECORDINGS_ROOT = HOME / ".local/share/meeting-copilot/recordings"
 RECOVERED_TRANSCRIPTS_ROOT = HOME / ".local/share/meeting-copilot/recovered-transcripts"
 ARCHIVE_ROOT = HOME / ".local/share/meeting-copilot/archive"
 REPORTS_ROOT = HOME / ".local/share/meeting-copilot/reports"
+BOUNDARIES = MeetingBoundaries(HOME / ".local/share/meeting-copilot/meeting-boundaries.json")
+
+
+def routed_event(item):
+    # AI/manual journal items already belong to a captured logical meeting.
+    if item.get("category") and item.get("source") not in {"transcript", "screen", "meeting_chat"}:
+        return dict(item)
+    return BOUNDARIES.route_event(item)
 WINDOW_FINDER = HOME / ".local/share/meeting-copilot/bin/zoom-window-finder"
 FRAME_INSPECTOR = HOME / ".local/share/meeting-copilot/bin/zoom-frame-inspector"
 ZOOM_WINDOW_FILE = HOME / ".config/meeting-copilot/zoom-window.json"
@@ -703,7 +712,7 @@ class MeetingJournal:
     def snapshot(self, meeting_id: str) -> list[dict]:
         with self.lock:
             return [
-                item for item in reversed(self.items)
+                item for item in map(routed_event, reversed(self.items))
                 if meeting_id and item.get("meeting_id") == meeting_id
                 and register_question(item)
             ][:500]
@@ -744,6 +753,7 @@ class MeetingJournal:
             "meeting": meeting or "Без названия",
             "source": source,
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "logical_event": True,
         }
         if meeting_time_seconds is not None:
             item["meeting_time_seconds"] = max(0, int(meeting_time_seconds))
@@ -988,7 +998,7 @@ class MeetingChat:
     def snapshot(self, meeting_id: str = "") -> list[dict[str, str]]:
         with self.lock:
             return [
-                dict(item) for item in self.items[-1000:]
+                dict(item) for item in map(routed_event, self.items[-1000:])
                 if not meeting_id or item.get("meeting_id") == meeting_id
             ]
 
@@ -1102,7 +1112,7 @@ class TranscriptState:
         self._input_signature = None
         self.revision = 0
 
-    def snapshot(self) -> dict:
+    def physical_snapshot(self) -> dict:
         with self.lock:
             latest_epoch = 0.0
             freshness_at = self.updated_at if self.status == "recording" else self.latest_at
@@ -1135,6 +1145,12 @@ class TranscriptState:
                 "error": self.error,
                 "revision": self.revision,
             }
+
+    def snapshots(self) -> list[dict]:
+        return BOUNDARIES.project(self.physical_snapshot())
+
+    def snapshot(self) -> dict:
+        return self.snapshots()[-1]
 
     def transcript_text(self, max_chars: int = 14000) -> str:
         snap = self.snapshot()
@@ -1242,7 +1258,9 @@ class TranscriptState:
             ).hexdigest()
             if mention_fingerprint != self.mentions_fingerprint:
                 self.mentions_fingerprint = mention_fingerprint
-                capture_mentions(mention_text, meeting_id, meeting, "transcript")
+                for part in self.snapshots():
+                    capture_mentions("\n".join(item["text"] for item in part["segments"]),
+                                     part["meeting_id"], part["meeting"], "transcript")
         except FileNotFoundError:
             with self.lock:
                 self.error = "Meeting Copilot ещё не начал live-расшифровку"
@@ -1325,7 +1343,7 @@ class MeetingFrames:
         """Read-only shared frame records; archive annotation copies before edits."""
         self._reload()
         with self.lock:
-            return list(self.items)
+            return [routed_event(item) for item in self.items]
 
     def snapshot(self, meeting_id: str = "") -> list[dict]:
         self._reload()
@@ -1340,7 +1358,7 @@ class MeetingFrames:
                     "window_title": item.get("window_title", ""),
                     "url": f"/api/frames/{item.get('id', '')}",
                 }
-                for item in self.items
+                for item in map(routed_event, self.items)
                 if not meeting_id or item.get("meeting_id") == meeting_id
             ]
         return list(reversed(items[-120:]))
@@ -1358,7 +1376,7 @@ class MeetingFrames:
         self._reload()
         with self.lock:
             frames = [
-                dict(item) for item in self.items[-40:]
+                dict(item) for item in map(routed_event, self.items[-40:])
                 if item.get("meeting_id") == meeting_id and item.get("visual_text")
             ]
         chunks: list[str] = []
@@ -1381,7 +1399,7 @@ class MeetingFrames:
         self._reload()
         with self.lock:
             frames = [
-                dict(item) for item in self.items
+                dict(item) for item in map(routed_event, self.items)
                 if item.get("meeting_id") == meeting_id
             ]
         for frame in frames:
@@ -1415,7 +1433,7 @@ class MeetingFrames:
 
     @staticmethod
     def _active_recording_dir() -> Path | None:
-        active = RECORDING_LOCATIONS.active(TRANSCRIPT.snapshot().get("started_at", ""))
+        active = RECORDING_LOCATIONS.active(TRANSCRIPT.physical_snapshot().get("started_at", ""))
         return Path(active["directory"]) if active else None
 
     @staticmethod
@@ -1597,7 +1615,7 @@ class MeetingFrames:
         # Annotation must not mutate the raw, unchanged export held by TranscriptState.
         transcript = {**transcript, "segments": [dict(segment) for segment in transcript.get("segments", [])]}
         with self.lock:
-            frames = list(self.items)
+            frames = [routed_event(item) for item in self.items]
         segments = transcript.get("segments", [])
         meeting_frames = [frame for frame in frames if frame.get("meeting_id") == transcript.get("meeting_id")]
         teams_name = teams_one_to_one_name(meeting_frames)
@@ -2082,8 +2100,10 @@ ASK формулируй как одну короткую реплику, кот
             self._persist_locked()
             return True
 
-    def record_analysis(self, answer: str = "", error: str = "") -> None:
+    def record_analysis(self, answer: str = "", error: str = "", meeting_id: str = "") -> None:
         with self.lock:
+            if meeting_id and self.meeting_id != meeting_id:
+                return
             timestamp = datetime.now().astimezone().isoformat(timespec="seconds")
             if error:
                 self.analysis = {"state": "error", "at": timestamp, "message": error}
@@ -2110,6 +2130,7 @@ ARCHIVE = MeetingArchive(
     HOME / ".config/meeting-copilot",
     recording_locations=RECORDING_LOCATIONS,
     frames_provider=lambda: FRAMES.archive_items(),
+    event_router=routed_event,
 )
 
 
@@ -2131,7 +2152,7 @@ class AnnotationCache:
         except (OSError, ValueError):
             edits = None
         key = (id(TRANSCRIPT), id(FRAMES), id(ARCHIVE), id(TRANSLATIONS), raw.get("revision"),
-               meeting_id, FRAMES.index_mtime_ns, TRANSLATIONS.revision, edits)
+               meeting_id, raw.get("boundary_revision"), FRAMES.index_mtime_ns, TRANSLATIONS.revision, edits)
         with self.lock:
             if key != self.key:
                 value = ARCHIVE.annotate_speakers(TRANSLATIONS.annotate(FRAMES.annotate(raw)))
@@ -2153,11 +2174,12 @@ def archive_loop() -> None:
     """Persist live state and finalize reports even when no browser is open."""
     while not TRANSCRIPT.stop.is_set():
         try:
-            snapshot = annotated_snapshot()
-            ARCHIVE.sync_transcript(snapshot)
-            meeting_id = str(snapshot.get("meeting_id") or "")
-            if meeting_id and ARCHIVE.needs_report(meeting_id):
-                ARCHIVE.generate_report(meeting_id)
+            for part in TRANSCRIPT.snapshots():
+                snapshot = ARCHIVE.annotate_speakers(TRANSLATIONS.annotate(FRAMES.annotate(part)))
+                ARCHIVE.sync_transcript(snapshot)
+                meeting_id = str(snapshot.get("meeting_id") or "")
+                if meeting_id and ARCHIVE.needs_report(meeting_id):
+                    ARCHIVE.generate_report(meeting_id)
         except Exception as exc:
             print(f"meeting archive update failed: {exc}", flush=True)
         TRANSCRIPT.stop.wait(10)
@@ -2384,7 +2406,34 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self._body()
-            if path == "/api/delivery/ack":
+            if path == "/api/meeting/new":
+                physical = TRANSCRIPT.physical_snapshot()
+                prior = BOUNDARIES.retry_result(physical["meeting_id"],
+                                               str(payload.get("expected_meeting_id") or ""),
+                                               str(payload.get("request_id") or ""),
+                                               str(payload.get("title") or ""))
+                if prior:
+                    for part in TRANSCRIPT.snapshots():
+                        ARCHIVE.sync_transcript(part)
+                    self._json(prior)
+                    return
+                capture = RECOGNITION_GUARD.health.sample(physical)
+                if not capture.get("audio_recording"):
+                    raise BoundaryUnavailable("Audio recording is not confirmed active; wait for the recording indicator")
+                with TRANSCRIPT.lock:
+                    if TRANSCRIPT.meeting_id != physical["meeting_id"] or TRANSCRIPT.status not in {"recording", "overloaded", "loading"}:
+                        raise BoundaryConflict("Recording changed; refresh and confirm again")
+                    result = BOUNDARIES.split({**physical, "status": "recording"},
+                                              str(payload.get("expected_meeting_id") or ""),
+                                              str(payload.get("request_id") or ""),
+                                              str(payload.get("title") or ""),
+                                              datetime.now(timezone.utc).isoformat())
+                # Persist both independent views before returning success. A retry
+                # uses the same token if a downstream archive write fails.
+                for part in TRANSCRIPT.snapshots():
+                    ARCHIVE.sync_transcript(part)
+                self._json(result)
+            elif path == "/api/delivery/ack":
                 ARCHIVE.delivery_monitor.acknowledge(payload.get("through"))
                 self._json({"ok": True, "delivery": ARCHIVE.delivery_health()})
             elif path == "/api/google-context/settings":
@@ -2498,7 +2547,7 @@ class Handler(BaseHTTPRequestHandler):
                                    str(payload.get("status") or ""))
                 self._json({"ok": True, "journal": JOURNAL.snapshot(snap["meeting_id"])})
             elif path == "/api/recognition/resume":
-                result = RECOGNITION_GUARD.tick(manual_meeting_id=str(payload.get("meeting_id") or ""))
+                result = RECOGNITION_GUARD.tick(manual_meeting_id=BOUNDARIES.physical_id(str(payload.get("meeting_id") or "")))
                 self._json({"ok": True, "recording_health": result})
             elif path == "/api/analyze":
                 snap = ARCHIVE.annotate_speakers(FRAMES.annotate(TRANSCRIPT.snapshot()))
@@ -2522,6 +2571,7 @@ class Handler(BaseHTTPRequestHandler):
                 if notes:
                     context += "\n\n[MANUAL NOTES]\n" + notes
                 force = bool(payload.get("force", False))
+                COPILOT.bind_meeting(snap["meeting_id"])
                 if not COPILOT.should_analyze(context, force):
                     self._json({"ok": True, "skipped": True})
                     return
@@ -2599,7 +2649,7 @@ class Handler(BaseHTTPRequestHandler):
                 JOURNAL.capture_questions(snap, answer)
                 signal_answer = re.sub(r"(?m)^(?:PLAN_UPDATE|SIGNAL_UPDATE|QUESTION_CAPTURE)\s*[:—-]\s*\{[^\n]*\}\s*$", "", answer).strip()
                 JOURNAL.add_answer(signal_answer, snap["meeting_id"], snap["meeting"])
-                COPILOT.record_analysis(answer=signal_answer or "НЕТ НОВОГО СИГНАЛА")
+                COPILOT.record_analysis(answer=signal_answer or "НЕТ НОВОГО СИГНАЛА", meeting_id=snap["meeting_id"])
                 self._json({"ok": True, "answer": signal_answer or "НЕТ НОВОГО СИГНАЛА"})
             elif path == "/api/repositories":
                 paths = payload.get("paths", [])
@@ -2674,11 +2724,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
+        except (BoundaryConflict, BoundaryUnavailable) as exc:
+            self._json({"ok": False, "error": str(exc)}, HTTPStatus.CONFLICT)
         except (ValueError, json.JSONDecodeError) as exc:
             self._json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             if path == "/api/analyze":
-                COPILOT.record_analysis(error=str(exc))
+                COPILOT.record_analysis(error=str(exc), meeting_id=str(snap.get("meeting_id") or ""))
             self._json({"ok": False, "error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 

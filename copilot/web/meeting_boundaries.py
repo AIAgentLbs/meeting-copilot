@@ -110,6 +110,15 @@ class MeetingBoundaries:
             self._commit(data)
             return dict(result)
 
+    def retry_result(self, physical_id: str, expected_id: str, token: str, title: str):
+        with self.lock:
+            prior = self.data["requests"].get(token)
+            if not prior:
+                return None
+            if prior["input"] != {"physical_id": physical_id, "expected_id": expected_id, "title": str(title).strip()}:
+                raise BoundaryConflict("Request token already used for a different meeting")
+            return dict(prior["result"])
+
     def project(self, physical: dict) -> list[dict]:
         with self.lock:
             parts = copy.deepcopy(self.data["sessions"].get(physical.get("meeting_id")))
@@ -158,6 +167,8 @@ class MeetingBoundaries:
 
     def route_event(self, item: dict) -> dict:
         """Route timestamped physical events without mutating persisted originals."""
+        if item.get("logical_event"):
+            return dict(item)
         with self.lock:
             parts = self.data["sessions"].get(item.get("meeting_id"))
             if not parts:
