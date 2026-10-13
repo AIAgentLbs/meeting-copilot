@@ -10,15 +10,20 @@
 
 ## Continuous recording meeting boundaries
 
-- Implement the owner's requested Start new meeting from now action without
+- Completed and installed on Mac 2026-10-13: Start new meeting from now without
   restarting Capture. Persist independent logical meeting intervals over the
   original audio; isolate transcript, AI jobs/context, journal, screenshots,
   chat, reports and history. Prevent archive continuous-chain merging across
   explicit boundaries and keep recovery targeting the physical recording ID.
-  Owner requested implementation on 2026-10-13; implementation plan awaits review:
+  Reviewed implementation and synthetic restart/routing tests:
   [2026-10-13 continuous meeting boundary specification](superpowers/specs/2026-10-13-continuous-meeting-boundary-design.md).
   [Implementation plan](superpowers/plans/2026-10-13-continuous-meeting-boundary.md).
-  Product implementation and live installation are not yet completed.
+  161 Python tests and browser cancellation/retry/conflict/history checks pass.
+  Capture was not restarted. No actual boundary was applied to the owner's call.
+- Add bounded audio export for logical meeting intervals. Current history shows
+  the original recording range; split-meeting external reports omit whole audio
+  intentionally to prevent disclosure of adjacent meetings. Implement range
+  export from original tracks, test exact bounds and report attachment isolation.
 
 ## Windows beta acceptance gaps
 

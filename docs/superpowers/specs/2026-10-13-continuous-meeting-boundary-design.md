@@ -1,7 +1,8 @@
 # New meeting within continuous recording
 
-Status: owner requested implementation on 2026-10-13. Implementation plan is
-prepared for review; product code is unchanged.
+Status: approved, implemented and installed on Mac on 2026-10-13. Verified with
+161 Python tests and real-browser synthetic cancellation/retry/history checks.
+No real boundary was applied to the owner's call; native Capture was unchanged.
 
 ## Approved intent
 
