@@ -151,6 +151,9 @@ class MeetingArchive:
             "segments": list(transcript.get("segments") or []),
             "capture_warnings": list(transcript.get("capture_warnings") or []),
         }
+        for field in ("physical_meeting_id", "physical_started_at", "logical_interval", "audio_range", "explicit_boundary", "ended_at"):
+            if field in transcript:
+                clean[field] = transcript[field]
         target = self.archive_root / _safe(meeting_id) / "meeting.json"
         # Serialize capture refresh with manual corrections. The corrected
         # meeting.json is the original used by every downstream consumer.
@@ -169,7 +172,7 @@ class MeetingArchive:
                     clean["recording_trigger"] = meta.get("trigger", "")
             if not clean.get("recording_trigger") and previous.get("recording_trigger"):
                 clean["recording_trigger"] = previous["recording_trigger"]
-            if len(previous.get("segments", [])) > len(clean["segments"]):
+            if not clean.get("explicit_boundary") and len(previous.get("segments", [])) > len(clean["segments"]):
                 clean["segments"] = previous["segments"]
             corrected = self.annotate_speakers(clean)
             clean["segments"] = corrected["segments"]
@@ -357,6 +360,12 @@ class MeetingArchive:
             or ""
         )
         duration = int((recording or {}).get("duration_seconds") or 0)
+        if snapshot.get("explicit_boundary"):
+            interval = snapshot["logical_interval"]
+            started = interval["start"]
+            ended = interval.get("end") or snapshot.get("latest_at") or snapshot.get("updated_at") or started
+            duration = 0
+            title = snapshot.get("meeting") or title
         if not duration and (start_time := _date(started)) and (end_time := _date(ended)):
             duration = max(0, int((end_time - start_time).total_seconds()))
         report_dir = self.reports_root / meeting_id
@@ -381,6 +390,9 @@ class MeetingArchive:
             "participants": participants,
             "report": report_meta,
         }
+        for field in ("physical_meeting_id", "physical_started_at", "logical_interval", "audio_range", "explicit_boundary"):
+            if field in snapshot:
+                result[field] = snapshot[field]
         annotated = self.annotate_speakers({**result, "segments": segments})
         annotated["transcript"] = annotated.pop("segments")
         return annotated
@@ -403,11 +415,13 @@ class MeetingArchive:
 
     def _continuous_chain(self, target: dict, max_gap_seconds: int = 90) -> list[dict]:
         """Return recorder chunks belonging to the same uninterrupted call."""
+        if target.get("explicit_boundary"):
+            return [target]
         candidates: list[dict] = []
         target_title = str(target.get("title") or "").strip().casefold()
         for meeting_id in self._known_ids():
             detail = self.detail(meeting_id)
-            if not detail or not detail.get("recording_dir"):
+            if not detail or not detail.get("recording_dir") or detail.get("explicit_boundary"):
                 continue
             if str(detail.get("title") or "").strip().casefold() != target_title:
                 continue
@@ -495,6 +509,9 @@ class MeetingArchive:
         canonical["report"] = _json(
             self.reports_root / canonical["meeting_id"] / "report.json", {}
         )
+        if canonical.get("explicit_boundary"):
+            canonical["audio_file"] = ""
+            canonical["audio_note"] = "Original continuous recording is local only; this meeting uses the indicated audio range."
         return canonical
 
     @staticmethod
@@ -802,7 +819,9 @@ class MeetingArchive:
     def needs_report(self, meeting_id: str) -> bool:
         # Archive sync still runs during recording. Only report generation is
         # deferred, as before; check the marker before scanning the full history.
-        if self._capture_active():
+        snapshot = _json(self.archive_root / _safe(meeting_id) / "meeting.json", {})
+        closed_interval = bool(snapshot.get("explicit_boundary") and snapshot.get("logical_interval", {}).get("end"))
+        if self._capture_active() and not closed_interval:
             return False
         detail = self.report_detail(meeting_id)
         if not detail or not self._ready_for_delivery(detail):
@@ -819,7 +838,7 @@ class MeetingArchive:
             return False
         # Long calls may be split into chunks. An active capture marker means
         # no chunk is final even if its exporter says "finished".
-        if self._capture_active():
+        if self._capture_active() and not (detail.get("explicit_boundary") and detail.get("logical_interval", {}).get("end")):
             return False
         if detail.get("status") not in {"finished", "complete", "completed", "stopped", "idle"}:
             return False
