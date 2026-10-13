@@ -1,5 +1,13 @@
 # Meeting Copilot delivery follow-up
 
+## Existing UI accessibility warnings
+
+- Verify the existing muted-text contrast and dialog content padding in
+  `copilot/web/styles.css` with actual light/dark UI screenshots and computed
+  styles. The Impeccable scan during removal of AI chat reset flagged these
+  unrelated areas; they were not changed in that scoped task. Adjust verified
+  failures without altering the recording or meeting-context workflows.
+
 ## Continuous recording meeting boundaries
 
 - Implement the owner's requested Start new meeting from now action without

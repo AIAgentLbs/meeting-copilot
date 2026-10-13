@@ -1062,16 +1062,11 @@ input:focus-visible + span {
   display: none !important;
 }
 
-.copilot-actions,
 .view-tabs,
 .journal-filters,
 .journal-card-header {
   display: flex;
   align-items: center;
-}
-
-.copilot-actions {
-  gap: 8px;
 }
 
 .view-tabs,

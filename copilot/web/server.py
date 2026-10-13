@@ -1853,14 +1853,12 @@ class CodexSession:
                 },
             }
 
-    def reset(self, clear_messages: bool = True) -> None:
+    def invalidate_context(self) -> None:
         with self.lock:
             if self.busy:
                 raise RuntimeError("Copilot is answering now")
             self.thread_id = ""
             self.meeting_id = ""
-            if clear_messages:
-                self.messages = []
             self.last_error = ""
             self.last_analyzed_fingerprint = ""
             self.last_analyzed_at = 0.0
@@ -2610,7 +2608,7 @@ class Handler(BaseHTTPRequestHandler):
                 count = REPOSITORIES.save_active(paths)
                 # Repository scope changes invalidate the reasoning thread but
                 # must not make an already delivered answer disappear.
-                COPILOT.reset(clear_messages=False)
+                COPILOT.invalidate_context()
                 self._json({"ok": True, "repositories": count})
             elif path == "/api/project":
                 snap = TRANSCRIPT.snapshot()
@@ -2621,7 +2619,7 @@ class Handler(BaseHTTPRequestHandler):
                 if selection not in {item["value"] for item in REPOSITORIES.choices()}:
                     raise ValueError("Выберите проект или репозиторий из списка")
                 REPOSITORIES.set_selection(meeting_id, selection)
-                COPILOT.reset(clear_messages=False)
+                COPILOT.invalidate_context()
                 self._json({"ok": True, "selection": selection})
             elif path == "/api/speakers":
                 meeting_id = str(payload.get("meeting_id") or "")
@@ -2643,7 +2641,7 @@ class Handler(BaseHTTPRequestHandler):
                 if meeting_id == current.get("meeting_id"):
                     # Do not erase answers when names change, but don't let the
                     # reasoning thread retain an obsolete speaker attribution.
-                    COPILOT.reset(clear_messages=False)
+                    COPILOT.invalidate_context()
                 def refresh_speaker_report():
                     try:
                         detail = ARCHIVE.detail(meeting_id)
@@ -2673,9 +2671,6 @@ class Handler(BaseHTTPRequestHandler):
                 }})
             elif path == "/api/refresh":
                 TRANSCRIPT.trigger.set()
-                self._json({"ok": True})
-            elif path == "/api/reset":
-                COPILOT.reset()
                 self._json({"ok": True})
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)

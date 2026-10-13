@@ -53,7 +53,6 @@ const elements = {
   note: document.querySelector("#note-button"),
   help: document.querySelector("#composer-help"),
   refresh: document.querySelector("#refresh-button"),
-  reset: document.querySelector("#reset-button"),
   analyze: document.querySelector("#analyze-button"),
   autoAnalysis: document.querySelector("#auto-analysis"),
   journal: document.querySelector("#journal"),
@@ -173,7 +172,6 @@ const translations = {
     "plan.objection.clarify": "Нужны детали",
     "view.journal": "Журнал",
     "view.meeting_chat": "Чат встречи",
-    "copilot.reset": "Новый контекст",
     "welcome.title": "Спросите по ходу разговора",
     "welcome.text": "Ответ будет проверен по локальным источникам. Репозитории открываются только для чтения.",
     "suggestion.latest": "Что они только что сказали?",
@@ -401,7 +399,6 @@ const translations = {
     "plan.objection.clarify": "More information needed",
     "view.journal": "Journal",
     "view.meeting_chat": "Meeting chat",
-    "copilot.reset": "New context",
     "welcome.title": "Ask during the conversation",
     "welcome.text": "The answer will be checked against local sources. Repositories are opened read-only.",
     "suggestion.latest": "What did they just say?",
@@ -2574,13 +2571,6 @@ elements.archiveDialog.addEventListener("click", (event) => {
 });
 elements.repoSearch.addEventListener("input", renderRepositoryCatalog);
 elements.repoSave.addEventListener("click", () => void saveRepositorySelection());
-
-elements.reset.addEventListener("click", async () => {
-  if (requestBusy) return;
-  await post("/api/reset", {});
-  renderedMessages = "";
-  await state();
-});
 
 document.querySelectorAll("[data-language]").forEach((button) => {
   button.addEventListener("click", () => {
