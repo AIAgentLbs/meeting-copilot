@@ -647,6 +647,7 @@ const boardExpanded = new Set();
 
 Object.assign(translations.ru, {
   "meeting.new": "Начать новую встречу", "meeting.cancel": "Отмена",
+  "meeting.new_question": "Начать новую встречу?", "meeting.new_confirm": "Да, начать новую встречу",
   "meeting.new_help": "Сохранит текущую встречу отдельно и начнёт новую. Запись звука не прервётся.",
   "meeting.new_explanation": "Текущая встреча останется в истории. Новая стенограмма и карта будут собираться с момента подтверждения. Звук продолжит записываться в исходный файл.",
   "meeting.new_title": "Название новой встречи (необязательно)",
@@ -662,6 +663,7 @@ Object.assign(translations.ru, {
 });
 Object.assign(translations.en, {
   "meeting.new": "Start new meeting", "meeting.cancel": "Cancel",
+  "meeting.new_question": "Start a new meeting?", "meeting.new_confirm": "Yes, start new meeting",
   "meeting.new_help": "Save this meeting separately and start a new one. Audio recording will continue.",
   "meeting.new_explanation": "This meeting will remain in history. The new transcript and map will start when you confirm. Audio will continue in the original recording file.",
   "meeting.new_title": "New meeting title (optional)",
@@ -726,7 +728,7 @@ elements.newMeetingConfirm.addEventListener("click", async () => {
     boundaryBusy = false;
     elements.newMeetingConfirm.disabled = false;
     elements.newMeetingCancel.disabled = false;
-    elements.newMeetingConfirm.textContent = t("meeting.new");
+    elements.newMeetingConfirm.textContent = t("meeting.new_confirm");
     renderRecordingHealth(recordingHealth);
   }
 });
