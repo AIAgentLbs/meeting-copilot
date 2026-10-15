@@ -1,0 +1,17 @@
+# MeetOnTrack
+
+> Bot-free AI meeting assistant for Mac and Windows, previously called Meeting Copilot.
+
+The desktop app records system audio and microphone input, transcribes meetings,
+and helps inspect questions, risks, decisions and relevant working context.
+Recordings are stored locally. Configured external AI or delivery services may
+receive selected data. Do not describe the published beta as fully offline AI.
+
+- [English website and installation](https://meetontrack.com/)
+- [Russian website](https://meetontrack.com/ru/)
+- [Privacy and analytics choices](https://meetontrack.com/privacy.html)
+- [Public source and releases](https://github.com/AIAgentLbs/meeting-copilot)
+
+Mac and Windows beta versions have different requirements and limitations.
+Read the current installation sections before installing; do not disable OS security.
+Contact: contacts@meetontrack.com

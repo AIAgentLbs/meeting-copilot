@@ -15,6 +15,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
       '/meeting-copilot/ru/': ['docs/ru/index.html', 'text/html'],
       '/meeting-copilot/styles.css': ['docs/styles.css', 'text/css'],
       '/meeting-copilot/site.js': ['docs/site.js', 'text/javascript'],
+      '/analytics.js': ['docs/analytics.js', 'text/javascript'],
+      '/analytics-config.json': ['docs/analytics-config.json', 'application/json'],
+      '/favicon.svg': ['docs/favicon.svg', 'image/svg+xml'],
       '/meeting-copilot/install.sh': ['install.sh', 'text/plain'],
     };
     const target = routes[new URL(req.url, 'http://localhost').pathname];
@@ -41,13 +44,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
       assert.equal(await page.locator('html').getAttribute('lang'), language);
       assert.equal(await page.locator('h1').count(), 1);
       const command = await page.locator('#install-command').textContent();
-      assert.equal(command.trim(), 'curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash');
-      assert((await page.locator('#install').textContent()).includes('v0.1.8'));
-      await page.locator('[data-copy]').click();
+      assert.equal(command.trim(), 'curl -fsSL https://meetontrack.com/install.sh | bash');
+      assert((await page.locator('#install').textContent()).includes('v0.1.9'));
+      await page.locator('[data-copy="install-command"]').click();
       assert.equal(await page.evaluate(() => window.copiedCommand), command.trim());
       await page.waitForFunction(() => !document.querySelector('[data-copy]').disabled);
       await page.evaluate(() => { window.rejectClipboard = true; });
-      await page.locator('[data-copy]').click();
+      await page.locator('[data-copy="install-command"]').click();
       assert.equal(await page.evaluate(() => window.getSelection().toString()), command.trim());
       await page.waitForFunction(() => !document.querySelector('[data-copy]').disabled);
       await page.locator('.install-help summary').click();
