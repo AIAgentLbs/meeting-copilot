@@ -51,6 +51,18 @@ const root = path.resolve(__dirname, '../docs');
     assert.equal(await page.locator('link[rel=canonical]').getAttribute('href'),'https://meetontrack.com/ru/');
     assert.equal(await page.locator('html').getAttribute('lang'),'ru');
     assert.equal(await page.locator('h1').count(),1);
+    const contrast = await page.evaluate(() => {
+      const luminance = value => {
+        const rgb=value.match(/[\d.]+/g).slice(0,3).map(v=>{
+          const n=Number(v)/255; return n<=0.04045?n/12.92:((n+0.055)/1.055)**2.4;
+        });
+        return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;
+      };
+      const fg=luminance(getComputedStyle(document.querySelector('.flow > li > span')).color);
+      const bg=luminance(getComputedStyle(document.body).backgroundColor);
+      return (Math.max(fg,bg)+0.05)/(Math.min(fg,bg)+0.05);
+    });
+    assert(contrast>=4.5,'Small step numbers must remain readable against the page background');
     for(const width of [390,1440]) {
       await page.setViewportSize({width,height:900});
       assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal overflow');

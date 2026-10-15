@@ -41,3 +41,4 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .analytics-consent p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
 .analytics-consent button { margin: 4px 8px 0 0; }
 .analytics-settings { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
+.flow > li > span { color: #806016; }
