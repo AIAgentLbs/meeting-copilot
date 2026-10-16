@@ -9,11 +9,13 @@ MeetOnTrack by aiagentlbs.com - помощник для рабочих созв�
 
 Локальная расшифровка, AI-помощник через ваш аккаунт Codex. Ранняя версия для macOS.
 
-Сайт и установка: https://aiagentlbs.github.io/meeting-copilot/ru/
+Сайт и установка: https://meetontrack.com/
+На русском: https://meetontrack.com/ru/
 
 ## Publication note
 
-This is an unsent draft, not a publication record. The custom domain currently
-redirects to the registrar's link page. Do not use it for installation promotion
-until the landing cutover is verified. The new library is installed locally but
+This is an unsent draft, not a publication record. The custom-domain landing and
+trusted HTTPS were verified on 2026-10-16, including EN/RU pages, both installer
+scripts and redirects from www and the former GitHub Pages URLs.
+The new library is installed locally but
 must not be advertised as available in the public package before a new release.
