@@ -17,6 +17,7 @@ actor LiveTranscriptExporter {
     private struct Segment: Encodable {
         let source: String
         let timestamp: String
+        let endTimestamp: String?
         let text: String
         let provisional: Bool
         let voiceID: String?
@@ -25,6 +26,7 @@ actor LiveTranscriptExporter {
 
         enum CodingKeys: String, CodingKey {
             case source, timestamp, text, provisional
+            case endTimestamp = "end_timestamp"
             case voiceID = "voice_id"
             case speaker
             case speakerConfidence = "speaker_confidence"
@@ -82,6 +84,9 @@ actor LiveTranscriptExporter {
                 timestamp: Self.iso(context.startedAt.addingTimeInterval(
                     Double(block.startMilliseconds) / 1000
                 )),
+                endTimestamp: block.endMilliseconds.map {
+                    Self.iso(context.startedAt.addingTimeInterval(Double($0) / 1000))
+                },
                 text: block.text,
                 provisional: block.isProvisional,
                 voiceID: block.voiceID.map { "remote-\($0 + 1)" },

@@ -90,12 +90,10 @@ enum SettingsSchema {
                           "Which service auto uploads to. assemblyai has no length limit; openai charges more.",
                           "Куда auto отправляет запись. У assemblyai нет предела длины, openai дороже."),
                       .choice(["assemblyai", "openai"]), default: "assemblyai", askedInSetup: true),
-                Entry(["transcription", "language"], localised("Meeting language", "Язык встреч"),
+                Entry(["transcription", "language"], localised("Legacy language preference (unused)", "Старая настройка языка (не используется)"),
                       localised(
-                          "Two-letter code for what meetings are mostly in. English is expected "
-                              + "alongside it; the engine still decides which it heard.",
-                          "Двухбуквенный код языка, на котором в основном идут встречи. Вместе с ним "
-                              + "ожидается английский, а какой язык прозвучал, решает сам движок."),
+                          "Kept for compatibility. Speech languages are detected automatically without a shortlist.",
+                          "Оставлена для совместимости. Языки речи определяются автоматически без ограничивающего списка."),
                       .text,
                       default: localised(
                           "detected from any language", "определяется, язык любой")),
@@ -118,12 +116,10 @@ enum SettingsSchema {
                       "Which service auto uploads to. assemblyai has no length limit; openai charges more.",
                       "Куда auto отправляет запись. У assemblyai нет предела длины, openai дороже."),
                   .choice(["assemblyai", "openai"]), default: "assemblyai", askedInSetup: true),
-            Entry(["transcription", "language"], localised("Meeting language", "Язык встреч"),
+            Entry(["transcription", "language"], localised("Legacy language preference (unused)", "Старая настройка языка (не используется)"),
                   localised(
-                      "Two-letter code for what meetings are mostly in. English is expected "
-                          + "alongside it; both engines still decide which they heard.",
-                      "Двухбуквенный код языка, на котором в основном идут встречи. Вместе с ним "
-                          + "ожидается английский, а какой язык прозвучал, решают сами движки."),
+                      "Kept for compatibility. Speech languages are detected automatically without a shortlist.",
+                      "Оставлена для совместимости. Языки речи определяются автоматически без ограничивающего списка."),
                   .text,
                   default: localised(
                       "detected from any language", "определяется, язык любой")),

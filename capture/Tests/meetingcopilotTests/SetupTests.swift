@@ -601,7 +601,7 @@ struct SetupTests {
     /// nobody could answer from the window and which accepted anything typed
     /// into it. What replaced it has to keep the code out of sight and the
     /// five spoken languages within reach.
-    @Test("The meeting language is chosen from a menu of named languages")
+    @Test("Setup explains automatic speech languages instead of offering a decoder pin")
     @MainActor
     func languageIsAMenuOfNames() throws {
         let setup = SetupWindow()
@@ -609,19 +609,12 @@ struct SetupTests {
         let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
         let label = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
-            .first { $0.stringValue == "Meetings are mostly in" })
+            .first { $0.stringValue == "Speech languages" })
         let row = try #require(label.superview as? NSStackView)
         let popup = try #require(row.arrangedSubviews.compactMap { $0 as? NSPopUpButton }.first)
 
-        #expect(popup.target != nil)
-        #expect(popup.action != nil)
-        #expect(popup.itemTitles.first == "Detect automatically")
-
-        let codes = popup.menu?.items.compactMap { $0.representedObject as? String } ?? []
-        #expect(Array(codes.prefix(5)) == MeetingLanguages.pinned)
-        #expect(codes.count == MeetingLanguages.menu.count)
-        #expect(popup.itemTitles.contains("Русский"))
-        #expect(!popup.itemTitles.contains("ru"))
+        #expect(!popup.isEnabled)
+        #expect(popup.itemTitles == ["Detect automatically"])
     }
 
     @Test("Ollama is a full summary card with the official install link")

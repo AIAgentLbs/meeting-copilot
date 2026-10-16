@@ -36,16 +36,16 @@ struct MeetingLanguagesTests {
         #expect(offered == known)
     }
 
-    @Test("Naming a language expects English alongside it")
+    @Test("A legacy language preference never excludes a third meeting language")
     func expectedAddsEnglish() {
-        #expect(MeetingLanguages.expected(primary: "ru") == ["ru", "en"])
-        #expect(MeetingLanguages.expected(primary: " RU ") == ["ru", "en"])
-        #expect(MeetingLanguages.expected(primary: "de") == ["de", "en"])
+        #expect(MeetingLanguages.expected(primary: "ru").isEmpty)
+        #expect(MeetingLanguages.expected(primary: " RU ").isEmpty)
+        #expect(MeetingLanguages.expected(primary: "de").isEmpty)
     }
 
-    @Test("English on its own expects nothing else")
+    @Test("An English preference must still permit Cyrillic speech")
     func englishStandsAlone() {
-        #expect(MeetingLanguages.expected(primary: "en") == ["en"])
+        #expect(MeetingLanguages.expected(primary: "en").isEmpty)
     }
 
     /// A code nobody can transcribe is the same as no code: an expectation

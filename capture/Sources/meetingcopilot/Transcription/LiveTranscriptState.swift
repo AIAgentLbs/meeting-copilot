@@ -1,30 +1,12 @@
 import Foundation
 
 enum LiveTranscriptionLanguage {
-    /// Nemotron prompt names are BCP-47 locales, while meetingcopilot's existing
-    /// setting intentionally asks for a short language code. Keep the mapping
-    /// explicit: inventing a region can silently select the wrong prompt.
-    private static let prompts: [String: String] = [
-        "ar": "ar-AR", "bg": "bg-BG", "cs": "cs-CZ", "da": "da-DK",
-        "de": "de-DE", "en": "en-US", "es": "es-ES", "et": "et-EE",
-        "fi": "fi-FI", "fr": "fr-FR", "hi": "hi-IN", "hr": "hr-HR",
-        "hu": "hu-HU", "it": "it-IT", "ja": "ja-JP", "ko": "ko-KR",
-        "lv": "lv-LV", "nl": "nl-NL", "no": "nb-NO", "pl": "pl-PL",
-        "pt": "pt-PT", "ro": "ro-RO", "ru": "ru-RU", "sk": "sk-SK",
-        "sv": "sv-SE", "tr": "tr-TR", "uk": "uk-UA", "vi": "vi-VN",
-        "zh": "zh-CN",
-    ]
-
+    /// A preferred language is not a decoder instruction. In particular a
+    /// per-language prompt or vocabulary-pruned model can corrupt a different
+    /// language or a mid-call switch. Use the full multilingual model and its
+    /// native auto prompt on both channels, freshly for every recording.
     static func prompt(for configured: String?) -> String {
-        guard let configured else { return "auto" }
-        let raw = configured.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !raw.isEmpty else { return "auto" }
-        if let exact = prompts.values.first(where: {
-            $0.caseInsensitiveCompare(raw) == .orderedSame
-        }) {
-            return exact
-        }
-        return prompts[raw.lowercased()] ?? "auto"
+        "auto"
     }
 }
 
@@ -44,6 +26,7 @@ struct LiveTranscriptState: Sendable {
         let speaker: Speaker
         var text: String
         let startMilliseconds: Int
+        var endMilliseconds: Int? = nil
         var voiceID: Int? = nil
         var isProvisional: Bool
     }
@@ -96,6 +79,9 @@ struct LiveTranscriptState: Sendable {
         if let index = provisionalIndex[speaker], entries.indices.contains(index),
            case .speech(var block) = entries[index] {
             block.text = text
+            if startMilliseconds > block.startMilliseconds {
+                block.endMilliseconds = max(block.endMilliseconds ?? block.startMilliseconds, startMilliseconds)
+            }
             if let voiceID { block.voiceID = voiceID }
             entries[index] = .speech(block)
             return
@@ -222,5 +208,10 @@ struct CumulativePartials: Sendable {
     mutating func reset() {
         latest.removeAll(keepingCapacity: true)
         closed.removeAll(keepingCapacity: true)
+    }
+
+    mutating func reset(_ speaker: LiveTranscriptState.Speaker) {
+        latest.removeValue(forKey: speaker)
+        closed.removeValue(forKey: speaker)
     }
 }

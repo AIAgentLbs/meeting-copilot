@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from archive import MeetingArchive
+from canonical_transcript import canonical_segments
 from meeting_boundaries import MeetingBoundaries, BoundaryConflict, BoundaryUnavailable
 from calendar_meetings import CalendarMeetings
 from google_context import GoogleContext
@@ -1192,7 +1193,12 @@ class TranscriptState:
                 except FileNotFoundError:
                     return None
             recovered_path = RECOVERED_TRANSCRIPTS_ROOT / f"{self.meeting_id}.json"
-            input_signature = (signature(path), signature(recovered_path))
+            def final_signature(recording_dir):
+                if not recording_dir:
+                    return None
+                root = Path(recording_dir)
+                return (signature(root / "meta.json"), signature(root / "transcript.json"))
+            input_signature = (signature(path), signature(recovered_path), final_signature(self.recording_dir))
             if input_signature == self._input_signature and input_signature[0] is not None:
                 return
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1201,9 +1207,15 @@ class TranscriptState:
             meeting = str(payload.get("title") or "Meeting Copilot")
             meeting_id = str(payload.get("meeting_id") or "")
             status = str(payload.get("status") or "idle")
+            # Cache the files we are about to read, not a newer atomic file
+            # that may appear between this read and publishing the snapshot.
+            read_final_signature = final_signature(str(payload.get("recording_dir") or ""))
+            final = canonical_segments(payload)
+            if final is not None:
+                payload["segments"] = final
             # Durable recovered speech belongs to this meeting. The live
             # exporter can resume/rewrite its snapshot without erasing it.
-            if re.fullmatch(r"[A-Za-z0-9-]{1,100}", meeting_id):
+            if final is None and re.fullmatch(r"[A-Za-z0-9-]{1,100}", meeting_id):
                 recovered_path = RECOVERED_TRANSCRIPTS_ROOT / f"{meeting_id}.json"
                 if recovered_path.exists():
                     recovered = json.loads(recovered_path.read_text(encoding="utf-8"))
@@ -1271,7 +1283,7 @@ class TranscriptState:
                 self.latest_at = segments[-1]["timestamp"] if segments else ""
                 self.error = ""
                 self.revision += 1
-                self._input_signature = (input_signature[0], signature(RECOVERED_TRANSCRIPTS_ROOT / f"{meeting_id}.json"))
+                self._input_signature = (input_signature[0], signature(RECOVERED_TRANSCRIPTS_ROOT / f"{meeting_id}.json"), read_final_signature)
             mention_text = "\n".join(item["text"] for item in segments)
             mention_fingerprint = hashlib.sha256(
                 f"{meeting_id}\n{mention_text}".encode("utf-8")

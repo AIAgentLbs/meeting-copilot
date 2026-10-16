@@ -101,7 +101,7 @@ struct OpenAIEngineTests {
         let expected = MeetingLanguages.expected(primary: "ru")
         #expect(OpenAITranscriptionEngine.languageField(for: expected) == nil)
         #expect(OpenAITranscriptionEngine.languageField(
-            for: MeetingLanguages.expected(primary: "en")) == "en")
+            for: MeetingLanguages.expected(primary: "en")) == nil)
     }
 
     @Test("Cached responses are named per piece only when there is more than one")

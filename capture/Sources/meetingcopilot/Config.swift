@@ -102,12 +102,9 @@ enum Config {
         transcription()?["model"] as? String ?? "v3"
     }
 
-    /// Two-letter code for the language meetings are *mostly* in, e.g. "ru".
-    ///
-    /// Not a pin. Both engines identify the language themselves; what this
-    /// narrows is the shortlist they choose from, and English is on that
-    /// shortlist whatever this says — see `MeetingLanguages`. nil means no
-    /// expectation at all.
+    /// Legacy preferred language, retained for config compatibility only.
+    /// Speech recognition always auto-detects without a language shortlist;
+    /// this is unrelated to interface_language and summary.language.
     static func transcriptionLanguage() -> String? {
         guard let code = transcription()?["language"] as? String, !code.isEmpty else { return nil }
         return code

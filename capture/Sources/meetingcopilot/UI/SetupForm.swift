@@ -373,13 +373,14 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     /// where nobody was reading. What is stored is still the code.
     private func languageRow() -> NSView {
         let label = NSTextField(labelWithString: localised(
-            "Meetings are mostly in", "Чаще всего встречи на языке"))
+            "Speech languages", "Языки разговора"))
         label.font = .systemFont(ofSize: 13)
         label.textColor = .secondaryLabelColor
 
         language.target = self
         language.action = #selector(languageChanged)
         buildLanguageMenu()
+        language.isEnabled = false
 
         let picker = NSStackView(views: [label, language, NSView()])
         picker.orientation = .horizontal
@@ -408,13 +409,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             title: localised("Detect automatically", "Определять автоматически"),
             action: nil, keyEquivalent: "")
         menu.addItem(detect)
-        menu.addItem(.separator())
-        for (index, choice) in MeetingLanguages.menu.enumerated() {
-            if index == MeetingLanguages.pinned.count { menu.addItem(.separator()) }
-            let item = NSMenuItem(title: choice.name, action: nil, keyEquivalent: "")
-            item.representedObject = choice.code
-            menu.addItem(item)
-        }
         language.menu = menu
     }
 
@@ -1017,17 +1011,11 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     /// looking at it. Picking English says nothing worth saying — it is the
     /// language the second slot would have added anyway.
     private static func note(forLanguage code: String?) -> String {
-        guard let code else {
-            return localised(
-                "Both engines work it out from the audio. Naming a language "
-                    + "keeps a short or noisy meeting from being taken for another one.",
-                "Оба движка определяют язык по звуку. Названный язык не даст принять "
-                    + "короткую или шумную встречу за другую.")
-        }
-        guard code != "en" else { return "" }
         return localised(
-            "English meetings are recognised too — nothing to switch.",
-            "Встречи на английском тоже распознаются — переключать ничего не надо.")
+            "Detected from speech for every meeting and each new utterance. "
+                + "Languages may change during a call; no manual switch is needed.",
+            "Определяются по речи в каждой встрече и каждой новой реплике. "
+                + "Во время звонка можно менять язык без ручного переключения.")
     }
 
     /// What a key field says while the provider is being asked.

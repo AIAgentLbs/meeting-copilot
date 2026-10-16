@@ -1,5 +1,19 @@
 # Meeting Copilot delivery follow-up
 
+## Multilingual recognition acceptance
+
+- Validate multilingual switching on real, consented test audio with accents,
+  background noise and overlap, beyond the synthetic EN/RU/ES acceptance.
+  See `docs/ASR_LANGUAGES.md`; do not promise universal code-switch accuracy.
+- Reconcile AI-generated call-map items when a final transcript replaces an
+  erroneous live version: supersede unsupported generated items with provenance,
+  preserve manual notes/status edits and retain an audit trail. Do not blindly
+  delete the journal or infer that refreshing the transcript fixes old analysis.
+- Repair or document the local CLT 6.3.2 test-toolchain discovery failure
+  (`cmath`, Testing framework and TestingInterop paths). The language acceptance
+  script provides explicit process-local paths; do not change the system SDK
+  or install another toolchain as part of an active-call repair.
+
 ## Existing UI accessibility warnings
 
 - Verify the existing muted-text contrast and dialog content padding in

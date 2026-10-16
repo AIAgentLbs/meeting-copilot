@@ -64,6 +64,7 @@ actor LiveTranscriptionCoordinator {
     /// by the consumer that fed it. Both run outside this actor, and a hop
     /// through it would arrive after the audio it belongs to had been counted.
     private var decodedSomething: [Source: OSAllocatedUnfairLock<Bool>] = [:]
+    private var callbackGeneration: [Source: Int] = [:]
 
     private var loadTask: Task<Void, Never>?
     private var consumerTasks: [Task<Void, Never>] = []
@@ -293,9 +294,11 @@ actor LiveTranscriptionCoordinator {
         epoch: Int
     ) async {
         let pulse = decodedSomething[source]
+        let generation = (callbackGeneration[source] ?? 0) + 1
+        callbackGeneration[source] = generation
         await manager.setPartialCallback { [weak self] text in
             pulse?.withLock { $0 = true }
-            Task { await self?.received(text, from: source, epoch: epoch) }
+            Task { await self?.received(text, from: source, epoch: epoch, generation: generation) }
         }
     }
 
@@ -343,8 +346,9 @@ actor LiveTranscriptionCoordinator {
         }
     }
 
-    private func received(_ text: String, from source: Source, epoch: Int) {
+    private func received(_ text: String, from source: Source, epoch: Int, generation: Int? = nil) {
         guard transcript.epoch == epoch else { return }
+        if let generation, callbackGeneration[source] != generation { return }
         guard let text = partials.text(from: text, for: source.speaker) else { return }
         let milliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
         transcript.applyPartial(
@@ -415,10 +419,27 @@ actor LiveTranscriptionCoordinator {
     /// accumulation the next block would otherwise be appended to — the whole
     /// meeting decoded again on every chunk, into one paragraph per speaker.
     private func endSegment(on source: Source, epoch: Int) async {
-        guard transcript.endSegment(speaker: source.speaker, epoch: epoch) else { return }
-        partials.close(source.speaker)
-        publish()
-        _ = try? await managers[source]?.finish()
+        guard transcript.entries.contains(where: {
+            if case .speech(let block) = $0 {
+                return block.speaker == source.speaker && block.isProvisional
+            }
+            return false
+        }), let manager = managers[source] else { return }
+        // Ignore callbacks queued by the previous decoder state, including
+        // finish()'s flush callback. Apply its returned final text exactly once.
+        callbackGeneration[source, default: 0] += 1
+        do {
+            let final = try await LiveUtteranceDecoder.finish(manager)
+            guard transcript.epoch == epoch else { return }
+            received(final, from: source, epoch: epoch)
+            transcript.endSegment(speaker: source.speaker, epoch: epoch)
+            partials.reset(source.speaker)
+            silentSeconds[source] = 0
+            await installCallback(on: manager, source: source, epoch: epoch)
+            publish()
+        } catch {
+            fail(error.localizedDescription, epoch: epoch)
+        }
     }
 
     /// A dropped buffer here and there is what a bounded queue is for. Live

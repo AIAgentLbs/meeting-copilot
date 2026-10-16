@@ -67,7 +67,7 @@ actor ParakeetEngine: TranscriptionEngine {
 
         let configured = Config.transcriptionLanguage()
         let codes = MeetingLanguages.expected(primary: configured)
-        if let configured, !configured.isEmpty, codes.isEmpty {
+        if let configured, !configured.isEmpty, MeetingLanguages.name(for: configured) == nil {
             let warning = "warning: parakeet doesn't know language \"\(configured)\" — "
                 + "transcribing without a script hint\n"
             FileHandle.standardError.write(Data(warning.utf8))

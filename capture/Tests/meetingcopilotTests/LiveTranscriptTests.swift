@@ -6,6 +6,17 @@ import Testing
 @testable import meetingcopilot
 
 struct LiveTranscriptTests {
+    @Test("A decoder reset keeps a repeated phrase and leaves the other channel intact")
+    func partialsAcrossUtterances() {
+        var partials = CumulativePartials()
+        #expect(partials.text(from: "Please continue", for: .you) == "Please continue")
+        partials.close(.you)
+        #expect(partials.text(from: "Первая реплика", for: .them) == "Первая реплика")
+        partials.close(.them)
+        partials.reset(.you)
+        #expect(partials.text(from: "Please continue", for: .you) == "Please continue")
+        #expect(partials.text(from: "Первая реплика Вторая реплика", for: .them) == "Вторая реплика")
+    }
     @Test("Overload never detaches recognition audio sinks")
     func overloadKeepsRecognitionInput() {
         #expect(!LiveRecognitionStatus.overloaded.shouldDetachAudioSinks)
@@ -61,12 +72,18 @@ struct LiveTranscriptTests {
         ]))
     }
 
-    @Test("A two-letter Russian setting selects Nemotron's Russian prompt")
-    func russianPrompt() {
-        #expect(LiveTranscriptionLanguage.prompt(for: "ru") == "ru-RU")
-        #expect(LiveTranscriptionLanguage.prompt(for: "ru-RU") == "ru-RU")
+    @Test("A preferred meeting language never forces the live decoder's language",
+          arguments: ["ru", "ru-RU", "en", "en-US", "es", "unknown", ""])
+    func preferredLanguageStillDetectsSpeech(configured: String) {
+        #expect(LiveTranscriptionLanguage.prompt(for: configured) == "auto")
+        #expect(LiveTranscriptionModelStore().variantDirectory(
+            language: LiveTranscriptionLanguage.prompt(for: configured)
+        ).path.hasSuffix("multilingual/1120ms"))
+    }
+
+    @Test("An unset meeting language also uses automatic recognition")
+    func unsetLanguageDetectsSpeech() {
         #expect(LiveTranscriptionLanguage.prompt(for: nil) == "auto")
-        #expect(LiveTranscriptionLanguage.prompt(for: "unknown") == "auto")
     }
 
     @Test("Remote diarization chooses a clear voice and rejects silence or overlap")

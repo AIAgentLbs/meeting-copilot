@@ -1,20 +1,8 @@
 import FluidAudio
 import Foundation
 
-/// The languages a meeting can be held in, and what naming one actually means.
-///
-/// The setting reads as "meetings are mostly in Russian", and *mostly* is the
-/// load-bearing word. Every engine here identifies the language itself; what a
-/// hard pin buys is not accuracy but a confident, unreadable transcript on the
-/// day the meeting turns out to be in the other language — and with
-/// `keep_audio` off by default, that transcript is all that survives the
-/// meeting. So a choice here is read as the set of languages to *expect*, and
-/// the engine still decides which one it heard.
-///
-/// English is expected alongside whatever is picked, because it is the second
-/// language of almost every meeting that has one. Somebody whose other
-/// language is German is served by the config file; somebody who picks English
-/// expects only English, which is the same rule with nothing to add.
+/// Language names for settings and unrestricted automatic speech recognition.
+/// Legacy preferences must not exclude another meeting or a mid-call switch.
 enum MeetingLanguages {
     /// The five that get their own place at the top of the menu, in this
     /// order, ahead of the alphabet. Frequency, not politics: these are the
@@ -71,15 +59,11 @@ enum MeetingLanguages {
 
     static func name(for code: String) -> String? { names[code] }
 
-    /// The languages to expect from a meeting, given what the config names.
-    ///
-    /// Empty means "no expectation" — every engine here can identify a
-    /// language unaided, and an empty set says to let it.
+    /// No shortlist: a two-language whitelist breaks a three-language call,
+    /// while a majority-script retry destroys the minority language. Kept as
+    /// the shared engine boundary so old saved preferences cannot pin decoding.
     static func expected(primary: String?) -> [String] {
-        guard let raw = primary?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-              !raw.isEmpty, names[raw] != nil
-        else { return [] }
-        return raw == "en" ? [raw] : [raw, "en"]
+        []
     }
 
     /// The same set as a sentence, for the places that report what meetingcopilot is
