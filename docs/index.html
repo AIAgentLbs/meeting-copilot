@@ -24,7 +24,7 @@
 <body>
   <header class="nav shell">
     <a class="brand" href="#top"><span class="pulse"></span><span>MeetOnTrack</span><small>AI AGENT LABS</small></a>
-    <nav aria-label="Primary"><a href="#how">How it works</a><a href="#privacy">Connections</a><a class="language-link" href="ru/" lang="ru">RU</a><a class="button small" href="https://github.com/AIAgentLbs/meeting-copilot">GitHub</a></nav>
+    <nav aria-label="Primary"><a href="#screenshots">Screenshots</a><a href="#install-windows">Windows</a><a href="#install">macOS</a><a class="language-link" href="ru/" lang="ru">RU</a></nav>
   </header>
 
   <main id="top">
@@ -32,16 +32,14 @@
       <div class="hero-copy">
         <h1>AI meeting assistant.<br><em>Context included.</em></h1>
         <p class="lede">Record the conversation without a meeting bot. Keep the transcript beside relevant decisions, documents and history from your selected local repositories.</p>
-        <div class="actions"><a class="button" href="#install">Install for macOS</a><a class="text-link" href="#how">See the evidence flow ↓</a></div>
-        <p class="fine">Public beta v0.1.9 for Apple Silicon Macs running macOS 15 or later.</p>
+        <div class="actions platform-actions"><a class="button" href="#install">Install for macOS</a><a class="button" href="#install-windows">Install for Windows</a></div>
+        <p class="fine">macOS 15+ · Apple Silicon &nbsp; / &nbsp; Windows 11 24H2+ · x64<br>Technical beta. Choose your platform for the install command and requirements.</p>
+        <a class="text-link screenshot-jump" href="#screenshots">See the app in action</a>
       </div>
-      <div class="evidence-stage" aria-label="Live transcript connected to repository evidence">
-        <div class="live-chip">Illustrative example</div>
-        <article class="utterance"><b>Speaker</b><time>14:32:08</time><p>“Everything is ready for launch.”</p></article>
-        <div class="trace"><i></i><i></i><i></i></div>
-        <article class="finding"><div><span class="signal red">Needs clarification</span><time>14:32:10</time></div><p>The launch checklist still has an open item: <strong>access review</strong>. Who will confirm it?</p><footer><code>demo/launch-checklist.md</code><br><span>Synthetic document and conversation, not a customer recording.</span></footer></article>
-      </div>
+      <figure class="product-shot" id="screenshots"><a href="/media/meetontrack-call-demo.jpg" target="_blank" rel="noopener" aria-label="Open the live meeting screenshot at full size"><img src="/media/meetontrack-call-demo.jpg" width="1460" height="1083" fetchpriority="high" alt="Real MeetOnTrack interface: a speaker-labelled transcript beside questions to ask, incoming questions and risks."></a><figcaption><strong>The conversation and its call map, together.</strong><span>Real macOS interface with demo data. Development preview; the downloadable beta may differ. Click to view full size.</span></figcaption></figure>
     </section>
+
+    <section class="section shell screenshot-section" id="meeting-library"><div class="section-head"><h2>Past calls.<br>Only when you need them.</h2><p>Open the meeting library without losing your current call. Close it to return to the conversation.</p></div><figure class="product-shot"><a href="/media/meetontrack-library-demo.jpg" target="_blank" rel="noopener" aria-label="Open the meeting library screenshot at full size"><img src="/media/meetontrack-library-demo.jpg" width="1460" height="1083" loading="lazy" decoding="async" alt="Real MeetOnTrack meeting library opened over a live call, with searchable past meetings and a selected meeting summary."></a><figcaption><strong>Search meetings, review the summary, return to your call.</strong><span>Real macOS interface with synthetic records. Development preview, not a Windows screenshot or a promise about v0.1.9.</span></figcaption></figure></section>
 
     <section class="marquee" aria-label="Supported intelligence types"><div>FACT <span>●</span> CONTRADICTION <span>●</span> HISTORY <span>●</span> RISK <span>●</span> COMMITMENT <span>●</span> DECISION <span>●</span> ASK</div></section>
 
@@ -72,7 +70,14 @@
       <details class="install-help"><summary>Updating and troubleshooting</summary><p>Automatic in-app updates are not enabled in this beta. The command installs the version explicitly pinned in the script. After a newer tested release is published and the script is updated, finish your call, quit Capture and run the same command.</p><p>If a prerequisite, download, checksum or helper compilation fails, the installer stops before replacing your current app. Existing app and web files are backed up during a reinstall. Recordings and delivery settings are not deleted.</p><p>If macOS blocks launch, review the downloaded app in Privacy &amp; Security. Do not disable Gatekeeper globally. For audio permission problems, check the exact installed app, quit it and reopen it.</p><p><a href="https://github.com/AIAgentLbs/meeting-copilot/blob/main/INSTALL.md">Full installation instructions</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/issues">Report a problem</a></p></details>
     </section>
 
-    <section class="section shell install" id="install-windows"><h2>Install the Windows beta.</h2><p class="install-lede">Windows 11 24H2+, x64. Ready-to-run package, no compilation or SDK. Requires an installed, signed-in Codex CLI. First installation downloads local speech models (about 1.5 GB).</p><div class="terminal"><div class="terminal-top"><b>Windows PowerShell</b></div><div class="command"><code id="windows-install-command">irm https://meetontrack.com/install.ps1 | iex</code><button type="button" data-copy="windows-install-command">Copy</button></div></div><p class="install-note">Unsigned technical beta. Do not disable SmartScreen or antivirus. Update: finish the call, close Capture and repeat the command. Recordings and settings are preserved.</p><p><a href="install.ps1">Read installer</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/windows-v0.1.4">Windows release and beta limitations</a></p></section>
+    <section class="section shell install" id="install-windows">
+      <h2>Install the Windows beta.</h2>
+      <p class="install-lede">Windows 11 24H2+, x64. Ready-to-run package, no compilation or SDK. Requires an installed, signed-in Codex CLI. First installation downloads local speech models (about 1.5 GB).</p>
+      <div class="terminal"><div class="terminal-top"><b>Windows PowerShell</b></div><div class="command"><code id="windows-install-command">irm https://meetontrack.com/install.ps1 | iex</code><button type="button" data-copy="windows-install-command">Copy</button></div></div>
+      <p class="copy-status" role="status" aria-live="polite"></p>
+      <p class="install-note">Unsigned technical beta. Do not disable SmartScreen or antivirus. Update: finish the call, close Capture and repeat the command. Recordings and settings are preserved.</p>
+      <p><a href="https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v0.1.4/meeting-copilot-windows-v0.1.4-x64.zip">Download Windows ZIP</a> · <a href="install.ps1">Read installer</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/windows-v0.1.4">Release notes and limitations</a></p>
+    </section>
 <section class="section shell final"><h2>Challenge the claim.<br>Find the decision.<br><em>Show the source.</em></h2><p class="install-lede">The source is newer than the downloadable beta. Features under development are not a promise about this package.</p><a class="button" href="https://github.com/AIAgentLbs/meeting-copilot">View source on GitHub</a></section>
   </main>
 

@@ -42,3 +42,22 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .analytics-consent button { margin: 4px 8px 0 0; }
 .analytics-settings { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
 .flow > li > span { color: #806016; }
+/* Both platforms lead the page; screenshots are actual UI, not concept cards. */
+.hero{display:block;min-height:0;padding-block:64px 56px}
+.hero-copy{max-width:900px;margin-inline:auto;text-align:center}
+.hero h1{font-size:clamp(42px,6vw,76px);margin-top:0}
+.hero .lede{max-width:720px;margin:24px auto;font-size:18px}
+.platform-actions{justify-content:center;gap:16px;margin-top:28px}
+.platform-actions .button{min-height:50px;min-width:210px}
+.screenshot-jump{display:inline-block;text-decoration:underline;text-underline-offset:.2em;margin-top:4px;padding:8px}
+.product-shot{margin:40px 0 0;min-width:0}
+.product-shot>a{display:block;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--white)}
+.product-shot img{display:block;width:100%;height:auto}
+.product-shot figcaption{display:flex;gap:12px 32px;justify-content:space-between;margin-top:18px;font-size:14px;line-height:1.6;color:#43514b}
+.product-shot figcaption strong{font-weight:500;max-width:36ch;color:var(--ink)}
+.product-shot figcaption span{max-width:64ch}
+.screenshot-section{padding-block:64px 80px}
+.screenshot-section h2{font-size:clamp(36px,5vw,58px)}
+:target{scroll-margin-top:24px}
+@media(max-width:850px){.hero{padding-top:44px}.nav nav{gap:18px}.nav nav>a[href="#install-windows"],.nav nav>a[href="#install"]{display:inline}.brand small{display:none}.product-shot figcaption{flex-direction:column;gap:6px}.product-shot figcaption span{max-width:70ch}}
+@media(max-width:540px){.hero{padding-block:36px}.hero .lede{font-size:16px;line-height:1.55;margin-block:20px}.hero h1{font-size:42px}.platform-actions{flex-direction:column;align-items:stretch;gap:10px;margin-top:24px}.platform-actions .button{width:100%}.hero .fine{font-size:13px;margin-top:16px}.product-shot{margin-top:28px}.nav{height:70px;gap:10px}.nav nav{gap:12px}.nav nav a{font-size:12px}.brand{font-size:14px}.pulse{width:8px;height:8px}.screenshot-section{padding-block:48px}.product-shot figcaption{font-size:13px}}

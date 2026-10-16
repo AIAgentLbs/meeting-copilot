@@ -3,12 +3,13 @@ document.querySelectorAll('[data-copy]').forEach((button) => {
     const node = document.getElementById(button.dataset.copy);
     const old = button.textContent;
     const ru = document.documentElement.lang === 'ru';
-    const status = document.querySelector('.copy-status');
+    const status = button.closest('.install').querySelector('.copy-status');
+    const terminal = button.dataset.copy === 'windows-install-command' ? 'PowerShell' : 'Terminal';
     button.disabled = true;
     try {
       await navigator.clipboard.writeText(node.textContent.trim());
       button.textContent = ru ? 'Скопировано' : 'Copied';
-      status.textContent = ru ? 'Команда скопирована. Вставьте её в Terminal.' : 'Command copied. Paste it into Terminal.';
+      status.textContent = ru ? `Команда скопирована. Вставьте ее в ${terminal}.` : `Command copied. Paste it into ${terminal}.`;
     } catch (_error) {
       const range = document.createRange();
       range.selectNodeContents(node);

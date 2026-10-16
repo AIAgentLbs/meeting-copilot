@@ -2,7 +2,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/check-project-site.cjs", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/check-project-site.cjs", "scripts/stage-site-screenshots.cjs", "scripts/test-site-launch.cjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,6 +33,8 @@ jobs:
           cp install.sh _site/install.sh
           cp docs/install.ps1 _site/install.ps1
           cp docs/analytics.js docs/analytics-config.json docs/robots.txt docs/sitemap.xml docs/llms.txt docs/favicon.svg docs/privacy.html _site/
+      - name: Stage verified screenshots without adding media to Git
+        run: node scripts/stage-site-screenshots.cjs _site/media
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

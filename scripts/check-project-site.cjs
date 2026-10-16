@@ -10,6 +10,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
   const review = path.join(root, '.impeccable/review');
   fs.mkdirSync(review, { recursive: true });
   const server = http.createServer((req, res) => {
+    const pathname = new URL(req.url, 'http://localhost').pathname;
+    if (pathname.startsWith('/media/')) {
+      const asset = require('../docs/screenshot-assets.json').assets.find(item=>pathname === '/media/'+item.file);
+      if (!asset) { res.writeHead(404); return res.end(); }
+      // Layout fixture; the staging script and live check verify JPEG bytes.
+      res.writeHead(200, {'Content-Type':'image/svg+xml'});
+      return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="1083"><rect width="1460" height="1083" fill="#f3f4ef"/></svg>');
+    }
     const routes = {
       '/meeting-copilot/': ['docs/index.html', 'text/html'],
       '/meeting-copilot/ru/': ['docs/ru/index.html', 'text/html'],
@@ -20,7 +28,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
       '/favicon.svg': ['docs/favicon.svg', 'image/svg+xml'],
       '/meeting-copilot/install.sh': ['install.sh', 'text/plain'],
     };
-    const target = routes[new URL(req.url, 'http://localhost').pathname];
+    const target = routes[pathname];
     if (!target) { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': target[1] + '; charset=utf-8' });
     res.end(fs.readFileSync(path.join(root, target[0])));
@@ -53,6 +61,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
       await page.locator('[data-copy="install-command"]').click();
       assert.equal(await page.evaluate(() => window.getSelection().toString()), command.trim());
       await page.waitForFunction(() => !document.querySelector('[data-copy]').disabled);
+      await page.evaluate(() => { window.rejectClipboard = false; });
+      const windowsCommand = await page.locator('#windows-install-command').textContent();
+      await page.locator('[data-copy="windows-install-command"]').click();
+      assert.equal(await page.evaluate(() => window.copiedCommand), windowsCommand.trim());
+      assert((await page.locator('#install-windows .copy-status').innerText()).includes('PowerShell'));
+      await page.waitForFunction(() => !document.querySelector('[data-copy="windows-install-command"]').disabled);
+      await page.evaluate(() => { window.rejectClipboard = true; });
+      await page.locator('[data-copy="windows-install-command"]').click();
+      assert.equal(await page.evaluate(() => window.getSelection().toString()), windowsCommand.trim());
       await page.locator('.install-help summary').click();
       assert.equal(await page.locator('.install-help').getAttribute('open'), '');
       await page.locator('.install-help summary').click();

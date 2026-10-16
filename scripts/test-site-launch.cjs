@@ -19,6 +19,12 @@ const root = path.resolve(__dirname, '../docs');
         ga4: 'G-TEST12345', umamiWebsiteId: '3f33997f-c79d-41b4-a5a9-e95cfa4f185e',
         umamiScript: 'https://web-analytics.aiagentlbs.app/script.js',
       } });
+      if (url.pathname.startsWith('/media/')) {
+        const asset = require('../docs/screenshot-assets.json').assets.find(item=>url.pathname === '/media/'+item.file);
+        if (!asset) return route.fulfill({status:404,body:'Unknown screenshot'});
+        // Rendering/layout fixture only; live acceptance verifies actual JPEG bytes.
+        return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1460" height="1083"><rect width="1460" height="1083" fill="#f3f4ef"/></svg>'});
+      }
       const relative = url.pathname.endsWith('/') ? url.pathname + 'index.html' : url.pathname;
       const file = path.join(root, relative);
       if (!file.startsWith(root + path.sep) || !fs.existsSync(file)) return route.fulfill({ status: 404, body: 'Not found' });
@@ -63,12 +69,25 @@ const root = path.resolve(__dirname, '../docs');
       return (Math.max(fg,bg)+0.05)/(Math.min(fg,bg)+0.05);
     });
     assert(contrast>=4.5,'Small step numbers must remain readable against the page background');
-    for(const width of [390,1440]) {
-      await page.setViewportSize({width,height:900});
-      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal overflow');
+    for (const language of ['en','ru']) {
+      await page.goto(language==='en'?'https://meetontrack.com/':'https://meetontrack.com/ru/');
+      for(const width of [390,768,1440]) {
+        await page.setViewportSize({width,height:844});
+        await page.evaluate(()=>scrollTo(0,0));
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'No horizontal overflow');
+        const buttons = await page.locator('.platform-actions a').evaluateAll(links=>links.map(a=>({href:a.getAttribute('href'),top:a.getBoundingClientRect().top,bottom:a.getBoundingClientRect().bottom})));
+        assert.deepEqual(buttons.map(a=>a.href),['#install','#install-windows']);
+        assert(buttons.every(a=>a.top>=0 && a.bottom<844),'Both install choices must be on the first screen');
+        assert.equal(await page.locator('.product-shot img').count(),2,'Actual app views must remain present');
+        assert.equal(await page.locator('.product-shot a[target="_blank"]').count(),2,'Screenshots must open at full size');
+        await page.locator('.platform-actions a[href="#install-windows"]').click();
+        await page.locator('#windows-install-command').waitFor();
+        assert((await page.locator('#windows-install-command').innerText()).includes('irm https://meetontrack.com/install.ps1 | iex'));
+        await page.evaluate(()=>scrollTo(0,0));
+      }
     }
     assert.deepEqual(errors,[]);
-    console.log('PASS: brand/canonical/contact, analytics blocked until consent, accept/reject/revoke, RU and mobile layout.');
+    console.log('PASS: brand/consent, EN/RU, Windows + macOS above the fold at 390/768/1440px, install anchors, screenshots, no overflow.');
     await context.close();
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});
