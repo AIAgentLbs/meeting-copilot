@@ -15,7 +15,7 @@ foreach($file in @($capture,$python,$server,"$config\config.json","$config\SESSI
 }
 $native=Get-ChildItem "$env:LOCALAPPDATA\MeetingCopilot\tools\node_modules" -Filter codex.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
 if($native){$codexPath=$native.FullName}else{$cmd=Get-Command codex.exe,codex.cmd -ErrorAction SilentlyContinue | Select-Object -First 1;$codexPath=$cmd.Source}
-if(-not $codexPath){throw 'Codex CLI is required. Install/sign in to Codex, then open Meeting Copilot again'}
+if(-not $codexPath){throw 'Codex CLI is required. Install/sign in to Codex, then open MeetOnTrack again'}
 $env:MEETING_COPILOT_CODEX=$codexPath
 $codexTools=Join-Path (Split-Path (Split-Path $codexPath)) 'codex-path'
 if(Test-Path "$codexTools\rg.exe"){$env:PATH="$codexTools;$env:PATH"}
@@ -29,7 +29,7 @@ $info.CreateNoWindow=$true
 $auth=[Diagnostics.Process]::Start($info)
 $out=$auth.StandardOutput.ReadToEndAsync();$err=$auth.StandardError.ReadToEndAsync()
 if(-not $auth.WaitForExit(15000)){$auth.Kill();throw 'Codex login check timed out'}
-if($auth.ExitCode -ne 0){throw 'Codex needs sign-in. Run codex login, then open Meeting Copilot again'}
+if($auth.ExitCode -ne 0){throw 'Codex needs sign-in. Run codex login, then open MeetOnTrack again'}
 & $python "$root\refresh-repos.py" --config-root $config
 if($LASTEXITCODE -ne 0){throw 'Read-only repository inventory failed'}
 if($check){
@@ -51,6 +51,6 @@ if(-not $ready){
         try {Invoke-RestMethod 'http://127.0.0.1:43121/api/health' -TimeoutSec 1 | Out-Null; $ready=$true;break} catch {}
     }
 }
-if(-not $ready){throw 'Meeting Copilot web service did not start'}
+if(-not $ready){throw 'MeetOnTrack web service did not start'}
 if($args -notcontains '--no-open'){Start-Process 'http://127.0.0.1:43121'}
-Write-Host 'Meeting Copilot: http://127.0.0.1:43121'
+Write-Host 'MeetOnTrack: http://127.0.0.1:43121'

@@ -345,6 +345,9 @@ body {
 
 body {
   min-height: 100dvh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -369,18 +372,20 @@ input:focus-visible + span {
 }
 
 .topbar {
-  height: 68px;
+  min-height: 68px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 0 22px;
+  gap: 12px 24px;
+  padding: 12px 22px;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
 }
 
 .brand-block {
-  min-width: 0;
+  min-width: min(100%, 300px);
   display: flex;
   align-items: baseline;
   gap: 16px;
@@ -422,7 +427,8 @@ input:focus-visible + span {
   display: flex;
   align-items: center;
   gap: 16px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
   color: var(--muted);
   font-size: 13px;
 }
@@ -477,7 +483,8 @@ input:focus-visible + span {
 }
 
 .workspace {
-  height: calc(100dvh - 68px);
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(260px, 0.28fr) minmax(0, 0.72fr);
 }
@@ -1882,6 +1889,8 @@ textarea::placeholder {
 
 @media (max-width: 820px) {
   body {
+    display: block;
+    height: auto;
     overflow: auto;
   }
 
@@ -1983,7 +1992,7 @@ textarea::placeholder {
   }
 }
 /* Google search expands within the existing context controls, not over the call. */
-.settings-panel { background: var(--surface-strong); border-bottom: 1px solid var(--line); max-height: 65vh; overflow-y: auto; }
+.settings-panel { flex-shrink: 0; background: var(--surface-strong); border-bottom: 1px solid var(--line); max-height: 65vh; overflow-y: auto; }
 .settings-panel[hidden] { display: none; }
 .settings-panel .google-context-settings { margin: 0; border: 0; max-width: 900px; }
 .google-connection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
@@ -2001,3 +2010,12 @@ textarea::placeholder {
 #google-results small { display: block; margin-block: 6px; }
 #google-results a { color: var(--accent); text-underline-offset: 3px; }
 @media (max-width: 600px) { .google-search-form input { font-size: 16px; } }
+#updates-settings { padding: 16px 22px; font-size: 14px; line-height: 1.5; }
+#updates-settings h3 { margin: 0 0 8px; }
+#updates-settings p { max-width: 70ch; }
+#updates-settings label { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+#updates-settings button, #updates-link { min-height: 44px; }
+#updates-release h4 { margin: 24px 0 12px; }
+#updates-notes { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 72ch; max-height: 22rem; overflow-y: auto; }
+#updates-link { display: inline-flex; align-items: center; color: var(--accent-strong); text-underline-offset: 3px; margin-inline-end: 16px; }
+#updates-notice { color: var(--accent-strong); border-color: var(--accent); }

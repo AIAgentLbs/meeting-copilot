@@ -115,8 +115,8 @@ struct Run: ParsableCommand {
             if startupAction == .refuse {
                 let alert = NSAlert()
                 alert.messageText = localised(
-                    "Meeting Copilot could not start",
-                    "Meeting Copilot не удалось запуститься")
+                    "MeetOnTrack could not start",
+                    "MeetOnTrack не удалось запуститься")
                 alert.informativeText = checks.compactMap { check in
                     guard case .fail(let why) = check.status else { return nil }
                     return "\(check.name): \(why)" + (check.remediation.map { "\n" + $0 } ?? "")
@@ -211,7 +211,7 @@ struct Run: ParsableCommand {
         let appMenu = NSMenu()
         // First in the menu, where every Mac puts it.
         let about = NSMenuItem(
-            title: localised("About Meeting Copilot", "О Meeting Copilot"),
+            title: localised("About MeetOnTrack", "О MeetOnTrack"),
             action: #selector(AppDelegate.showAboutClicked(_:)),
             keyEquivalent: ""
         )
@@ -255,7 +255,7 @@ struct Run: ParsableCommand {
         // stops to ask when a meeting is being recorded — and so
         // applicationWillTerminate closes a live recording properly rather
         // than truncating it.
-        appMenu.addItem(withTitle: localised("Quit Meeting Copilot", "Завершить Meeting Copilot"),
+        appMenu.addItem(withTitle: localised("Quit MeetOnTrack", "Завершить MeetOnTrack"),
                         action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         main.addItem(appItem)
@@ -725,8 +725,8 @@ final class AppController {
             if trigger != .manual {
                 notifyUser(
                     title: localised(
-                        "Meeting Copilot — recording started",
-                        "Meeting Copilot — запись началась"),
+                        "MeetOnTrack — recording started",
+                        "MeetOnTrack — запись началась"),
                     body: context.folderSuffix ?? newSession.dir.lastPathComponent,
                     opening: newSession.dir
                 )
@@ -735,8 +735,8 @@ final class AppController {
             FileHandle.standardError.write(Data("recording start failed: \(error)\n".utf8))
             notifyUser(
                 title: localised(
-                    "Meeting Copilot — recording failed",
-                    "Meeting Copilot — не удалось начать запись"),
+                    "MeetOnTrack — recording failed",
+                    "MeetOnTrack — не удалось начать запись"),
                 body: "\(error)")
             return
         }

@@ -88,7 +88,7 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         )
         super.init()
 
-        panel.title = localised("Meeting Copilot settings", "Настройки Meeting Copilot")
+        panel.title = localised("MeetOnTrack settings", "Настройки MeetOnTrack")
         panel.level = .normal
         panel.hidesOnDeactivate = false
         // Closing hides; the menu reopens it. Same reasoning as the status
@@ -670,8 +670,8 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
 
         if entry.needsRestart {
             restartNotice.stringValue = localised(
-                "“\(entry.label)” applies the next time Meeting Copilot starts.",
-                "«\(entry.label)» подействует при следующем запуске Meeting Copilot.")
+                "“\(entry.label)” applies the next time MeetOnTrack starts.",
+                "«\(entry.label)» подействует при следующем запуске MeetOnTrack.")
             restartNotice.isHidden = false
         }
         // Clearing can change what a field should show — an emptied field goes

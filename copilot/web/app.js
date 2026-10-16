@@ -145,7 +145,7 @@ const translations = {
     "transcript.capture_lost_hint": "Системная дорожка пропала. На отмеченном участке нельзя уверенно определить, кто говорит.",
     "speaker.others": "Собеседники",
     "transcript.empty_title": "Жду стенограмму",
-    "transcript.empty_text": "Meeting Copilot передаёт локальную расшифровку примерно раз в секунду.",
+    "transcript.empty_text": "MeetOnTrack передаёт локальную расшифровку примерно раз в секунду.",
     "frames.local_note": "Кадры хранятся только локально вместе с записью.",
     "frames.capture": "Снять кадр сейчас",
     "frames.armed": "Съёмка готова.",
@@ -226,7 +226,7 @@ const translations = {
     "transcript.failed": "Не удалось обновить стенограмму",
     "speaker.name_hint": "Имя определено по активной рамке Zoom",
     "frames.empty_title": "Кадров пока нет",
-    "frames.empty_text": "Во время Zoom Meeting Copilot сохраняет окно примерно раз в 15 секунд.",
+    "frames.empty_text": "Во время Zoom MeetOnTrack сохраняет окно примерно раз в 15 секунд.",
     "frames.alt_speaker": "Кадр Zoom, говорит {speaker}",
     "frames.alt": "Кадр Zoom",
     "frames.speaker_unknown": "Спикер не определён",
@@ -372,7 +372,7 @@ const translations = {
     "transcript.capture_lost_hint": "The system audio track was lost. Speaker identity is uncertain in the marked interval.",
     "speaker.others": "Others",
     "transcript.empty_title": "Waiting for the transcript",
-    "transcript.empty_text": "Meeting Copilot publishes the local transcript about once per second.",
+    "transcript.empty_text": "MeetOnTrack publishes the local transcript about once per second.",
     "frames.local_note": "Frames are stored only locally with the recording.",
     "frames.capture": "Capture frame now",
     "frames.armed": "Capture is armed.",
@@ -453,7 +453,7 @@ const translations = {
     "transcript.failed": "Could not refresh the transcript",
     "speaker.name_hint": "Name detected from Zoom's active-speaker frame",
     "frames.empty_title": "No frames yet",
-    "frames.empty_text": "During Zoom calls, Meeting Copilot saves the window about every 15 seconds.",
+    "frames.empty_text": "During Zoom calls, MeetOnTrack saves the window about every 15 seconds.",
     "frames.alt_speaker": "Zoom frame, {speaker} speaking",
     "frames.alt": "Zoom frame",
     "frames.speaker_unknown": "Speaker not identified",
@@ -2373,6 +2373,7 @@ async function state() {
       applyLanguage();
     }
     const project = data.project || {};
+    window.renderReleaseUpdates(data.updates || {});
     renderDeliveryHealth(data.delivery || {});
     const scopedRepositories = project.repositories || [];
     const count = repositoryCountLabel(scopedRepositories.length || data.repositories || 0);

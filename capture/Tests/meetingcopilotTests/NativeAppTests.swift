@@ -262,11 +262,11 @@ struct SetupOfferTests {
     }
 
     /// The window links to the product company.
-    @Test("The About window links to AI Agent Labs")
+    @Test("The About window retains the aiagentlbs.com attribution link")
     @MainActor
     func aboutWindowOffersThreeLinks() {
         let about = AboutWindow()
-        #expect(about.offeredLinks.map(\.title) == ["AI Agent Labs ↗"])
+        #expect(about.offeredLinks.map(\.title) == ["aiagentlbs.com ↗"])
         #expect(about.offeredLinks.map(\.url) == ["https://aiagentlbs.com"])
     }
 

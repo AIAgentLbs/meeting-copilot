@@ -34,6 +34,7 @@ from live_translation import LiveTranslation
 from frame_relevance import frame_relevance
 from chat_import import parse_chat_export, normalize_chat_times
 from interface_preferences import interface_preferences
+from release_updates import ReleaseUpdates, installed_release
 from question_quality import register_question, useful_question
 from recording_health import default_guard
 from meet_participants import meet_active_speaker, meet_participant_labels
@@ -44,6 +45,7 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 43121
 HOME = Path.home()
 WEB_DIR = Path(__file__).resolve().parent
+UPDATES = ReleaseUpdates(HOME / ".config/meeting-copilot/updates.json", installed_release(WEB_DIR))
 TRANSCRIPT_FILE = HOME / ".local/share/meeting-copilot/meeting-copilot-live.json"
 SESSION_FILE = HOME / ".config/meeting-copilot/SESSION.md"
 MANIFEST_FILE = HOME / ".config/meeting-copilot/repos.json"
@@ -2361,6 +2363,8 @@ class Handler(BaseHTTPRequestHandler):
             self._static("styles.css", "text/css; charset=utf-8")
         elif path == "/app.js":
             self._static("app.js", "text/javascript; charset=utf-8")
+        elif path == "/updates.js":
+            self._static("updates.js", "text/javascript; charset=utf-8")
         elif path == "/api/health":
             self._json({"ok": True, "service": "meeting-copilot"})
         elif path == "/api/state":
@@ -2377,6 +2381,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(
                 {
                     "preferences": interface_preferences(CAPTURE_CONFIG_FILE),
+                    "updates": UPDATES.snapshot(),
                     "recording_health": RECOGNITION_GUARD.observation,
                     "transcript": transcript,
                     "call_plan": PLANS.snapshot(transcript),
@@ -2401,6 +2406,8 @@ class Handler(BaseHTTPRequestHandler):
                 "choices": REPOSITORIES.choices(),
                 "selection": REPOSITORIES.selection(transcript["meeting_id"]),
             })
+        elif path == "/api/updates":
+            self._json({"ok": True, "updates": UPDATES.snapshot()})
         elif path == "/api/google-context":
             self._json({"ok": True, **GOOGLE_CONTEXT.status()})
         elif path == "/api/archive":
@@ -2474,6 +2481,11 @@ class Handler(BaseHTTPRequestHandler):
                 for part in TRANSCRIPT.snapshots():
                     ARCHIVE.sync_transcript(part)
                 self._json(result)
+            elif path == "/api/updates/check":
+                UPDATES.request_check()
+                self._json({"ok": True, "updates": UPDATES.snapshot()})
+            elif path == "/api/updates/settings":
+                self._json({"ok": True, "updates": UPDATES.configure(payload)})
             elif path == "/api/delivery/ack":
                 ARCHIVE.delivery_monitor.acknowledge(payload.get("through"))
                 self._json({"ok": True, "delivery": ARCHIVE.delivery_health()})
@@ -2999,9 +3011,10 @@ def main() -> None:
     delivery_worker.start()
     health_worker = threading.Thread(target=delivery_health_loop, name="meeting-delivery-health", daemon=True)
     health_worker.start()
+    threading.Thread(target=UPDATES.loop, args=(TRANSCRIPT.stop,), name="release-monitor", daemon=True).start()
     server = ThreadingHTTPServer((HOST, args.port), Handler)
     url = f"http://{HOST}:{args.port}"
-    print(f"Meeting Copilot: {url}", flush=True)
+    print(f"MeetOnTrack: {url}", flush=True)
     print("Press Ctrl+C to stop the local UI.", flush=True)
     if not args.no_open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()

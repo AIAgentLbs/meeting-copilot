@@ -11,8 +11,8 @@ BIN="${MEETING_COPILOT_BIN_ROOT:-$HOME/.local/bin}"
 AGENTS="${MEETING_COPILOT_AGENTS_ROOT:-$HOME/Library/LaunchAgents}"
 LABEL="com.aiagentlbs.meeting-copilot"
 
-say() { printf 'Meeting Copilot · %s\n' "$*"; }
-fail() { printf 'Meeting Copilot · ERROR: %s\n' "$*" >&2; exit 1; }
+say() { printf 'MeetOnTrack · %s\n' "$*"; }
+fail() { printf 'MeetOnTrack · ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "macOS is required"
 [[ "$(uname -m)" == "arm64" ]] || fail "this beta currently requires Apple Silicon"
@@ -49,7 +49,7 @@ unzip -tq "$tmp/$ASSET" >/dev/null || fail "Release archive is damaged"
 unzip -q "$tmp/$ASSET" -d "$tmp/release"
 [[ -d "$tmp/release/Meeting Copilot Capture.app" ]] || fail "release app is missing"
 [[ -d "$tmp/release/payload/web" ]] || fail "release payload is missing"
-for file in payload/web/server.py payload/bin/meeting-copilot payload/config/refresh-repos.py payload/config/SESSION.md payload/config/delivery.json.example; do
+for file in release.json payload/web/server.py payload/bin/meeting-copilot payload/config/refresh-repos.py payload/config/SESSION.md payload/config/delivery.json.example; do
   [[ -f "$tmp/release/$file" ]] || fail "Release file is missing: $file"
 done
 
@@ -79,6 +79,7 @@ for dir in web; do
   [[ ! -e "$SHARE/$dir" ]] || mv "$SHARE/$dir" "$SHARE/$dir.backup-$backup_stamp"
   cp -R "$tmp/release/payload/$dir" "$SHARE/$dir"
 done
+install -m 0644 "$tmp/release/release.json" "$SHARE/release.json"
 install -m 0755 "$tmp/release/payload/bin/meeting-copilot" "$BIN/meeting-copilot"
 install -m 0755 "$tmp/release/payload/config/refresh-repos.py" "$CONFIG/refresh-repos.py"
 # One-time removal of retired usage-reporting state; preserve all other settings.

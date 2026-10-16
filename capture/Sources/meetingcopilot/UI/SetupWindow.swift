@@ -34,7 +34,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         )
         super.init()
 
-        panel.title = localised("Meeting Copilot setup", "Первая настройка Meeting Copilot")
+        panel.title = localised("MeetOnTrack setup", "Первая настройка MeetOnTrack")
         panel.isReleasedWhenClosed = false
         panel.delegate = self
         panel.minSize = NSSize(width: 640, height: 460)

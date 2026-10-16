@@ -103,7 +103,7 @@ final class MenuBarController {
         // The window is the reliable surface — this item is how you get it
         // back when the menu bar is where you happened to look first.
         let showWindow = NSMenuItem(
-            title: localised("Show Meeting Copilot", "Показать Meeting Copilot"),
+            title: localised("Show MeetOnTrack", "Показать MeetOnTrack"),
             action: #selector(showWindowClicked),
             keyEquivalent: "w"
         )
@@ -157,7 +157,7 @@ final class MenuBarController {
         // first, and an `.accessory` app's application menu is only on
         // screen while one of its windows is in front.
         let about = NSMenuItem(
-            title: localised("About Meeting Copilot", "О Meeting Copilot"),
+            title: localised("About MeetOnTrack", "О MeetOnTrack"),
             action: #selector(showAboutClicked),
             keyEquivalent: ""
         )
@@ -166,7 +166,7 @@ final class MenuBarController {
         menu.addItem(.separator())
 
         let quit = NSMenuItem(
-            title: localised("Quit Meeting Copilot", "Завершить Meeting Copilot"),
+            title: localised("Quit MeetOnTrack", "Завершить MeetOnTrack"),
             action: #selector(quitClicked),
             keyEquivalent: "q"
         )

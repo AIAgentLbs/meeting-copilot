@@ -79,8 +79,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private let launchRow = AccessRow(
         title: localised("Start at login", "Запуск при входе"),
         detail: localised(
-            "So a meeting is never missed because nobody opened Meeting Copilot.",
-            "Чтобы встреча не пропала из-за того, что Meeting Copilot никто не открыл."),
+            "So a meeting is never missed because nobody opened MeetOnTrack.",
+            "Чтобы встреча не пропала из-за того, что MeetOnTrack никто не открыл."),
         action: localised("Install", "Включить"),
         grantedNote: localised("installed", "включено"))
     private let micRow = AccessRow(
@@ -212,7 +212,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             content: summaryChoices()))
 
         form.addArrangedSubview(SetupLayout.section(
-            localised("Where Meeting Copilot shows up", "Где видно Meeting Copilot"),
+            localised("Where MeetOnTrack shows up", "Где видно MeetOnTrack"),
             content: SetupLayout.group(
                 [SetupLayout.box([menuBarIconRow(), dockIconRow()]), noIconsNote],
                 spacing: SetupLayout.headerGap)))
@@ -631,10 +631,10 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     nonisolated static func noIconsNote(menuBar: Bool, dock: Bool) -> String {
         guard !menuBar, !dock else { return "" }
         return localised(
-            "Meeting Copilot keeps recording with no icon anywhere. To bring the window back, open Meeting Copilot "
+            "MeetOnTrack keeps recording with no icon anywhere. To bring the window back, open MeetOnTrack "
                 + "again — from Spotlight, or from Applications.",
-            "Meeting Copilot продолжит записывать, но его нигде не будет видно. Чтобы вернуть окно, "
-                + "откройте Meeting Copilot ещё раз — из Spotlight или из папки «Программы».")
+            "MeetOnTrack продолжит записывать, но его нигде не будет видно. Чтобы вернуть окно, "
+                + "откройте MeetOnTrack ещё раз — из Spotlight или из папки «Программы».")
     }
 
     /// "18 Aug" — enough to tell this week from last spring, and short enough
@@ -1240,8 +1240,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             launchRow.update(
                 .notAsked,
                 detail: localised(
-                    "Only Meeting Copilot.app can register itself; this is a bare build.",
-                    "Зарегистрировать себя может только Meeting Copilot.app, а это голая сборка."))
+                    "Only MeetOnTrack.app can register itself; this is a bare build.",
+                    "Зарегистрировать себя может только MeetOnTrack.app, а это голая сборка."))
         }
         micRow.update(SetupPermissions.microphone())
         calendarRow.update(calendarGrant ?? SetupPermissions.calendar())
@@ -1504,8 +1504,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         switch named.count {
         case 0:
             return localised(
-                "Everything Meeting Copilot needs is granted.",
-                "Всё, что нужно Meeting Copilot, разрешено.")
+                "Everything MeetOnTrack needs is granted.",
+                "Всё, что нужно MeetOnTrack, разрешено.")
         case 1:
             return localised("One thing left: ", "Осталось одно: ") + named[0]
         default:

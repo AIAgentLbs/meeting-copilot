@@ -12,9 +12,15 @@ struct Window: Codable {
     let height: Int
 }
 
-let raw = CGWindowListCopyWindowInfo(
-    [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
-) as? [[String: Any]] ?? []
+// Replay window metadata from stdin for offline diagnostics, without capturing pixels.
+let raw: [[String: Any]]
+if CommandLine.arguments.contains("--input-json") {
+    raw = try JSONSerialization.jsonObject(with: FileHandle.standardInput.readDataToEndOfFile()) as? [[String: Any]] ?? []
+} else {
+    raw = CGWindowListCopyWindowInfo(
+        [.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID
+    ) as? [[String: Any]] ?? []
+}
 
 let candidates: [(score: Int, window: Window)] = raw.enumerated().compactMap { index, item in
     let layer = item[kCGWindowLayer as String] as? Int ?? -1
@@ -27,7 +33,8 @@ let candidates: [(score: Int, window: Window)] = raw.enumerated().compactMap { i
     let width = Int(bounds["Width"] as? Double ?? 0)
     let height = Int(bounds["Height"] as? Double ?? 0)
     guard (0...3).contains(layer), id > 0, width >= 300, height >= 200,
-          !title.localizedCaseInsensitiveContains("Meeting Copilot")
+          !title.localizedCaseInsensitiveContains("Meeting Copilot"),
+          !title.localizedCaseInsensitiveContains("MeetOnTrack")
     else { return nil }
 
     var score = 0

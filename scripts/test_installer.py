@@ -23,6 +23,7 @@ class InstallerTests(unittest.TestCase):
         self.mock.mkdir()
         self.package = self.root / "package.zip"
         files = {
+            "release.json": json.dumps({"version": "0.1.9", "channel": "technical-beta"}),
             "Meeting Copilot Capture.app/Contents/MacOS/MeetingCopilotCapture": "synthetic-app",
             "payload/web/server.py": "print('synthetic-server')\n",
             "payload/bin/meeting-copilot": "#!/bin/sh\nexit 0\n",
@@ -87,6 +88,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         share = Path(self.env["MEETING_COPILOT_SHARE_ROOT"])
         self.assertTrue((share / "web/server.py").is_file())
+        self.assertEqual(json.loads((share / "release.json").read_text())["version"], "0.1.9")
         self.assertTrue((share / "bin/detect-speech-language").is_file())
         agent = Path(self.env["MEETING_COPILOT_AGENTS_ROOT"]) / "com.aiagentlbs.meeting-copilot.plist"
         config = plistlib.loads(agent.read_bytes())
@@ -111,6 +113,20 @@ class InstallerTests(unittest.TestCase):
         result = self.run_install(MEETING_COPILOT_ASSET_SHA256="0" * 64)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("checksum mismatch", result.stderr)
+        self.assertTrue((app / "previous").is_file())
+        self.assertTrue((share / "web/previous").is_file())
+        self.assertFalse((self.root / "compiled").exists())
+
+    def test_missing_release_identity_never_replaces_installed_app(self):
+        app, share, _ = self.seed_existing()
+        with zipfile.ZipFile(self.package) as archive:
+            files = {name: archive.read(name) for name in archive.namelist() if name != "release.json"}
+        with zipfile.ZipFile(self.package, "w") as archive:
+            for name, data in files.items():
+                archive.writestr(name, data)
+        result = self.run_install(MEETING_COPILOT_ASSET_SHA256=hashlib.sha256(self.package.read_bytes()).hexdigest())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Release file is missing: release.json", result.stderr)
         self.assertTrue((app / "previous").is_file())
         self.assertTrue((share / "web/previous").is_file())
         self.assertFalse((self.root / "compiled").exists())

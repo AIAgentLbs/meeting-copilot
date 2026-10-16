@@ -30,7 +30,7 @@ final class AboutWindow: NSObject {
         )
         super.init()
 
-        panel.title = localised("About Meeting Copilot", "О Meeting Copilot")
+        panel.title = localised("About MeetOnTrack", "О MeetOnTrack")
         panel.isReleasedWhenClosed = false
 
         let icon = NSImageView()

@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>Meeting Copilot by aiagentlbs.com</title>
+    <title>MeetOnTrack by aiagentlbs.com</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div class="brand-block">
         <div class="brand-lockup">
-          <div class="brand">Meeting Copilot</div>
+          <div class="brand">MeetOnTrack</div>
           <a class="brand-company" href="https://aiagentlbs.com/" target="_blank" rel="noopener noreferrer">by aiagentlbs.com</a>
         </div>
         <div class="meeting-title" id="meeting-title" data-i18n="meeting.connecting">Подключение к записи...</div>
@@ -22,6 +22,7 @@
         <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-haspopup="dialog">История встреч</button>
         <button class="quiet-button" id="new-meeting-button" type="button" data-i18n="meeting.new" aria-haspopup="dialog" aria-describedby="new-meeting-help" disabled>Начать новую встречу</button>
         <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
+        <button class="quiet-button" id="updates-notice" type="button" aria-controls="settings-panel" hidden></button>
         <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
         <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
         <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
@@ -54,7 +55,22 @@
         <h2 id="settings-heading" data-i18n="settings.open">Настройки</h2>
         <button class="quiet-button" id="settings-close" type="button" data-i18n="common.close">Закрыть</button>
       </div>
-      <div id="settings-content"></div>
+      <div id="settings-content">
+        <section id="updates-settings" tabindex="-1" aria-labelledby="updates-heading">
+          <h3 id="updates-heading"></h3>
+          <p id="updates-help"></p>
+          <label><input type="checkbox" id="updates-enabled" /><span id="updates-enabled-label"></span></label>
+          <p id="updates-status" role="status"></p>
+          <button class="quiet-button" type="button" id="updates-check"></button>
+          <div id="updates-release" hidden>
+            <h4 id="updates-version"></h4>
+            <pre id="updates-notes"></pre>
+            <p id="updates-safe-install"></p>
+            <a id="updates-link" target="_blank" rel="noopener noreferrer"></a>
+            <button class="quiet-button" type="button" id="updates-dismiss"></button>
+          </div>
+        </section>
+      </div>
     </section>
     <main class="workspace">
       <section class="transcript-pane" aria-labelledby="transcript-heading">
@@ -85,7 +101,7 @@
         <div class="transcript" id="transcript" aria-live="polite">
           <div class="empty-state">
             <strong data-i18n="transcript.empty_title">Жду стенограмму</strong>
-            <span data-i18n="transcript.empty_text">Meeting Copilot передаёт локальную расшифровку примерно раз в секунду.</span>
+            <span data-i18n="transcript.empty_text">MeetOnTrack передаёт локальную расшифровку примерно раз в секунду.</span>
           </div>
         </div>
         <div class="frames" id="frames" hidden>
@@ -308,6 +324,7 @@
         <div class="repo-dialog-footer"><span id="speaker-edit-status" role="status"></span></div>
       </div>
     </dialog>
+    <script src="/updates.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>
