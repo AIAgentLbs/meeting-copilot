@@ -2019,3 +2019,52 @@ textarea::placeholder {
 #updates-notes { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 72ch; max-height: 22rem; overflow-y: auto; }
 #updates-link { display: inline-flex; align-items: center; color: var(--accent-strong); text-underline-offset: 3px; margin-inline-end: 16px; }
 #updates-notice { color: var(--accent-strong); border-color: var(--accent); }
+
+.workspace[hidden], .meeting-boundary-bar[hidden], #archive-dialog[hidden], .archive-rename[hidden] { display: none; }
+#archive-dialog {
+  flex: 1; min-height: 0; width: 100%; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; border-radius: 0; box-shadow: none;
+  background: var(--surface-strong); color: var(--text);
+}
+#archive-dialog[data-mode="drawer"] {
+  position: fixed; z-index: 15; inset: var(--library-top, 100px) 16px 16px auto;
+  width: min(1100px, calc(100vw - 32px));
+  border: 1px solid var(--line); border-radius: 12px;
+}
+#archive-dialog .archive-shell { grid-template-rows: auto auto minmax(0, 1fr); }
+#archive-dialog .archive-header { grid-row: 1; gap: 16px; }
+#archive-dialog .delivery-summary { grid-row: 2; }
+#archive-dialog .archive-layout { grid-row: 3; }
+.archive-sidebar { min-height: 0; overflow: hidden; display: grid; grid-template-rows: auto auto minmax(0, 1fr); border-right: 1px solid var(--line); background: var(--surface); }
+.archive-search-label { padding: 16px 16px 0; font-size: 13px; line-height: 1.5; }
+#archive-search { margin: 8px 12px 12px; min-width: 0; min-height: 44px; padding: 8px 12px; font: inherit; background: var(--surface-strong); color: var(--text); border: 1px solid var(--line); border-radius: 6px; }
+.archive-sidebar .archive-list { border: 0; }
+.archive-item.active { box-shadow: none; background: var(--accent-soft); border-color: var(--accent); }
+.archive-library-status { font-size: 12px; color: var(--accent-strong); }
+.archive-library-status.needs_attention { color: var(--danger); }
+.archive-library-status.no_speech, .archive-item-preview { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.archive-overview { padding-block: 20px; border-block: 1px solid var(--line); margin-block: 20px; max-width: 75ch; }
+.archive-overview h3 { margin: 0 0 12px; font-size: 16px; }
+.archive-overview h3:not(:first-child) { margin-top: 24px; }
+.archive-overview p, .archive-overview li, .archive-context-note { line-height: 1.6; overflow-wrap: anywhere; }
+.archive-context-note { color: var(--accent-strong); margin: 0 0 20px; font-size: 13px; }
+.archive-quality-note { padding: 12px; background: var(--accent-soft); }
+.archive-rename { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.archive-rename label { width: 100%; font-size: 13px; }
+.archive-rename input { min-width: 0; flex: 1 1 200px; padding: 10px; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+.archive-detail button, #archive-close { min-height: 44px; }
+.archive-feedback { display: grid; gap: 8px; margin-top: 28px; }
+.archive-feedback label { font-weight: 600; }
+.archive-feedback textarea { width: 100%; min-height: 90px; padding: 10px; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 6px; resize: vertical; }
+.archive-feedback p { font-size: 13px; margin: 0 0 8px; }
+.archive-feedback button { justify-self: start; }
+#archive-search:focus-visible, .archive-rename input:focus-visible, .archive-feedback textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 820px) {
+  #archive-dialog { min-height: 60vh; }
+  #archive-dialog .archive-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 30vh) minmax(200px, 1fr); }
+  #archive-dialog[data-mode="drawer"] { inset-inline: 8px; bottom: 8px; width: calc(100vw - 16px); min-height: 0; }
+  #archive-dialog[data-mode="library"] { height: calc(100dvh - 200px); }
+  #archive-dialog .archive-sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
+  #archive-dialog .archive-header { padding: 16px; align-items: flex-start; }
+  #archive-dialog .archive-detail { padding: 16px; }
+}

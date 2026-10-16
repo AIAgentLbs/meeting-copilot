@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, urlsplit, urlunsplit
+from urllib.parse import urlparse, urlsplit, urlunsplit, parse_qs
 
 from archive import MeetingArchive
 from canonical_transcript import canonical_segments
@@ -35,6 +35,7 @@ from frame_relevance import frame_relevance
 from chat_import import parse_chat_export, normalize_chat_times
 from interface_preferences import interface_preferences
 from release_updates import ReleaseUpdates, installed_release
+from summary_rewrite import SummaryRewrites, codex_summary_runner
 from question_quality import register_question, useful_question
 from recording_health import default_guard
 from meet_participants import meet_active_speaker, meet_participant_labels
@@ -2166,6 +2167,7 @@ ARCHIVE = MeetingArchive(
     frames_provider=lambda: FRAMES.archive_items(),
     event_router=routed_event,
 )
+SUMMARY_REWRITES = SummaryRewrites(ARCHIVE, codex_summary_runner(CODEX, PROCESS_ENV))
 
 
 class AnnotationCache:
@@ -2411,7 +2413,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/google-context":
             self._json({"ok": True, **GOOGLE_CONTEXT.status()})
         elif path == "/api/archive":
-            self._json({"ok": True, "meetings": ARCHIVE.list_meetings(), "delivery": ARCHIVE.delivery_health()})
+            query = parse_qs(urlparse(self.path).query).get("q", [""])[0][:200]
+            self._json({"ok": True, "meetings": ARCHIVE.list_meetings(query=query), "delivery": ARCHIVE.delivery_health()})
         elif path == "/api/delivery":
             self._json({"ok": True, "delivery": ARCHIVE.delivery_health()})
         elif path.startswith("/api/archive/frame/"):
@@ -2442,6 +2445,9 @@ class Handler(BaseHTTPRequestHandler):
                 for frame in detail["frames"]:
                     frame["url"] = f"/api/archive/frame/{frame.get('id', '')}"
                 self._json({"ok": True, "meeting": detail})
+        elif path == "/api/summary-rewrite":
+            identity = parse_qs(urlparse(self.path).query).get("meeting_id", [""])[0]
+            self._json({"ok": True, "rewrite": SUMMARY_REWRITES.snapshot(identity)})
         elif path.startswith("/api/frames/"):
             self._frame(path.removeprefix("/api/frames/"))
         else:
@@ -2481,6 +2487,21 @@ class Handler(BaseHTTPRequestHandler):
                 for part in TRANSCRIPT.snapshots():
                     ARCHIVE.sync_transcript(part)
                 self._json(result)
+            elif path == "/api/archive/open-local":
+                target = ARCHIVE.local_target(str(payload.get("meeting_id") or ""), str(payload.get("kind") or ""))
+                if os.name == "nt":
+                    os.startfile(str(target))
+                else:
+                    command = ["open", "-a", "Finder", str(target)] if payload.get("kind") == "folder" else ["open", str(target)]
+                    subprocess.run(command, check=True, timeout=5, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self._json({"ok": True})
+            elif path == "/api/archive/rewrite":
+                identity = str(payload.get("meeting_id") or "")
+                SUMMARY_REWRITES.submit(identity, str(payload.get("instructions") or ""))
+                self._json({"ok": True, "rewrite": SUMMARY_REWRITES.snapshot(identity)})
+            elif path == "/api/archive/rename":
+                meeting = ARCHIVE.rename_meeting(str(payload.get("meeting_id") or ""), str(payload.get("title") or ""))
+                self._json({"ok": True, "meeting": meeting})
             elif path == "/api/updates/check":
                 UPDATES.request_check()
                 self._json({"ok": True, "updates": UPDATES.snapshot()})

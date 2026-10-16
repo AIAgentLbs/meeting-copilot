@@ -204,6 +204,9 @@ class MeetingArchive:
                 self.sync_transcript(part)
 
     def _recordings(self) -> list[dict]:
+        operation = getattr(self._index_state, "values", None)
+        if operation is not None and "$recordings" in operation:
+            return operation["$recordings"]
         result: list[dict] = []
         roots = self.recording_locations.roots() if self.recording_locations else [self.recordings_root]
         paths = list(dict.fromkeys(path for root in roots for path in root.glob("*/meta.json")))
@@ -220,6 +223,8 @@ class MeetingArchive:
                 "app": str(meta.get("app") or ""),
                 "meta": meta,
             })
+        if operation is not None:
+            operation["$recordings"] = result
         return result
 
     @staticmethod
@@ -345,7 +350,7 @@ class MeetingArchive:
                 ).hexdigest()[:16]
                 if candidate_id != meeting_id:
                     continue
-                return {
+                return self._library_detail({
                     "meeting_id": meeting_id,
                     "title": self._recording_title(candidate),
                     "status": "recording_only",
@@ -359,7 +364,7 @@ class MeetingArchive:
                     "transcript": [], "journal": [], "frames": [], "meeting_chat": [],
                     "participants": participants,
                     "report": {},
-                }
+                })
             return None
         times = [
             parsed for parsed in map(self._item_time, [*journal, *frames, *chat]) if parsed
@@ -416,7 +421,74 @@ class MeetingArchive:
                 result[field] = snapshot[field]
         annotated = self.annotate_speakers({**result, "segments": segments})
         annotated["transcript"] = annotated.pop("segments")
-        return annotated
+        return self._library_detail(annotated)
+
+    def _library_detail(self, detail: dict) -> dict:
+        detail["source_title"] = detail["title"]
+        preferences = _json(self.archive_root / _safe(detail["meeting_id"]) / "library.json", {})
+        if isinstance(preferences, dict) and preferences.get("title"):
+            detail["title"] = str(preferences["title"])[:200]
+        journal = detail.get("journal", [])
+        points = [self._brief_line(item.get("text")) for item in journal
+                  if item.get("category") in {"FACT", "DECISION", "COMMITMENT"}]
+        questions = [self._brief_line(item.get("text")) for item in journal
+                     if item.get("category") in {"ASK", "OPEN_QUESTION", "INCOMING_QUESTION"}
+                     and item.get("status") not in {"resolved", "closed"}]
+        transcript = detail.get("transcript", [])
+        report = detail.get("report") or {}
+        active = detail.get("status") in {"recording", "loading", "overloaded"}
+        detail["library_status"] = ("recording" if active else "needs_attention" if detail.get("capture_warnings")
+                                    else "report_ready" if report.get("html") and report.get("pdf")
+                                    else "analysis_ready" if points else "transcript_ready" if transcript
+                                    else "no_speech")
+        detail["overview"] = {"points": list(dict.fromkeys(filter(None, points)))[:5],
+                              "questions": list(dict.fromkeys(filter(None, questions)))[:8],
+                              "insufficient": len(transcript) < 3 or detail.get("duration_seconds", 0) < 60}
+        rewrite = preferences.get("rewrite") if isinstance(preferences, dict) else None
+        if isinstance(rewrite, dict) and rewrite.get("source_signature") == self.source_signature(detail):
+            detail["overview"].update({key: rewrite[key] for key in ("points", "questions", "model", "generated_at") if key in rewrite})
+        return detail
+
+    def rename_meeting(self, meeting_id: str, title: str) -> dict:
+        title = str(title).strip()
+        if not title or len(title) > 200 or str(meeting_id) != _safe(str(meeting_id)):
+            raise ValueError("Use a meeting title between 1 and 200 characters")
+        with self.lock:
+            if self.detail(meeting_id) is None:
+                raise ValueError("Meeting not found")
+            path = self.archive_root / meeting_id / "library.json"
+            preferences = _json(path, {})
+            _atomic_json(path, {**preferences, "title": title})
+            return self.detail(meeting_id)
+
+    @staticmethod
+    def _library_matches(detail: dict, query: str) -> bool:
+        if not query:
+            return True
+        values = [detail.get("title", ""), detail.get("started_at", "")]
+        for item in [*detail.get("transcript", []), *detail.get("journal", []),
+                     *detail.get("meeting_chat", []), *detail.get("participants", [])]:
+            values.extend(str(item.get(key) or "") for key in ("text", "speaker", "sender", "name"))
+        return any(query in str(value).casefold() for value in values)
+
+    def local_target(self, meeting_id: str, kind: str) -> Path:
+        if kind not in {"audio", "folder"} or meeting_id != _safe(meeting_id):
+            raise ValueError("Invalid local action")
+        detail = self.detail(meeting_id)
+        if detail is None:
+            raise ValueError("Meeting not found")
+        value = detail.get("audio_file") if kind == "audio" else detail.get("recording_dir") or str(self.archive_root / meeting_id)
+        if not value: raise ValueError("Local file is unavailable")
+        target = Path(value).resolve()
+        roots = self.recording_locations.roots() if self.recording_locations else [self.recordings_root]
+        roots = [*roots, self.archive_root, self.reports_root]
+        if not target.exists() or not any(target.is_relative_to(Path(root).resolve()) for root in roots):
+            raise ValueError("Local file is outside meeting storage or unavailable")
+        if kind == "audio" and (not target.is_file() or target.suffix.lower() not in {".wav", ".m4a", ".mp3", ".caf", ".flac", ".ogg"}):
+            raise ValueError("Only audio recordings can be opened")
+        if kind == "folder" and (not target.is_dir() or target.suffix.lower() == ".app"):
+            raise ValueError("Only meeting folders can be opened")
+        return target
 
     @staticmethod
     def _dedupe_items(items: list[dict], time_key: str) -> list[dict]:
@@ -439,12 +511,12 @@ class MeetingArchive:
         if target.get("explicit_boundary"):
             return [target]
         candidates: list[dict] = []
-        target_title = str(target.get("title") or "").strip().casefold()
+        target_title = str(target.get("source_title", target.get("title")) or "").strip().casefold()
         for meeting_id in self._known_ids():
             detail = self.detail(meeting_id)
             if not detail or not detail.get("recording_dir") or detail.get("explicit_boundary"):
                 continue
-            if str(detail.get("title") or "").strip().casefold() != target_title:
+            if str(detail.get("source_title", detail.get("title")) or "").strip().casefold() != target_title:
                 continue
             if not _date(str(detail.get("started_at") or "")):
                 continue
@@ -548,15 +620,18 @@ class MeetingArchive:
         return ""
 
     @_shared_indexes
-    def list_meetings(self) -> list[dict]:
-        details = [self.detail(meeting_id) for meeting_id in self._known_ids()]
+    def list_meetings(self, query: str = "") -> list[dict]:
+        query = str(query).strip().casefold()[:200]
+        # Process one transcript at a time, rather than retaining the entire library.
+        details = (self.detail(meeting_id) for meeting_id in self._known_ids())
         meetings = []
         matched_dirs = set()
         for detail in details:
             if not detail or self._short_automatic(detail):
                 continue
             matched_dirs.add(detail.get("recording_dir"))
-            meetings.append(self._summary(detail))
+            if self._library_matches(detail, query):
+                meetings.append(self._summary(detail))
         # Keep raw recording-only sessions visible even when no transcript was captured.
         for recording in self._recordings():
             if self._short_automatic({**recording, "recording_trigger": recording["meta"].get("trigger", ""),
@@ -567,7 +642,7 @@ class MeetingArchive:
             meeting_id = "recording-" + hashlib.sha1(
                 recording["folder"].encode("utf-8")
             ).hexdigest()[:16]
-            meetings.append({
+            summary = {
                 "meeting_id": meeting_id,
                 "title": self._recording_title(recording),
                 "status": "recording_only",
@@ -583,7 +658,13 @@ class MeetingArchive:
                 "drive_status": "",
                 "mail_status": "",
                 "telegram_status": "",
-            })
+            }
+            raw_detail = self.detail(meeting_id) if query else None
+            summary = self._library_detail({**summary, "transcript": [], "journal": []})
+            if self._library_matches(raw_detail or summary, query):
+                summary.pop("transcript", None)
+                summary.pop("journal", None)
+                meetings.append(summary)
         return sorted(meetings, key=lambda item: item.get("started_at", ""), reverse=True)
 
     @staticmethod
@@ -592,6 +673,8 @@ class MeetingArchive:
         return {
             "meeting_id": detail["meeting_id"],
             "title": detail["title"],
+            "library_status": detail.get("library_status", "transcript_ready"),
+            "preview": (detail.get("overview", {}).get("points") or [""])[0],
             "status": detail["status"],
             "started_at": detail["started_at"],
             "ended_at": detail["ended_at"],
@@ -815,7 +898,8 @@ class MeetingArchive:
         material = {
             "report_schema": 5,
             "product_name": MeetingArchive.product_name,
-            "title": detail.get("title", ""),
+            # A library label is presentation, not newly captured source material.
+            "title": detail.get("source_title", detail.get("title", "")),
             "segments": detail.get("transcript", []),
             "speaker_revision": detail.get("speaker_revision", 0),
             "capture_warnings": detail.get("capture_warnings", []),

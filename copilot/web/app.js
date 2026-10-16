@@ -26,6 +26,7 @@ const elements = {
   archiveDescription: document.querySelector("#archive-description"),
   archiveClose: document.querySelector("#archive-close"),
   archiveList: document.querySelector("#archive-list"),
+  archiveSearch: document.querySelector("#archive-search"),
   archiveDetail: document.querySelector("#archive-detail"),
   transcriptMeta: document.querySelector("#transcript-meta"),
   transcript: document.querySelector("#transcript"),
@@ -632,8 +633,48 @@ let recognitionResumeBusy = false;
 let recognitionResumeError = "";
 let noteBusy = false;
 let chatPinnedToLatest = true;
+Object.assign(translations.en, {
+  "nav.meetings": "Meetings", "archive.title": "Meetings",
+  "library.search": "Search titles, participants and content", "library.return": "Return to current call",
+  "library.hide": "Hide library", "library.no_results": "No meetings match this search.",
+  "library.recording": "Recording", "library.needs_attention": "Recording needs attention",
+  "library.report_ready": "Report ready", "library.analysis_ready": "Analysis ready",
+  "library.transcript_ready": "Transcript ready", "library.no_speech": "No recognized speech",
+  "library.overview": "At a glance", "library.questions": "Open questions", "library.no_overview": "No verified summary yet. Read the transcript or generate a report.",
+  "library.short": "Limited material: this recording is short or contains very little speech. Check the transcript before relying on the summary.",
+  "library.rename": "Rename meeting", "library.title": "Meeting title", "library.save": "Save title", "library.cancel": "Cancel",
+  "library.copy": "Copy summary", "library.no_questions": "No open questions recorded.",
+  "library.feedback": "What should change in this summary?", "library.rewrite": "Update summary",
+  "library.open_audio": "Open recording", "library.open_folder": "Open meeting folder",
+  "library.rewrite_help": "Processes the selected meeting with GPT-6.1 Sol in a separate session of your Codex account, using its general instructions. Updates the summary here, not the live assistant, PDFs or delivered reports.",
+  "library.rewriting": "Updating this meeting's summary…", "library.rewrite_failed": "Could not update the summary. Check your Codex sign-in and try again. The previous result is unchanged.",
+  "library.browsing": "You are viewing a past meeting. Current recording and assistant context are unchanged."
+});
+Object.assign(translations.ru, {
+  "nav.meetings": "Встречи", "archive.title": "Встречи",
+  "library.search": "Поиск по названию, участникам и содержимому", "library.return": "Вернуться к текущему звонку",
+  "library.hide": "Скрыть историю", "library.no_results": "По этому запросу встречи не найдены.",
+  "library.recording": "Записывается", "library.needs_attention": "Проверьте качество записи",
+  "library.report_ready": "Отчет готов", "library.analysis_ready": "Анализ готов",
+  "library.transcript_ready": "Стенограмма готова", "library.no_speech": "Нет распознанной речи",
+  "library.overview": "Главное", "library.questions": "Открытые вопросы", "library.no_overview": "Проверенного краткого итога пока нет. Откройте стенограмму или сформируйте отчет.",
+  "library.short": "Материалов мало: запись короткая или содержит мало речи. Сверьте итог со стенограммой.",
+  "library.rename": "Переименовать встречу", "library.title": "Название встречи", "library.save": "Сохранить название", "library.cancel": "Отмена",
+  "library.copy": "Скопировать итог", "library.no_questions": "Открытые вопросы не зафиксированы.",
+  "library.feedback": "Что изменить в кратком итоге?", "library.rewrite": "Обновить итог",
+  "library.open_audio": "Открыть запись", "library.open_folder": "Открыть папку встречи",
+  "library.rewrite_help": "Обрабатывает выбранную встречу через GPT-6.1 Sol в отдельной сессии вашего Codex с его общими инструкциями. Меняет итог здесь, не затрагивает живого помощника, PDF и отправленные отчеты.",
+  "library.rewriting": "Обновляю итог этой встречи…", "library.rewrite_failed": "Не удалось обновить итог. Проверьте вход в Codex и повторите. Предыдущий результат сохранен.",
+  "library.browsing": "Вы просматриваете прошлую встречу. Текущая запись и контекст помощника не изменились."
+});
 let archiveMeetings = [];
 let selectedArchiveMeeting = "";
+let libraryCallActive = null;
+let archiveAutomatic = false;
+let archiveRequest = 0;
+let archiveDetailRequest = 0;
+let archiveAbort;
+let archiveSearchTimer;
 let deliverySignature = "";
 let deliveryAcknowledgedThrough = 0;
 let deliveryDismissBusy = false;
@@ -1141,7 +1182,7 @@ async function saveSpeakerEdit(payload, button) {
       transcriptSignature = "";
       await state();
     }
-    if (selectedArchiveMeeting === meetingId && elements.archiveDialog.open) await loadArchiveMeeting(meetingId);
+    if (selectedArchiveMeeting === meetingId && !elements.archiveDialog.hidden) await loadArchiveMeeting(meetingId);
   } catch (error) {
     elements.speakerEditStatus.textContent = String(error);
   } finally {
@@ -2078,20 +2119,64 @@ function archiveDuration(seconds) {
   return `${hours ? `${hours}:` : ""}${String(minutes).padStart(hours ? 2 : 1, "0")}:${String(Math.floor(total % 60)).padStart(2, "0")}`;
 }
 
-async function openArchive() {
-  if (!elements.archiveDialog.open) elements.archiveDialog.showModal();
+function setArchiveMode() {
+  const visible = !elements.archiveDialog.hidden;
+  elements.archiveDialog.dataset.mode = libraryCallActive ? "drawer" : "library";
+  if (visible && libraryCallActive) elements.archiveDialog.style.setProperty("--library-top", `${Math.ceil(document.querySelector(".topbar").getBoundingClientRect().bottom) + 8}px`);
+  document.querySelector(".workspace").hidden = visible && !libraryCallActive;
+  document.querySelector(".meeting-boundary-bar").hidden = visible && !libraryCallActive;
+  elements.archiveButton.setAttribute("aria-expanded", String(visible));
+  elements.archiveClose.textContent = t(libraryCallActive ? "library.return" : "library.hide");
+}
+
+function closeArchive() {
+  const restoreFocus = elements.archiveDialog.contains(document.activeElement);
+  elements.archiveDialog.hidden = true;
+  archiveRequest += 1;
+  archiveDetailRequest += 1;
+  archiveAbort?.abort();
+  setArchiveMode();
+  if (restoreFocus) elements.archiveButton.focus();
+}
+
+function updateLibraryMode(data) {
+  const active = data.recording_health?.capture?.audio_recording === true
+    || data.transcript?.live === true || ["recording", "loading", "overloaded"].includes(data.transcript?.status);
+  const previous = libraryCallActive;
+  libraryCallActive = active;
+  if (previous !== active) {
+    if (!active) void openArchive({automatic: true, focus: false});
+    else if (archiveAutomatic) closeArchive();
+  }
+  setArchiveMode();
+}
+
+async function openArchive({automatic = false, focus = true} = {}) {
+  archiveAutomatic = automatic;
+  elements.archiveDialog.hidden = false;
+  setArchiveMode();
+  if (focus) elements.archiveSearch.focus();
+  await refreshArchive();
+}
+
+async function refreshArchive() {
+  const request = ++archiveRequest;
+  archiveAbort?.abort();
+  archiveAbort = new AbortController();
   elements.archiveList.replaceChildren(textNode("div", "archive-loading", "…"));
   try {
-    const response = await fetch("/api/archive", { cache: "no-store" });
+    const response = await fetch(`/api/archive?q=${encodeURIComponent(elements.archiveSearch.value.trim())}`, { cache: "no-store", signal: archiveAbort.signal });
     const data = await response.json();
+    if (request !== archiveRequest || elements.archiveDialog.hidden) return;
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     archiveMeetings = data.meetings || [];
     if (data.delivery) renderDeliveryHealth(data.delivery);
     renderArchiveList();
-    const preferred = selectedArchiveMeeting || archiveMeetings[0]?.meeting_id;
+    const preferred = archiveMeetings.find(item => item.meeting_id === selectedArchiveMeeting)?.meeting_id || archiveMeetings[0]?.meeting_id;
     if (preferred) await loadArchiveMeeting(preferred);
+    else { archiveDetailRequest += 1; elements.archiveDetail.replaceChildren(textNode("p", "archive-empty", t("archive.select_text"))); }
   } catch (error) {
-    elements.archiveList.replaceChildren(textNode("div", "archive-error", String(error)));
+    if (request === archiveRequest && error.name !== "AbortError") elements.archiveList.replaceChildren(textNode("div", "archive-error", String(error)));
   }
 }
 
@@ -2100,7 +2185,7 @@ function renderArchiveList() {
     ? t("archive.count_description", { count: archiveMeetings.length })
     : t("archive.description");
   if (!archiveMeetings.length) {
-    elements.archiveList.replaceChildren(textNode("div", "archive-empty", t("archive.empty")));
+    elements.archiveList.replaceChildren(textNode("div", "archive-empty", t(elements.archiveSearch.value.trim() ? "library.no_results" : "archive.empty")));
     return;
   }
   const fragment = document.createDocumentFragment();
@@ -2119,8 +2204,10 @@ function renderArchiveList() {
     button.append(
       textNode("strong", "archive-item-title", meeting.title),
       textNode("span", "archive-item-date", archiveDate(meeting.started_at)),
+      textNode("span", `archive-library-status ${meeting.library_status || ""}`, t(`library.${meeting.library_status || "transcript_ready"}`)),
+      textNode("span", "archive-item-preview", meeting.preview || ""),
       textNode("span", "archive-item-counts", [
-        `${meeting.transcript_count} ${t("archive.utterances")}`,
+        archiveDuration(meeting.duration_seconds), `${meeting.transcript_count} ${t("archive.utterances")}`,
         `${meeting.journal_count} ${t("archive.notes")}`,
         `${meeting.frame_count} ${t("archive.frames")}`,
       ].join(" · ")),
@@ -2146,6 +2233,7 @@ function archiveSection(title, count, content, open = false) {
 
 function renderArchiveDetail(meeting) {
   const root = document.createDocumentFragment();
+  if (libraryCallActive) root.append(textNode("p", "archive-context-note", t("library.browsing")));
   if (meeting.explicit_boundary && meeting.audio_range) {
     root.append(textNode("p", "archive-audio-range", t("meeting.audio_range", {
       start: archiveDuration(meeting.audio_range.start_seconds),
@@ -2160,11 +2248,116 @@ function renderArchiveDetail(meeting) {
   );
   root.append(heading);
 
+  const renameButton = textNode("button", "quiet-button", t("library.rename"));
+  renameButton.id = "archive-rename-button";
+  renameButton.type = "button";
+  const rename = document.createElement("form");
+  rename.hidden = true;
+  rename.className = "archive-rename";
+  const titleLabel = textNode("label", "", t("library.title"));
+  titleLabel.htmlFor = "archive-title-input";
+  const titleInput = document.createElement("input");
+  titleInput.id = "archive-title-input"; titleInput.maxLength = 200; titleInput.required = true; titleInput.value = meeting.title;
+  const saveTitle = textNode("button", "quiet-button", t("library.save"));
+  saveTitle.id = "archive-title-save"; saveTitle.type = "submit";
+  const cancelTitle = textNode("button", "quiet-button", t("library.cancel"));
+  cancelTitle.type = "button";
+  const titleStatus = textNode("p", "", ""); titleStatus.setAttribute("role", "status");
+  rename.append(titleLabel, titleInput, saveTitle, cancelTitle, titleStatus);
+  renameButton.addEventListener("click", () => { rename.hidden = false; renameButton.hidden = true; titleInput.focus(); });
+  cancelTitle.addEventListener("click", () => { rename.hidden = true; renameButton.hidden = false; renameButton.focus(); });
+  rename.addEventListener("submit", async event => {
+    event.preventDefault(); saveTitle.disabled = true;
+    try {
+      await post("/api/archive/rename", {meeting_id: meeting.meeting_id, title: titleInput.value});
+      if (selectedArchiveMeeting === meeting.meeting_id && !elements.archiveDialog.hidden) {
+        const restoreFocus = rename.contains(document.activeElement);
+        await refreshArchive();
+        if (restoreFocus && selectedArchiveMeeting === meeting.meeting_id && !elements.archiveDialog.hidden && document.activeElement === document.body) document.querySelector("#archive-rename-button")?.focus();
+      }
+    } catch (error) { titleStatus.textContent = String(error); }
+    finally { saveTitle.disabled = false; }
+  });
+  root.append(renameButton, rename);
+
+  const overview = document.createElement("section");
+  overview.className = "archive-overview";
+  overview.append(textNode("h3", "", t("library.overview")));
+  if (meeting.overview?.insufficient) overview.append(textNode("p", "archive-quality-note", t("library.short")));
+  const points = meeting.overview?.points || [];
+  const questions = meeting.overview?.questions || [];
+  for (const line of points) overview.append(textNode("p", "", line));
+  if (!points.length) overview.append(textNode("p", "", t("library.no_overview")));
+  overview.append(textNode("h3", "", t("library.questions")));
+  if (!questions.length) overview.append(textNode("p", "", t("library.no_questions")));
+  const questionList = document.createElement("ul");
+  for (const question of questions) questionList.append(textNode("li", "", question));
+  overview.append(questionList);
+  const copySummary = textNode("button", "quiet-button", t("library.copy"));
+  copySummary.type = "button"; copySummary.disabled = !points.length && !questions.length;
+  copySummary.addEventListener("click", async () => {
+    try { await writeClipboard([meeting.title, ...points, ...(questions.length ? [t("library.questions"), ...questions] : [])].join("\n")); copySummary.textContent = t("transcript.copied"); }
+    catch (_) { copySummary.textContent = t("transcript.copy_failed"); }
+  });
+  overview.append(copySummary);
+  if (meeting.overview?.model) overview.append(textNode("small", "", meeting.overview.model));
+  const feedback = document.createElement("form"); feedback.className = "archive-feedback";
+  const feedbackLabel = textNode("label", "", t("library.feedback")); feedbackLabel.htmlFor = "archive-feedback-input";
+  const instructions = document.createElement("textarea"); instructions.id = "archive-feedback-input"; instructions.maxLength = 2000; instructions.required = true; instructions.rows = 3;
+  const feedbackHelp = textNode("p", "", t("library.rewrite_help")); feedbackHelp.id = "archive-feedback-help";
+  instructions.setAttribute("aria-describedby", feedbackHelp.id);
+  const rewriteButton = textNode("button", "quiet-button", t("library.rewrite")); rewriteButton.type = "submit";
+  const canRewrite = Boolean(meeting.transcript?.length) && !["recording", "loading", "overloaded"].includes(meeting.status);
+  rewriteButton.disabled = !canRewrite;
+  const rewriteStatus = textNode("p", "", ""); rewriteStatus.setAttribute("role", "status");
+  const renderVersion = archiveDetailRequest;
+  const stillHere = () => renderVersion === archiveDetailRequest && !elements.archiveDialog.hidden && selectedArchiveMeeting === meeting.meeting_id;
+  async function watchRewrite(submitted = false) {
+    let waiting = submitted;
+    while (stillHere()) {
+      try {
+        const response = await fetch(`/api/summary-rewrite?meeting_id=${encodeURIComponent(meeting.meeting_id)}`, {cache: "no-store", signal: AbortSignal.timeout(8000)});
+        if (!response.ok) throw new Error("status unavailable");
+        const data = await response.json();
+        if (!stillHere()) return;
+        if (data.rewrite?.state !== "running") {
+          rewriteButton.disabled = !canRewrite;
+          if (data.rewrite?.state === "failed") rewriteStatus.textContent = t("library.rewrite_failed");
+          else if (waiting && data.rewrite?.state === "done") await loadArchiveMeeting(meeting.meeting_id);
+          return;
+        }
+        waiting = true; rewriteButton.disabled = true; rewriteStatus.textContent = t("library.rewriting");
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } catch (_) { if (stillHere()) { rewriteButton.disabled = !canRewrite; rewriteStatus.textContent = t("library.rewrite_failed"); } return; }
+    }
+  }
+  feedback.addEventListener("submit", async event => {
+    event.preventDefault(); rewriteButton.disabled = true;
+    try {
+      await post("/api/archive/rewrite", {meeting_id: meeting.meeting_id, instructions: instructions.value});
+      await watchRewrite(true);
+    } catch (error) { if (stillHere()) { rewriteButton.disabled = !canRewrite; rewriteStatus.textContent = String(error); } }
+  });
+  feedback.append(feedbackLabel, instructions, feedbackHelp, rewriteButton, rewriteStatus);
+  overview.append(feedback);
+  void watchRewrite();
+  root.append(overview);
+
   const report = document.createElement("section");
   report.className = "archive-report-card";
   report.append(textNode("strong", "", t("archive.report")));
   const reportActions = document.createElement("div");
   reportActions.className = "archive-report-actions";
+  for (const [kind, allowed] of [["audio", Boolean(meeting.audio_file)], ["folder", Boolean(meeting.meeting_id)]]) {
+    const open = textNode("button", "quiet-button", t(`library.open_${kind}`)); open.type = "button"; open.disabled = !allowed;
+    open.addEventListener("click", async () => {
+      open.disabled = true;
+      try { await post("/api/archive/open-local", {meeting_id: meeting.meeting_id, kind}); }
+      catch (error) { open.textContent = String(error); }
+      finally { open.disabled = false; }
+    });
+    reportActions.append(open);
+  }
   if (meeting.report?.html && meeting.report?.pdf) {
     for (const [label, href] of [[t("archive.open_html"), meeting.report.html], [t("archive.open_pdf"), meeting.report.pdf]]) {
       const link = document.createElement("a");
@@ -2328,16 +2521,18 @@ function renderArchiveDetail(meeting) {
 }
 
 async function loadArchiveMeeting(meetingId) {
+  const request = ++archiveDetailRequest;
   selectedArchiveMeeting = meetingId;
   renderArchiveList();
   elements.archiveDetail.replaceChildren(textNode("div", "archive-loading", "…"));
   try {
     const response = await fetch(`/api/archive/${encodeURIComponent(meetingId)}`, { cache: "no-store" });
     const data = await response.json();
+    if (request !== archiveDetailRequest || elements.archiveDialog.hidden) return;
     if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     renderArchiveDetail(data.meeting);
   } catch (error) {
-    elements.archiveDetail.replaceChildren(textNode("div", "archive-error", String(error)));
+    if (request === archiveDetailRequest && !elements.archiveDialog.hidden) elements.archiveDetail.replaceChildren(textNode("div", "archive-error", String(error)));
   }
 }
 
@@ -2346,7 +2541,7 @@ async function generateArchiveReport(meetingId, button) {
   button.textContent = t("archive.generating");
   try {
     await post("/api/archive/report", { meeting_id: meetingId });
-    await openArchive();
+    await refreshArchive();
   } catch (error) {
     button.textContent = String(error).replace(/^Error:\s*/, "");
   } finally {
@@ -2395,6 +2590,7 @@ async function state() {
     stateConnectionFailed = false;
     renderTranscript(data.transcript);
     renderRecordingHealth(data.recording_health || {});
+    updateLibraryMode(data);
     renderFrames(data.frames || []);
     renderFrameStatus(data.frame_capture || {});
     renderMessages(data.copilot);
@@ -2630,8 +2826,8 @@ elements.question.addEventListener("keydown", (event) => {
 
 elements.note.addEventListener("click", () => void saveNote());
 elements.copyDialog.addEventListener("click", () => void copyDialogue());
-elements.deliveryAlert.addEventListener("click", () => elements.archiveButton.click());
-elements.deliveryNoticeDetails.addEventListener("click", () => elements.archiveButton.click());
+elements.deliveryAlert.addEventListener("click", () => void openArchive());
+elements.deliveryNoticeDetails.addEventListener("click", () => void openArchive());
 elements.deliveryNoticeDismiss.addEventListener("click", () => void acknowledgeDeliveryNotices());
 elements.translationJump.addEventListener("click", () => {
   const latest = activeTranscript?.segments.filter((segment) => segment.translation_en).at(-1);
@@ -2675,11 +2871,20 @@ elements.projectEditRepos.addEventListener("click", () => {
   elements.projectDialog.close();
   void openRepositoryDialog();
 });
-elements.archiveButton.addEventListener("click", () => void openArchive());
-elements.archiveClose.addEventListener("click", () => elements.archiveDialog.close());
-elements.archiveDialog.addEventListener("click", (event) => {
-  if (event.target === elements.archiveDialog) elements.archiveDialog.close();
+elements.archiveButton.addEventListener("click", () => {
+  if (!elements.archiveDialog.hidden) closeArchive(); else void openArchive();
 });
+elements.archiveClose.addEventListener("click", () => { closeArchive(); elements.archiveButton.focus(); });
+elements.archiveSearch.addEventListener("input", () => {
+  clearTimeout(archiveSearchTimer);
+  archiveSearchTimer = setTimeout(() => { void refreshArchive(); }, 250);
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !elements.archiveDialog.hidden && !document.querySelector("dialog[open]")) {
+    closeArchive(); elements.archiveButton.focus();
+  }
+});
+window.addEventListener("resize", setArchiveMode);
 elements.repoSearch.addEventListener("input", renderRepositoryCatalog);
 elements.repoSave.addEventListener("click", () => void saveRepositorySelection());
 
@@ -2696,7 +2901,8 @@ document.querySelectorAll("[data-language]").forEach((button) => {
     renderedMessages = "";
     journalSignature = "";
     meetingChatSignature = "";
-    if (elements.archiveDialog.open) void openArchive();
+    setArchiveMode();
+    if (!elements.archiveDialog.hidden) void refreshArchive();
     if (elements.projectDialog.open) {
       renderProjectOptions();
       const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;

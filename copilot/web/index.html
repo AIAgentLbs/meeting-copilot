@@ -19,7 +19,7 @@
       <div class="status-strip" aria-live="polite">
         <span class="status" id="capture-status" hidden><i></i><span></span></span>
         <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
-        <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-haspopup="dialog">История встреч</button>
+        <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-expanded="false" aria-controls="archive-dialog">Встречи</button>
         <button class="quiet-button" id="new-meeting-button" type="button" data-i18n="meeting.new" aria-haspopup="dialog" aria-describedby="new-meeting-help" disabled>Начать новую встречу</button>
         <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
         <button class="quiet-button" id="updates-notice" type="button" aria-controls="settings-panel" hidden></button>
@@ -274,14 +274,14 @@
       </form>
     </dialog>
 
-    <dialog class="archive-dialog" id="archive-dialog">
+    <section class="archive-dialog" id="archive-dialog" hidden aria-labelledby="archive-heading">
       <div class="archive-shell">
         <div class="archive-header">
           <div>
-            <h2 data-i18n="archive.title">Архив встреч</h2>
+            <h2 id="archive-heading" data-i18n="archive.title">Встречи</h2>
             <p id="archive-description" data-i18n="archive.description">Стенограммы, заметки, чат, кадры и отчёты хранятся локально.</p>
           </div>
-          <button class="icon-button" id="archive-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
+          <button class="quiet-button" id="archive-close" type="button">Скрыть историю</button>
         </div>
         <section class="delivery-summary" id="delivery-summary" aria-labelledby="delivery-summary-title" hidden>
           <h3 id="delivery-summary-title" data-i18n="delivery.heading">Доставка отчётов</h3>
@@ -289,7 +289,11 @@
           <p class="delivery-summary-note" data-i18n="delivery.local_note">Запись и отчёт остаются локально. Ошибки доставки не останавливают звонок.</p>
         </section>
         <div class="archive-layout">
-          <aside class="archive-list" id="archive-list"></aside>
+          <aside class="archive-sidebar">
+            <label class="archive-search-label" for="archive-search" data-i18n="library.search">Поиск по названию, участникам и содержимому</label>
+            <input id="archive-search" type="search" maxlength="200" autocomplete="off" />
+            <div class="archive-list" id="archive-list" aria-live="polite"></div>
+          </aside>
           <section class="archive-detail" id="archive-detail">
             <div class="empty-state">
               <strong data-i18n="archive.select_title">Выберите встречу</strong>
@@ -298,7 +302,7 @@
           </section>
         </div>
       </div>
-    </dialog>
+    </section>
     <dialog class="speaker-dialog" id="speaker-dialog">
       <div class="speaker-dialog-shell">
         <div class="repo-dialog-header">
