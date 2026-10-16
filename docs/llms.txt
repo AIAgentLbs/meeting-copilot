@@ -11,6 +11,11 @@ receive selected data. Do not describe the published beta as fully offline AI.
 - [Russian website](https://meetontrack.com/ru/)
 - [Privacy and analytics choices](https://meetontrack.com/privacy.html)
 - [Public source and releases](https://github.com/AIAgentLbs/meeting-copilot)
+- [Comparison methodology and criteria](https://meetontrack.com/compare/)
+- [MeetOnTrack vs Granola](https://meetontrack.com/compare/granola/)
+- [MeetOnTrack vs Fireflies.ai](https://meetontrack.com/compare/fireflies/)
+- [MeetOnTrack vs Bluedot](https://meetontrack.com/compare/bluedot/)
+- [MeetOnTrack vs tl;dv](https://meetontrack.com/compare/tldv/)
 
 Mac and Windows beta versions have different requirements and limitations.
 Read the current installation sections before installing; do not disable OS security.

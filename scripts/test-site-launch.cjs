@@ -86,6 +86,21 @@ const root = path.resolve(__dirname, '../docs');
         await page.evaluate(()=>scrollTo(0,0));
       }
     }
+    for (const route of ['/compare/',...require('../docs/compare/content.json').competitors.map(v=>`/compare/${v.slug}/`)]) {
+      await page.goto('https://meetontrack.com'+route);
+      for (const width of [390,768,1440]) {
+        await page.setViewportSize({width,height:844});
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${route} overflow at ${width}`);
+        assert(await page.locator('.breadcrumbs a[href="/"]').isVisible(),'Breadcrumbs must not inherit hidden mobile header links');
+        assert.equal(await page.locator('h1').count(),1);
+        if(route!=='/compare/') {
+          assert.equal(await page.locator('.comparison-table tbody tr').count(),12);
+          assert.equal(await page.locator('.comparison-table thead th[scope="col"]').count(),3);
+          if(width===390)assert(await page.locator('#open-source .column-label').first().isVisible());
+          if(width===1440)assert.equal(await page.locator('.comparison-table thead th').first().evaluate(e=>getComputedStyle(e).position),'sticky');
+        }
+      }
+    }
     assert.deepEqual(errors,[]);
     console.log('PASS: brand/consent, EN/RU, Windows + macOS above the fold at 390/768/1440px, install anchors, screenshots, no overflow.');
     await context.close();
