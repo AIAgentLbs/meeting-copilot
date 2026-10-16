@@ -36,3 +36,9 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .command button:focus-visible{outline-color:var(--mint)}
 @media(max-width:850px){.section-head{grid-template-columns:1fr}.nav{gap:16px}.nav nav{gap:14px}.hero{gap:36px}.requirements{gap:8px 24px}}
 @media(max-width:540px){.brand small{display:none}.hero h1{font-size:clamp(42px,11vw,58px)}.section h2{font-size:38px}.requirements{grid-template-columns:1fr}.install-lede{font-size:16px}.install-note,.setup-steps,.install-help{font-size:16px}.command{padding:22px}.evidence-stage{box-shadow:none}.brand{font-size:15px}nav .button.small{padding:10px 12px}}
+:root .analytics-consent[hidden] { display: none; }
+.analytics-consent { position: fixed; inset: auto 16px 16px; z-index: 100; max-width: 760px; margin-inline: auto; padding: 18px; border: 1px solid #174c3e; border-radius: 12px; background: #f3f4ef; color: #174c3e; box-shadow: 0 4px 24px #174c3e22; }
+.analytics-consent p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; }
+.analytics-consent button { margin: 4px 8px 0 0; }
+.analytics-settings { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-decoration: underline; cursor: pointer; }
+.flow > li > span { color: #806016; }

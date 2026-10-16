@@ -3,24 +3,34 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Meeting Copilot for Mac: bot-free recording, live transcripts and meeting analysis grounded in your work. Installation guide for the public beta.">
-  <link rel="canonical" href="https://aiagentlbs.github.io/meeting-copilot/">
-  <title>Meeting Copilot by AI Agent Labs</title>
+  <meta name="description" content="MeetOnTrack records meetings without a bot and connects live transcription with your work context. AI meeting assistant for Mac and Windows. Explore the beta.">
+  <link rel="canonical" href="https://meetontrack.com/">
+  <title>MeetOnTrack — AI Meeting Assistant & Live Transcription</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Geologica:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <link rel="alternate" hreflang="en" href="https://meetontrack.com/">
+  <link rel="alternate" hreflang="ru" href="https://meetontrack.com/ru/">
+  <link rel="alternate" hreflang="x-default" href="https://meetontrack.com/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="MeetOnTrack — AI meeting assistant">
+  <meta property="og:description" content="Bot-free recording, live transcription and contextual meeting analysis for Mac and Windows.">
+  <meta property="og:url" content="https://meetontrack.com/">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"MeetOnTrack","url":"https://meetontrack.com/","applicationCategory":"BusinessApplication","operatingSystem":"macOS, Windows","description":"Bot-free meeting recording, live transcription and contextual AI meeting analysis."}</script>
 </head>
 <body>
   <header class="nav shell">
-    <a class="brand" href="#top"><span class="pulse"></span><span>Meeting Copilot</span><small>AI AGENT LABS</small></a>
+    <a class="brand" href="#top"><span class="pulse"></span><span>MeetOnTrack</span><small>AI AGENT LABS</small></a>
     <nav aria-label="Primary"><a href="#how">How it works</a><a href="#privacy">Connections</a><a class="language-link" href="ru/" lang="ru">RU</a><a class="button small" href="https://github.com/AIAgentLbs/meeting-copilot">GitHub</a></nav>
   </header>
 
   <main id="top">
     <section class="hero shell">
       <div class="hero-copy">
-        <h1>Your meeting,<br><em>with receipts.</em></h1>
+        <h1>AI meeting assistant.<br><em>Context included.</em></h1>
         <p class="lede">Record the conversation without a meeting bot. Keep the transcript beside relevant decisions, documents and history from your selected local repositories.</p>
         <div class="actions"><a class="button" href="#install">Install for macOS</a><a class="text-link" href="#how">See the evidence flow ↓</a></div>
         <p class="fine">Public beta v0.1.9 for Apple Silicon Macs running macOS 15 or later.</p>
@@ -55,18 +65,19 @@
       <p class="install-lede">One command after the prerequisites below. This is a technical beta, not a standalone notarized installer.</p>
       <ul class="requirements"><li>Apple Silicon and macOS 15+</li><li>Python 3.10+ and Apple Command Line Tools</li><li>Codex CLI installed and signed in</li><li>Google Chrome for PDF reports</li></ul>
       <p class="install-note">Missing Apple tools? Run <code>xcode-select --install</code> and finish the system dialog first. Install Python with your usual package manager; see the <a href="https://developers.openai.com/codex/cli">Codex CLI setup guide</a> for AI access.</p>
-      <div class="terminal"><div class="terminal-top"><span></span><span></span><span></span><b>Terminal</b></div><div class="command"><code id="install-command">curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash</code><button type="button" data-copy="install-command">Copy</button></div></div>
+      <div class="terminal"><div class="terminal-top"><span></span><span></span><span></span><b>Terminal</b></div><div class="command"><code id="install-command">curl -fsSL https://meetontrack.com/install.sh | bash</code><button type="button" data-copy="install-command">Copy</button></div></div>
       <p class="copy-status" role="status" aria-live="polite"></p>
       <p class="install-note">Downloads <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/v0.1.9">v0.1.9</a>, checks its SHA-256, and preserves private settings and recordings. You can <a href="install.sh">inspect the script</a> before running it. Quit Meeting Copilot Capture before installing over an existing copy.</p>
       <ol class="setup-steps"><li>Approve Microphone and Screen &amp; System Audio Recording for Meeting Copilot Capture in macOS settings.</li><li>Run <code>~/.local/bin/meeting-copilot</code>. The interface opens at <code>http://127.0.0.1:43121</code>.</li><li>Select the relevant repositories, make a short test call, then check the saved audio and transcript.</li></ol>
       <details class="install-help"><summary>Updating and troubleshooting</summary><p>Automatic in-app updates are not enabled in this beta. The command installs the version explicitly pinned in the script. After a newer tested release is published and the script is updated, finish your call, quit Capture and run the same command.</p><p>If a prerequisite, download, checksum or helper compilation fails, the installer stops before replacing your current app. Existing app and web files are backed up during a reinstall. Recordings and delivery settings are not deleted.</p><p>If macOS blocks launch, review the downloaded app in Privacy &amp; Security. Do not disable Gatekeeper globally. For audio permission problems, check the exact installed app, quit it and reopen it.</p><p><a href="https://github.com/AIAgentLbs/meeting-copilot/blob/main/INSTALL.md">Full installation instructions</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/issues">Report a problem</a></p></details>
     </section>
 
-    <section class="section shell install" id="install-windows"><h2>Install the Windows beta.</h2><p class="install-lede">Windows 11 24H2+, x64. Ready-to-run package, no compilation or SDK. Requires an installed, signed-in Codex CLI. First installation downloads local speech models (about 1.5 GB).</p><div class="terminal"><div class="terminal-top"><b>Windows PowerShell</b></div><div class="command"><code id="windows-install-command">irm https://aiagentlbs.github.io/meeting-copilot/install.ps1 | iex</code><button type="button" data-copy="windows-install-command">Copy</button></div></div><p class="install-note">Unsigned technical beta. Do not disable SmartScreen or antivirus. Update: finish the call, close Capture and repeat the command. Recordings and settings are preserved.</p><p><a href="install.ps1">Read installer</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/windows-v0.1.4">Windows release and beta limitations</a></p></section>
+    <section class="section shell install" id="install-windows"><h2>Install the Windows beta.</h2><p class="install-lede">Windows 11 24H2+, x64. Ready-to-run package, no compilation or SDK. Requires an installed, signed-in Codex CLI. First installation downloads local speech models (about 1.5 GB).</p><div class="terminal"><div class="terminal-top"><b>Windows PowerShell</b></div><div class="command"><code id="windows-install-command">irm https://meetontrack.com/install.ps1 | iex</code><button type="button" data-copy="windows-install-command">Copy</button></div></div><p class="install-note">Unsigned technical beta. Do not disable SmartScreen or antivirus. Update: finish the call, close Capture and repeat the command. Recordings and settings are preserved.</p><p><a href="install.ps1">Read installer</a> · <a href="https://github.com/AIAgentLbs/meeting-copilot/releases/tag/windows-v0.1.4">Windows release and beta limitations</a></p></section>
 <section class="section shell final"><h2>Challenge the claim.<br>Find the decision.<br><em>Show the source.</em></h2><p class="install-lede">The source is newer than the downloadable beta. Features under development are not a promise about this package.</p><a class="button" href="https://github.com/AIAgentLbs/meeting-copilot">View source on GitHub</a></section>
   </main>
 
-  <footer class="shell"><span>Meeting Copilot by <a href="https://aiagentlbs.com">AI Agent Labs</a></span><span>MIT · Beta · 2026</span></footer>
+  <footer class="shell"><span>MeetOnTrack by <a href="https://aiagentlbs.com">AI Agent Labs</a></span><span><a href="mailto:contacts@meetontrack.com">Contact</a> · <a href="/privacy.html">Privacy</a> · <button type="button" class="analytics-settings" data-analytics-settings>Analytics settings</button></span><span>MIT · Beta · 2026</span></footer>
   <script src="site.js"></script>
+  <script defer src="/analytics.js"></script>
 </body>
 </html>
