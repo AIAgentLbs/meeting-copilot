@@ -33,6 +33,16 @@ Date: 2026-10-19. This is website/distribution evidence, not hardware acceptance
   opens the browser after the actual local health response. 13 installer tests
   and 370 Swift tests passed; installed native Open MeetOnTrack assistant was
   clicked and opened the local page in Mike's Chrome. Immutable archives retained.
+- Final publication acceptance: Pages run
+  https://github.com/AIAgentLbs/meeting-copilot/actions/runs/39312712070
+  deployed `065376da1443dffeaf4cb037287aa09cf0b88d22`. Both EN/RU pages and
+  installer routes were fetched anonymously again and match the repository
+  byte-for-byte. Both public archives were downloaded again and their hashes
+  still match the accepted values above. Later ownership/evidence-only commits
+  do not change the deployed site files or require another rollout.
+- Final application CI at installer revision
+  `0d15b89b153ef9fce63a8e11fcb2bbf20e79a748` succeeded:
+  https://github.com/AIAgentLbs/meeting-copilot-private-copy/actions/runs/39312643893
 
 Downloadable beta does not mean real-device audio acceptance: the physical
 Windows host was offline; clean-machine Mac/audio/reconnect gates remain in the
