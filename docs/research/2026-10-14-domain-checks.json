@@ -1,0 +1,72 @@
+{
+  "checked_at_utc": "2026-10-14T18:59:35Z",
+  "registrar": "Namecheap",
+  "source": "Live domain_bulk_check response",
+  "domains": [
+    {
+      "name": "meetontrack.com",
+      "isAvailable": true,
+      "prices": {
+        "purchase": {
+          "amount": 10.98,
+          "currency": "USD"
+        }
+      }
+    },
+    {
+      "name": "meetincontext.com",
+      "isAvailable": true,
+      "prices": {
+        "purchase": {
+          "amount": 10.98,
+          "currency": "USD"
+        }
+      }
+    },
+    {
+      "name": "callincontext.com",
+      "isAvailable": true,
+      "prices": {
+        "purchase": {
+          "amount": 10.98,
+          "currency": "USD"
+        }
+      }
+    },
+    {
+      "name": "meettact.com",
+      "isAvailable": true,
+      "prices": {
+        "purchase": {
+          "amount": 10.98,
+          "currency": "USD"
+        }
+      }
+    }
+  ],
+  "price_caveat": "Purchase quote only. Term, renewal, taxes and additional fees were not returned. No purchase made.",
+  "registry_checks": {
+    "checked_date_utc": "2026-10-14",
+    "authority": "Verisign .com RDAP",
+    "responses": {
+      "meetontrack.com": {
+        "url": "https://rdap.verisign.com/com/v1/domain/meetontrack.com",
+        "http_status": 404
+      },
+      "meetincontext.com": {
+        "url": "https://rdap.verisign.com/com/v1/domain/meetincontext.com",
+        "http_status": 404
+      },
+      "callincontext.com": {
+        "url": "https://rdap.verisign.com/com/v1/domain/callincontext.com",
+        "http_status": 404
+      },
+      "meettact.com": {
+        "url": "https://rdap.verisign.com/com/v1/domain/meettact.com",
+        "http_status": 404
+      }
+    }
+  },
+  "registry_caveat": "404 means no domain object returned by this registry endpoint; it is not, alone, proof of registrability.",
+  "legal_clearance": false
+}

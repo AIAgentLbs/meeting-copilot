@@ -2,29 +2,27 @@
 set -euo pipefail
 
 REPO="AIAgentLbs/meeting-copilot"
-VERSION="v0.1.9"
+VERSION="v0.1.10"
 ASSET="meeting-copilot-macos.zip"
-SHA256="74a269a92d60e61dec235b8ca05e6c5f8a2e5b6b75010bb2ef6f11039a081c4d"
+SHA256="2df0822063ccbfd2ba14d8463664a3d5f2ae83ebfd31877cff47d89558c32593"
 SHARE="${MEETING_COPILOT_SHARE_ROOT:-$HOME/.local/share/meeting-copilot}"
 CONFIG="${MEETING_COPILOT_CONFIG_ROOT:-$HOME/.config/meeting-copilot}"
 BIN="${MEETING_COPILOT_BIN_ROOT:-$HOME/.local/bin}"
 AGENTS="${MEETING_COPILOT_AGENTS_ROOT:-$HOME/Library/LaunchAgents}"
 LABEL="com.aiagentlbs.meeting-copilot"
 
-say() { printf 'Meeting Copilot · %s\n' "$*"; }
-fail() { printf 'Meeting Copilot · ERROR: %s\n' "$*" >&2; exit 1; }
+say() { printf 'MeetOnTrack · %s\n' "$*"; }
+fail() { printf 'MeetOnTrack · ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "macOS is required"
 [[ "$(uname -m)" == "arm64" ]] || fail "this beta currently requires Apple Silicon"
 os_version="$(sw_vers -productVersion)"
 [[ "${os_version%%.*}" -ge 15 ]] || fail "macOS 15 or later is required"
-for tool in curl unzip shasum python3 swiftc pgrep; do
-  command -v "$tool" >/dev/null || fail "$tool is required; see https://aiagentlbs.github.io/meeting-copilot/ru/#install"
+for tool in curl unzip shasum pgrep; do
+  command -v "$tool" >/dev/null || fail "$tool is required; see https://meetontrack.com/ru/#install"
 done
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || fail "Python 3.10 or later is required"
-swiftc --version >/dev/null 2>&1 || fail "Apple Command Line Tools are required; run xcode-select --install, then try again"
-command -v codex >/dev/null || fail "Codex CLI is required: https://developers.openai.com/codex/cli"
-codex --version >/dev/null 2>&1 || fail "Codex CLI or its runtime is unavailable"
+# Recording and local transcription do not require a paid AI subscription.
+# The assistant's optional connection is checked explicitly in first-run UI.
 
 require_capture_closed() {
   if pgrep -f '/MeetingCopilotCapture([[:space:]]|$)' >/dev/null 2>&1; then
@@ -49,15 +47,19 @@ unzip -tq "$tmp/$ASSET" >/dev/null || fail "Release archive is damaged"
 unzip -q "$tmp/$ASSET" -d "$tmp/release"
 [[ -d "$tmp/release/Meeting Copilot Capture.app" ]] || fail "release app is missing"
 [[ -d "$tmp/release/payload/web" ]] || fail "release payload is missing"
-for file in payload/web/server.py payload/bin/meeting-copilot payload/config/refresh-repos.py payload/config/SESSION.md payload/config/delivery.json.example; do
+for file in release.json payload/web/server.py payload/bin/meeting-copilot payload/config/refresh-repos.py payload/config/SESSION.md payload/config/delivery.json.example; do
   [[ -f "$tmp/release/$file" ]] || fail "Release file is missing: $file"
 done
+python="$tmp/release/payload/python/bin/python3"
+[[ -x "$python" ]] || fail "Release Python runtime is missing"
+"$python" -I -c 'import ssl, sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || fail "Packaged Python runtime cannot start"
 
 # Prepare everything before touching an existing installation.
 mkdir -p "$tmp/helpers"
-swiftc "$tmp/release/payload/bin/ZoomWindowFinder.swift" -o "$tmp/helpers/zoom-window-finder"
-swiftc "$tmp/release/payload/bin/ZoomFrameInspector.swift" -o "$tmp/helpers/zoom-frame-inspector"
-swiftc "$tmp/release/payload/bin/DetectSpeechLanguage.swift" -o "$tmp/helpers/detect-speech-language"
+for helper in zoom-window-finder zoom-frame-inspector detect-speech-language; do
+  [[ -x "$tmp/release/payload/bin/$helper" ]] || fail "Release helper is missing: $helper"
+  install -m 0755 "$tmp/release/payload/bin/$helper" "$tmp/helpers/$helper"
+done
 require_capture_closed
 backup_stamp="$(date +%Y%m%d-%H%M%S)-$$"
 
@@ -75,14 +77,18 @@ fi
 cp -R "$tmp/release/Meeting Copilot Capture.app" "$app"
 
 mkdir -p "$SHARE" "$CONFIG" "$BIN" "$AGENTS" "$SHARE/bin"
+[[ ! -e "$SHARE/python" ]] || mv "$SHARE/python" "$SHARE/python.backup-$backup_stamp"
+cp -R "$tmp/release/payload/python" "$SHARE/python"
+python="$SHARE/python/bin/python3"
 for dir in web; do
   [[ ! -e "$SHARE/$dir" ]] || mv "$SHARE/$dir" "$SHARE/$dir.backup-$backup_stamp"
   cp -R "$tmp/release/payload/$dir" "$SHARE/$dir"
 done
+install -m 0644 "$tmp/release/release.json" "$SHARE/release.json"
 install -m 0755 "$tmp/release/payload/bin/meeting-copilot" "$BIN/meeting-copilot"
 install -m 0755 "$tmp/release/payload/config/refresh-repos.py" "$CONFIG/refresh-repos.py"
 # One-time removal of retired usage-reporting state; preserve all other settings.
-python3 - "$CONFIG" <<'PY'
+"$python" - "$CONFIG" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
 config = root / "config.json"
@@ -104,19 +110,26 @@ install -m 0755 "$tmp/helpers/zoom-window-finder" "$SHARE/bin/zoom-window-finder
 install -m 0755 "$tmp/helpers/zoom-frame-inspector" "$SHARE/bin/zoom-frame-inspector"
 install -m 0755 "$tmp/helpers/detect-speech-language" "$SHARE/bin/detect-speech-language"
 
-python3 "$CONFIG/refresh-repos.py"
+# Discovery is explicit (meeting-copilot --refresh). A first install must not
+# scan unrelated project directories or write to a different user's config.
+if [[ ! -f "$CONFIG/repos.json" ]]; then
+  "$python" - "$CONFIG/repos.json" <<'PY'
+import json, pathlib, sys
+pathlib.Path(sys.argv[1]).write_text(json.dumps({"repositories": [], "repository_count": 0, "search_roots": []}) + "\n")
+PY
+fi
 if [[ ! -f "$CONFIG/active-repos.json" ]]; then
-  python3 - "$CONFIG/repos.json" "$CONFIG/active-repos.json" <<'PY'
+  "$python" - "$CONFIG/repos.json" "$CONFIG/active-repos.json" <<'PY'
 import json, pathlib, sys
 source, target = map(pathlib.Path, sys.argv[1:])
 data = json.loads(source.read_text())
-data["repositories"] = data.get("repositories", [])[:15]
-data["repository_count"] = len(data["repositories"])
+data["repositories"] = []
+data["repository_count"] = 0
 target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 PY
 fi
 
-python3 - "$AGENTS/$LABEL.plist" "$SHARE" "$BIN" "$LABEL" <<'PY'
+"$python" - "$AGENTS/$LABEL.plist" "$SHARE" "$BIN" "$LABEL" <<'PY'
 import pathlib, plistlib, sys
 target, share, bin_root, label = sys.argv[1:]
 value = {

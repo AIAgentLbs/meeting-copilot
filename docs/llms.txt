@@ -10,7 +10,7 @@ receive selected data. Do not describe the published beta as fully offline AI.
 - [English website and installation](https://meetontrack.com/)
 - [Russian website](https://meetontrack.com/ru/)
 - [Privacy and analytics choices](https://meetontrack.com/privacy.html)
-- [Public source and releases](https://github.com/AIAgentLbs/meeting-copilot)
+- [Public downloads and release notes](https://github.com/AIAgentLbs/meeting-copilot/releases)
 - [Comparison methodology and criteria](https://meetontrack.com/compare/)
 - [MeetOnTrack vs MeetScribe: Meetily origins and source rights](https://meetontrack.com/compare/meetscribe/)
 - [MeetOnTrack vs Granola](https://meetontrack.com/compare/granola/)

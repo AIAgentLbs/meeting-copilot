@@ -8,7 +8,7 @@
   },
   "products": {
     "meetontrack": {
-      "open-source": ["yes", "MIT application source"],
+      "open-source": ["partial", "MIT foundation; current product source is private"],
       "capture": ["yes", "No meeting bot"],
       "platforms": ["partial", "Mac + Windows; different beta requirements"],
       "processing": ["partial", "Local transcription; external AI analysis"],
@@ -18,7 +18,7 @@
       "languages": ["partial", "Depends on engine and installed build"],
       "speakers": ["partial", "Attribution depends on capture and engine"],
       "export": ["partial", "Local reports; delivery needs setup"],
-      "cost": ["different", "Open-source app; AI service costs separate"],
+      "cost": ["different", "Local capture; optional AI service costs separate"],
       "readiness": ["partial", "Technical beta; manual setup and OS permissions"]
     },
     "meetscribe": {

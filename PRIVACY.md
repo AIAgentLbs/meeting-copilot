@@ -1,8 +1,6 @@
 # Privacy
 
-Meeting Copilot is local-first. The UI listens on the loopback interface only.
-Product-usage statistics are not collected or sent. There is no telemetry
-switch, installation tracking identifier, event queue or usage-reporting sender.
+MeetOnTrack is local-first. The UI listens on the loopback interface only.
 Audio files, screenshot files, repository manifests and generated reports stay
 on the Mac unless the user explicitly configures external delivery. Transcript
 text and OCR excerpts may be sent to the authenticated Codex CLI for chat and
@@ -14,7 +12,7 @@ the authenticated Codex CLI for translation; raw audio is not sent by this
 feature. The original text remains available beside the English translation.
 The existing chat and automatic analysis also use Codex with meeting text.
 
-Repository access is read-only by product design. Meeting Copilot records paths,
+Repository access is read-only by product design. MeetOnTrack records paths,
 current branches, HEAD revisions and working-tree status; it does not change or
 synchronize repositories.
 

@@ -45,7 +45,7 @@ for(const vendor of content.competitors){
   assert(html.includes('id="open-source"'));
   assert(html.includes('vendor-authored comparison'));
   assert(html.includes('not an independent accuracy benchmark'));
-  assert(html.includes('v0.1.9')&&html.includes('v0.1.4'));
+  assert(html.includes('v0.1.10')&&html.includes('v0.1.10'));
   assert(html.includes('Sources checked'));
   const date=vendor.checkedAt||content.checkedAt;
   assert(html.includes(`<time datetime="${date}">${date}</time>`));
