@@ -27,5 +27,6 @@ try {
     [IO.File]::WriteAllText("$records/synthetic-keep.txt",'synthetic recording preservation check')
     & $Installer -PackagePath $PackagePath -ExpectedSha256 $ExpectedSha256 -InstallRoot $install -UserRoot $user -SkipModels -NoLaunch -NoShortcuts
     if((Get-Content "$records/synthetic-keep.txt" -Raw) -ne 'synthetic recording preservation check'){throw 'Recordings not preserved'}
-    Write-Host "PASS: exact Windows candidate $($manifest.version); $($manifest.sha256.PSObject.Properties.Count) file hashes; install/reinstall, product identity, embedded server, syntax and installer regressions. No hardware recording test."
+    $fileCount=@($manifest.sha256.PSObject.Properties).Count
+    Write-Host "PASS: exact Windows candidate $($manifest.version); $fileCount file hashes; install/reinstall, product identity, embedded server, syntax and installer regressions. No hardware recording test."
 } finally {Remove-Item -LiteralPath $candidateRoot -Recurse -Force}
