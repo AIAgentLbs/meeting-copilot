@@ -1,6 +1,12 @@
 {
   "checkedAt": "2026-10-16",
   "sources": {
+    "meetscribe-product": {"title":"MeetScribe advertised features, downloads, pricing and FAQ", "url":"https://www.meetscribeapp.com/"},
+    "meetscribe-source": {"title":"MeetScribe attribution to Meeting Minutes / Meetily", "url":"https://www.meetscribeapp.com/open-source"},
+    "meetscribe-terms": {"title":"MeetScribe service terms", "url":"https://www.meetscribeapp.com/terms"},
+    "meetscribe-privacy": {"title":"MeetScribe meeting-data processing and retention policy", "url":"https://www.meetscribeapp.com/privacy"},
+    "meetily-source": {"title":"Meetily upstream: Community and separate PRO edition", "url":"https://github.com/Zackriya-Solutions/meetily"},
+    "meetily-license": {"title":"Meetily upstream MIT licence", "url":"https://raw.githubusercontent.com/Zackriya-Solutions/meetily/main/LICENSE.md"},
     "mot-license": {"title":"MeetOnTrack MIT licence", "url":"https://github.com/AIAgentLbs/meeting-copilot/blob/main/LICENSE"},
     "mot-readme": {"title":"Public product source and documented workflow", "url":"https://github.com/AIAgentLbs/meeting-copilot"},
     "mot-release": {"title":"Mac v0.1.9 release scope", "url":"https://github.com/AIAgentLbs/meeting-copilot/releases/tag/v0.1.9"},
@@ -41,6 +47,34 @@
     {"id":"readiness","label":"Setup and rollout trade-off","ours":"Technical beta with prerequisites and OS permissions. The Mac package is not notarized, the Windows beta is unsigned, and automatic updates are not enabled in these pinned packages.","refs":["mot-release","mot-windows"]}
   ],
   "competitors": [
+    {
+      "slug":"meetscribe","name":"MeetScribe","checkedAt":"2026-10-19",
+      "title":"MeetOnTrack vs MeetScribe: Meetily Roots & Open Source",
+      "description":"Compare MeetOnTrack with MeetScribe: Meetily origins, open-source rights, local processing, live help, pricing and public beta limits. Official sources included.",
+      "summary":"Both advertise bot-free meeting capture. The important questions are which product you are installing, what source rights it provides, and where processing happens. MeetScribe, Meetily Community and Meetily PRO are not interchangeable products.",
+      "short":"A Meetily-derived service: separate upstream source rights from the product you install.",
+      "chooseOurs":"You want inspectable application source, retained local audio and live checks against selected working repositories. You accept a technical beta and its documented installation limits rather than assuming every source-tree feature has shipped.",
+      "chooseTheirs":"You want the team summaries and follow-up integrations MeetScribe advertises. Trial the actual workflow before relying on the feature list.",
+      "choiceRefs":["meetscribe-product","meetscribe-terms"],
+      "tradeoffTitle":"MeetScribe is based on Meetily, but it is not Meetily",
+      "tradeoff":"MeetScribe credits Zackriya Solutions' Meeting Minutes as its foundation; that repository now redirects to Meetily. The upstream repository has an MIT licence and documents local Whisper/Parakeet transcription, Ollama summaries and optional external AI providers. It describes PRO as a separate codebase. Those upstream capabilities and source rights do not establish the capabilities or licence of the complete MeetScribe distribution. MeetScribe's third-party notices are attribution, not a published full-product source grant.",
+      "tradeoffRefs":["meetscribe-source","meetily-source","meetily-license","meetscribe-terms"],
+      "test":"Install the exact candidate on your own OS. Test a short multilingual call, replay and export, then inspect processing destinations with external AI disabled. Ask the vendor to resolve its processing and plan descriptions before using sensitive recordings. Do not infer offline behavior from an upstream project or a marketing illustration.",
+      "rows": {
+        "open-source":{"text":"MeetScribe acknowledges its open-source foundation. Its service terms restrict reverse engineering; a source repository and licence for the complete MeetScribe product were not verified. Meetily's MIT licence is a separate upstream fact.","refs":["meetscribe-source","meetscribe-terms","meetily-license"]},
+        "capture":{"text":"The FAQ describes device-audio capture without a meeting bot, despite auto-join wording elsewhere on the homepage.","refs":["meetscribe-product"]},
+        "platforms":{"text":"Mac and Windows download links are offered. We have not installed or tested these packages.","refs":["meetscribe-product"]},
+        "processing":{"text":"The homepage says audio processing is local. The privacy policy describes audio streams processed and discarded, not permanently stored on servers. That wording leaves processing location unclear; fully offline operation is not established.","refs":["meetscribe-product","meetscribe-privacy"]},
+        "recordings":{"text":"The privacy policy describes retained transcripts and summaries and non-permanent server audio. A replayable local audio archive is not established by that policy.","refs":["meetscribe-privacy"]},
+        "context":{"text":"Calendar and productivity integrations are advertised. Search across local folders or Git history was not verified.","refs":["meetscribe-product"]},
+        "live":{"text":"Advertises live transcription and action extraction. Repository-grounded statement checking was not verified.","refs":["meetscribe-product"]},
+        "languages":{"text":"A supported-language matrix and mid-call language-switching behavior were not verified in the reviewed pages. Test your language mix.","refs":["meetscribe-product"]},
+        "speakers":{"text":"Advertises speaker detection; we have not benchmarked its attribution accuracy.","refs":["meetscribe-product"]},
+        "export":{"text":"Terms allow data export before termination but do not enumerate formats. Verify the actual files and workflow you need.","refs":["meetscribe-terms"]},
+        "cost":{"text":"Pricing describes one Pro plan; the FAQ also describes a free plan. Confirm current allowances at signup.","refs":["meetscribe-product"]},
+        "readiness":{"text":"Certain features require an account and subscription. The terms disclaim guaranteed AI accuracy. No comparative installation, performance or compliance audit was performed for this article.","refs":["meetscribe-terms"]}
+      }
+    },
     {
       "slug":"granola","name":"Granola","title":"MeetOnTrack vs Granola: Open Source & Local Control",
       "description":"Compare MeetOnTrack and Granola on open source, audio retention, cloud processing, local Git context, languages and setup. Sources and beta limits included.",

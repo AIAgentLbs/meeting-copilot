@@ -1,6 +1,6 @@
 # Comparison section
 
-Scope: extend the existing landing with an English comparison hub and four
+Scope: extend the existing landing with an English comparison hub and five
 vendor-specific articles. Read mode, with installation as the secondary action.
 Audience: people choosing an AI meeting assistant, especially those evaluating
 open source, local control, multilingual meetings and usable work context.
@@ -22,7 +22,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Content rules
 
-- Granola, Fireflies.ai, Bluedot and tl;dv each get a distinct recommendation,
+- MeetScribe, Granola, Fireflies.ai, Bluedot and tl;dv each get a distinct recommendation,
   trade-off explanation, evidence links and test scenario.
 - Open source means a licence for the application, not a free plan, SDK, API or MCP.
 - Distinguish audio retention, local capture, local ASR, cloud AI and offline use.

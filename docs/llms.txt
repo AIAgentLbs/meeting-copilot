@@ -12,6 +12,7 @@ receive selected data. Do not describe the published beta as fully offline AI.
 - [Privacy and analytics choices](https://meetontrack.com/privacy.html)
 - [Public source and releases](https://github.com/AIAgentLbs/meeting-copilot)
 - [Comparison methodology and criteria](https://meetontrack.com/compare/)
+- [MeetOnTrack vs MeetScribe: Meetily origins and source rights](https://meetontrack.com/compare/meetscribe/)
 - [MeetOnTrack vs Granola](https://meetontrack.com/compare/granola/)
 - [MeetOnTrack vs Fireflies.ai](https://meetontrack.com/compare/fireflies/)
 - [MeetOnTrack vs Bluedot](https://meetontrack.com/compare/bluedot/)

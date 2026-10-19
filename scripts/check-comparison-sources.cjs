@@ -1,6 +1,12 @@
 // On-demand evidence check, deliberately not a scheduled network dependency in CI.
 const {sources}=require('../docs/compare/content.json');
 const needles={
+ 'meetscribe-product':['No browser extensions or bot participants needed','No tiers. No hidden limits.','The Free plan gives you 5 meetings'],
+ 'meetscribe-source':['MeetScribe is built upon','Meeting Minutes','Zackriya Solutions'],
+ 'meetscribe-terms':['Attempt to reverse engineer','does not guarantee the accuracy'],
+ 'meetscribe-privacy':['Audio streams are not permanently stored on our servers','processed and discarded'],
+ 'meetily-source':['Built on a different codebase','Ollama','Whisper or Parakeet'],
+ 'meetily-license':['MIT License','Copyright (c) 2024 Zackriya Solutions'],
  'mot-license':['MIT License'],
  'granola-security':['It does not add a bot to your video call','transcription providers','temporarily cached audio'],
  'fireflies-desktop':['Audio and video files are not saved','Live Assist','Speaker 1'],
@@ -15,7 +21,9 @@ const needles={
 };
 const normalize=s=>s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,' ').replace(/<[^>]*>/g,' ').replace(/&(?:nbsp|amp|quot|#39|apos);/g,' ').replace(/\s+/g,' ').toLowerCase();
 (async()=>{
- const entries=Object.entries(sources),results=[];
+ const selected=process.argv.slice(2);
+ for(const id of selected)if(!sources[id])throw Error(`Unknown source ${id}`);
+ const entries=Object.entries(sources).filter(([id])=>!selected.length||selected.includes(id)),results=[];
  for(let offset=0;offset<entries.length;offset+=3){
   results.push(...await Promise.all(entries.slice(offset,offset+3).map(async([id,source])=>{
    try{
