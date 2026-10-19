@@ -2,7 +2,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/check-project-site.cjs", "scripts/stage-site-screenshots.cjs", "scripts/stage-comparison-logos.cjs", "scripts/test-site-launch.cjs", "scripts/build-comparisons.cjs", "scripts/test-comparisons.cjs", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/test-repository-boundary.cjs", "scripts/check-project-site.cjs", "scripts/stage-site-screenshots.cjs", "scripts/stage-comparison-logos.cjs", "scripts/test-site-launch.cjs", "scripts/build-comparisons.cjs", "scripts/test-comparisons.cjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,6 +23,7 @@ jobs:
         run: |
           bash -n install.sh
           python3 scripts/test_installer.py
+          node scripts/test-repository-boundary.cjs
           node --check docs/site.js
           node --check docs/analytics.js
           node scripts/build-comparisons.cjs --check

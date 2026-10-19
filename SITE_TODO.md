@@ -76,5 +76,11 @@ downloads on the website is website work. Do not duplicate either backlog.
 - [x] Matched Mac and Windows installer snapshots to the accepted 0.1.10 archives;
   both packages passed fresh/repeat-install preservation and checksum checks.
   Updated prerequisite and manual-update guidance without promising auto-install.
-- [ ] Complete remote publication and anonymous download/hash acceptance for both
-  0.1.10 packages; verify the exact Pages revision on the custom domain in Chrome.
+- [x] 2026-10-19: Mac and Windows 0.1.10 releases are public. Anonymous downloads
+  match the accepted archive hashes; both domain installer snapshots match the
+  repository byte-for-byte. Pages run `39311482254` deployed `e58be700` successfully.
+  Apex and www resolve to HTTPS apex, EN/RU return 200. Mike's Chrome shows both
+  platform install choices; Windows copy button displays the PowerShell success
+  confirmation. Physical Windows audio acceptance remains in the software backlog.
+- [x] Added a CI boundary regression: website tree must contain no `capture/`,
+  `copilot/` or software workflows, while retaining both installer snapshots.
