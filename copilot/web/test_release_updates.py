@@ -65,7 +65,7 @@ class ReleaseMonitorTests(unittest.TestCase):
         return ReleaseUpdates(self.path, {"version": "0.1.9", "channel": "technical-beta", "platform": "macos"},
                               fetch=fetch or feed, clock=lambda: self.now)
 
-    def test_polling_snapshots_never_fetch_and_checks_are_daily(self):
+    def test_polling_snapshots_never_fetch_and_checks_are_every_fifteen_minutes(self):
         monitor = self.monitor()
         for _ in range(20):
             monitor.snapshot()
@@ -74,7 +74,10 @@ class ReleaseMonitorTests(unittest.TestCase):
         monitor.check()
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(monitor.snapshot()["latest"]["version"], "0.1.10")
-        self.now += 86401
+        self.now += 899
+        monitor.check()
+        self.assertEqual(len(self.calls), 1)
+        self.now += 1
         monitor.check()
         self.assertEqual(len(self.calls), 2)
 
@@ -99,12 +102,38 @@ class ReleaseMonitorTests(unittest.TestCase):
         monitor = self.monitor()
         monitor.check()
         monitor.fetch = lambda: (_ for _ in ()).throw(OSError("offline"))
-        self.now += 86401
+        self.now += 901
         monitor.check()
         self.assertEqual(monitor.snapshot()["latest"]["version"], "0.1.10")
         self.assertTrue(monitor.snapshot()["error"])
         monitor.fetch = lambda: self.fail("retry must wait")
         monitor.check()
+
+    def test_failure_retry_is_five_minutes_then_exponential_bounded_at_one_hour(self):
+        calls = []
+        def offline():
+            calls.append(True)
+            raise OSError("offline")
+        monitor = self.monitor(offline)
+        for delay in [300, 600, 1200, 2400, 3600, 3600]:
+            monitor.check()
+            self.assertEqual(monitor.next_check - self.now, delay)
+            count = len(calls)
+            self.now += delay - 1
+            monitor.check()
+            self.assertEqual(len(calls), count)
+            self.now += 1
+        monitor.fetch = lambda: [release("0.1.10")]
+        monitor.check()
+        self.assertFalse(monitor.snapshot()["error"])
+        self.assertEqual(monitor.next_check - self.now, 900)
+
+    def test_restart_checks_without_waiting_for_old_cached_timestamp(self):
+        monitor = self.monitor()
+        monitor.check()
+        restarted = self.monitor()
+        restarted.check()
+        self.assertEqual(len(self.calls), 2)
 
     def test_unknown_installed_version_does_not_offer_downgrade(self):
         monitor = ReleaseUpdates(self.path, {"version": "", "channel": "technical-beta", "platform": "macos"},

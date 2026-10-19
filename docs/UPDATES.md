@@ -1,10 +1,11 @@
 # MeetOnTrack release notifications
 
 The local web service checks the public `AIAgentLbs/meeting-copilot` release list
-once a day, first checking about 30 seconds after service startup. State polling
+every 15 minutes, first checking about 30 seconds after service startup. State polling
 does not perform network requests. There is one bounded response (2 MB, 10 second
 timeout), one selected release and at most 20,000 characters of release notes.
-Failed requests preserve the previous notice and back off until the next day;
+Failed requests preserve the previous notice and retry after 5, 10, 20, 40,
+then at most 60 minutes. A successful check restores the 15-minute interval;
 manual checks remain available in Settings.
 
 The check sends no meeting content, account credentials or usage statistics.
@@ -38,6 +39,42 @@ restarts recording. The user opens the release instructions and installs after
 the call. Native Sparkle installation stays disabled until a signed appcast and
 signing/recovery acceptance are available. Existing users receive this checker
 only after installing a package that includes it.
+
+## Automatic installation: release-blocking requirement
+
+Owner requirement (2026-10-19): beta users must receive fixes automatically,
+without repeating the website installation command for each release. The faster
+checker above is NOT an automatic installer and does not satisfy that requirement.
+
+The release must update Capture, web UI and embedded Python as a single unit.
+macOS currently installs these into separate locations; simply enabling Sparkle
+would leave the web service behind. Windows ZIP installs are not registered with
+Velopack, so its existing update service reports NotInstalled.
+
+Required acceptance before promotion:
+
+- Package the complete product in the native update unit (Sparkle on Mac,
+  Velopack on Windows), using our own feed and signing identity, never upstream.
+- Automatically check, download and verify promoted releases; expose release
+  notes and progress, and let users disable automatic installation in Settings.
+- Defer replacement while recording, paused, starting, finalizing, transcribing,
+  archiving or delivering. Recheck under a shared lifecycle gate immediately
+  before exit; stale web transcript state is not an installation lock.
+- Preserve recordings, models, credentials and settings. Retain the last working
+  version; restore it if the new native app or loopback service fails its health check.
+- Test exact N-to-N+1 package updates on both OSes: background detection, active
+  call deferral, tampered package rejection, offline retry, interrupted install,
+  rollback and settings/data preservation. Validate native AND web versions.
+- Publish the bootstrap release only after those tests. Legacy packages without
+  an updater necessarily require one initial upgrade; future fixes do not.
+
+Environment checked 2026-10-19: macOS reports zero valid code-signing identities.
+Vault searches for MeetOnTrack, Sparkle, signing and Apple Developer returned no
+matching records. Windows appears online in Tailscale, but a bounded ED25519 SSH
+host-key probe returned no key; authenticated Windows testing was not possible.
+These observations are not proof that an Apple account or another Windows access
+path does not exist. Do not change the public site's manual-update disclaimer or
+claim automatic installation until the complete release passes acceptance.
 
 The visible product is **MeetOnTrack by aiagentlbs.com**. Bundle identifiers,
 executable names, installation directories, launch-agent labels and configuration

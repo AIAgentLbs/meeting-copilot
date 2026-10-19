@@ -14,7 +14,11 @@ from urllib.request import Request, urlopen
 
 REPOSITORY = "AIAgentLbs/meeting-copilot"
 RELEASE_URL = f"https://github.com/{REPOSITORY}/releases/tag/"
-INTERVAL = 86400
+# Beta fixes should be discovered promptly, without coupling network work to
+# transcript polling. Keep failures bounded too, instead of hiding fixes for a day.
+INTERVAL = 15 * 60
+RETRY_INTERVAL = 5 * 60
+MAX_RETRY_INTERVAL = 60 * 60
 
 
 def version_key(value):
@@ -85,6 +89,8 @@ class ReleaseUpdates:
         self.lock = threading.RLock()
         self.busy = False
         self.error = False
+        self.failures = 0
+        self.next_check = 0
         self.data = {"enabled": True, "checked_at": 0, "dismissed": "", "latest": None}
         try:
             saved = json.loads(self.path.read_text())
@@ -106,6 +112,8 @@ class ReleaseUpdates:
                         self.data["latest"] = {"version": latest["version"], "url": latest["url"], "notes": str(latest.get("notes", ""))[:20000], "prerelease": bool(latest.get("prerelease"))}
         except (OSError, ValueError, TypeError, AttributeError):
             self.data["latest"] = None
+        # A restart checks promptly even if yesterday's cache recorded a failure.
+        # The loop supplies a startup delay; repeated snapshots still do no I/O.
 
     def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,7 +147,7 @@ class ReleaseUpdates:
         with self.lock:
             if self.busy or not version_key(self.identity.get("version")):
                 return
-            if not force and (not self.data["enabled"] or self.clock() - float(self.data["checked_at"] or 0) < INTERVAL):
+            if not force and (not self.data["enabled"] or self.clock() < self.next_check):
                 return
             self.busy = True
         self._perform_check()
@@ -150,13 +158,17 @@ class ReleaseUpdates:
             with self.lock:
                 self.data["latest"] = latest
                 self.error = False
+                self.failures = 0
         except Exception:
             with self.lock:
                 self.error = True
+                self.failures = min(self.failures + 1, 5)
         finally:
             with self.lock:
                 self.busy = False
                 self.data["checked_at"] = self.clock()
+                delay = min(RETRY_INTERVAL * (2 ** max(0, self.failures - 1)), MAX_RETRY_INTERVAL) if self.failures else INTERVAL
+                self.next_check = self.clock() + delay
                 try:
                     self._save()
                 except OSError:
@@ -173,7 +185,9 @@ class ReleaseUpdates:
 
     def loop(self, stop):
         # Separate from transcript/state polling; no meeting data is sent.
-        while not stop.wait(30):
+        if stop.wait(30):
+            return
+        while not stop.is_set():
             self.check()
-            if stop.wait(3570):
+            if stop.wait(30):
                 return

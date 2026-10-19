@@ -3,7 +3,7 @@
   const find = id => document.getElementById(id);
   const copy = {
     en: {
-      heading: "MeetOnTrack updates", help: "Checks published releases once a day. No meeting content or usage statistics are sent.",
+      heading: "MeetOnTrack updates", help: "Checks published releases at startup and every 15 minutes while online. No meeting content or usage statistics are sent.",
       enabled: "Notify me about new versions", check: "Check for updates", checking: "Checking published releases…",
       unknown: "Installed version could not be identified. Reinstall from the official download to enable update checks.",
       error: "Could not check for updates. Try again when online. Recording is unaffected.",
@@ -14,7 +14,7 @@
       stable: "Stable channel", beta: "Beta channel", saveError: "Could not save the setting. Please try again."
     },
     ru: {
-      heading: "Обновления MeetOnTrack", help: "Раз в день проверяет опубликованные релизы. Содержимое встреч и статистика использования не отправляются.",
+      heading: "Обновления MeetOnTrack", help: "Проверяет опубликованные релизы при запуске и каждые 15 минут при наличии интернета. Содержимое встреч и статистика использования не отправляются.",
       enabled: "Уведомлять о новых версиях", check: "Проверить обновления", checking: "Проверяю опубликованные релизы…",
       unknown: "Не удалось определить установленную версию. Переустановите приложение с официального сайта для проверки обновлений.",
       error: "Не удалось проверить обновления. Повторите при подключении к интернету. На запись это не влияет.",
