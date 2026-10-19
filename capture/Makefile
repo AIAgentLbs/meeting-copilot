@@ -9,7 +9,7 @@
 #
 #   make            build + sign MeetingCopilot.app
 #   make run-app    and launch it through LaunchServices
-#   make icon       redraw the MeetOnTrack waveform icon
+#   make icon       redraw the MeetOnTrack M-and-dot icon
 #   make identities list available signing identities
 #   make verify     show the built app's signature
 #   make release    build, notarize and publish a release
@@ -77,14 +77,15 @@ verify-localvqe: localvqe
 build: localvqe
 	swift build -c release --arch arm64 --arch x86_64
 
-# Drawn from the same AI Agent Labs waveform the menu bar and windows use.
+# Drawn by the same renderer the menu bar and native windows use.
 icon:
-	@swift Packaging/GenerateMeetingCopilotIcon.swift .build/MeetingCopilot.iconset
+	@mkdir -p .build
+	@swiftc Sources/meetingcopilot/UI/BrandIcon.swift Packaging/GenerateMeetingCopilotIcon.swift -o .build/generate-brand-icon
+	@.build/generate-brand-icon .build/MeetingCopilot.iconset
 	@iconutil -c icns .build/MeetingCopilot.iconset -o $(ICON)
 
-$(ICON): Packaging/GenerateMeetingCopilotIcon.swift
-	@swift Packaging/GenerateMeetingCopilotIcon.swift .build/MeetingCopilot.iconset
-	@iconutil -c icns .build/MeetingCopilot.iconset -o $(ICON)
+$(ICON): Packaging/GenerateMeetingCopilotIcon.swift Sources/meetingcopilot/UI/BrandIcon.swift
+	@$(MAKE) icon
 
 app: build icon
 	@rm -rf $(APP)
@@ -96,7 +97,7 @@ app: build icon
 	@sed -e 's/__SHORT_VERSION__/$(VERSION)/' -e 's/__BUILD_VERSION__/$(BUILD)/' \
 		Packaging/MeetingCopilot-Info.plist > $(APP)/Contents/Info.plist
 	@printf 'APPL????' > $(APP)/Contents/PkgInfo
-	@cp $(ICON) $(APP)/Contents/Resources/MeetingCopilot.icns
+	@cp $(ICON) $(APP)/Contents/Resources/MeetOnTrack.icns
 	@mkdir -p $(APP)/Contents/Resources/Licenses
 	@cp LICENSE $(APP)/Contents/Resources/LICENSE
 	@cp THIRD-PARTY-NOTICES.md $(APP)/Contents/Resources/

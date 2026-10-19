@@ -11,6 +11,8 @@ if((Get-FileHash "$BuildRoot\python.zip" -Algorithm SHA256).Hash -ne 'f6cca216a3
 Expand-Archive "$BuildRoot\python.zip" "$stage\python"
 [IO.File]::WriteAllText("$stage\python\python313._pth","python313.zip`n.`n../web`nimport site`n",[Text.UTF8Encoding]::new($false))
 Copy-Item "$PayloadRoot\copilot\web\*" "$stage\web" -Recurse
+python "$PayloadRoot\scripts\vendor-delivery.py" "$stage\web\_vendor"
+if($LASTEXITCODE -ne 0){throw 'Delivery dependency bundling failed'}
 Get-ChildItem "$stage\web" -Directory -Filter '__pycache__' -Recurse | Remove-Item -Recurse -Force
 Copy-Item "$PayloadRoot\scripts\windows\meeting-copilot.ps1","$PayloadRoot\scripts\windows\refresh-repos.py" $stage
 Copy-Item "$PayloadRoot\copilot\config\SESSION.md" "$stage\SESSION.md"

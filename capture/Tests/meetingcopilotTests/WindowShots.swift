@@ -207,7 +207,7 @@ struct WindowShots {
         var window: SetupWindow?
         appearance?.performAsCurrentDrawingAppearance { window = SetupWindow() }
         owners.append(try #require(window))
-        let title = localised("Meeting Copilot setup", "Первая настройка Meeting Copilot")
+        let title = localised("MeetOnTrack setup", "Первая настройка MeetOnTrack")
         let panel = try #require(NSApp.windows.last { $0.title == title })
         panel.appearance = appearance
         return panel

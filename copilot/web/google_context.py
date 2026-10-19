@@ -1,4 +1,4 @@
-"""Explicit, bounded, read-only Google context via the user's configured gws.
+"""Explicit, bounded, read-only Google context via user-owned OAuth or named gws.
 
 Preferences contain no credentials. Search results live in memory only and are
 scoped to one meeting. A connected account and enabled sources permit LLM retrieval.
@@ -43,6 +43,11 @@ class GoogleContext:
         self._generation = 0
         self._login = None
         self._results: dict[str, tuple[float, dict]] = {}
+        self.delivery_settings = None
+
+    def _native(self):
+        settings = self.delivery_settings
+        return settings.oauth if settings is not None and settings.profile() == "custom" else None
 
     @property
     def executable(self):
@@ -115,6 +120,8 @@ class GoogleContext:
         if status["auth"] == "connected":
             self._set_connected(True)
             return self.status()
+        if self._native() is not None:
+            raise ValueError("Connect your own Google account in Report storage and delivery first")
         if not self.executable:
             raise ValueError("Install gws before connecting Google")
         if not status.get("client_configured"):
@@ -146,6 +153,13 @@ class GoogleContext:
         return self.status()
 
     def _run(self, command: list[str], params: dict | None = None) -> dict:
+        native = self._native()
+        if native is not None:
+            from google_api import read
+            try:
+                return read(native, command, params)
+            except ValueError as error:
+                raise RuntimeError(str(error)) from None
         if not self.executable:
             raise RuntimeError("gws_missing")
         args = [self.executable, *command]
@@ -166,6 +180,13 @@ class GoogleContext:
         result = {"sources": self.settings(), "account": "", "auth": "not_connected",
                   "client_configured": False,
                   "connected": self.connected(), "login_pending": self._login is not None and self._login.poll() is None}
+        native = self._native()
+        if native is not None:
+            own = native.status()
+            return {**result, "auth": ("permission_missing" if own["state"] == "connected"
+                    and "context" not in own["permissions"] else own["state"]),
+                    "account": own["account"], "client_configured": own["client_configured"],
+                    "login_pending": own["login_pending"]}
         try:
             auth = self._run(["auth", "status"])
             result["client_configured"] = auth.get("client_config_exists") is True

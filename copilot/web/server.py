@@ -2190,6 +2190,7 @@ ARCHIVE = MeetingArchive(
     event_router=routed_event,
 )
 DELIVERY_RETRY = DeliveryRetry(ARCHIVE)
+GOOGLE_CONTEXT.delivery_settings = ARCHIVE.delivery_settings
 SUMMARY_REWRITES = SummaryRewrites(ARCHIVE, codex_summary_runner(CODEX, PROCESS_ENV))
 
 
@@ -2583,7 +2584,11 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/delivery/google/check":
                 self._json({"ok": True, "account": ARCHIVE.delivery_settings.google_status()})
             elif path == "/api/delivery/google/connect":
-                self._json({"ok": True, "account": ARCHIVE.delivery_settings.connect()})
+                self._json({"ok": True, "account": ARCHIVE.delivery_settings.connect(payload)})
+            elif path == "/api/delivery/google/import":
+                settings = ARCHIVE.delivery_settings.import_google(payload.get("client"))
+                GOOGLE_CONTEXT.disconnect()
+                self._json({"ok": True, "settings": settings})
             elif path == "/api/delivery/google/disconnect":
                 settings = ARCHIVE.delivery_settings.disconnect()
                 GOOGLE_CONTEXT.disconnect()
@@ -3131,4 +3136,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Operator-only stack diagnostics on Unix; emits frames, never local values.
+    import faulthandler
+    import signal
+    if hasattr(signal, "SIGUSR1"):
+        faulthandler.register(signal.SIGUSR1, all_threads=True)
     main()

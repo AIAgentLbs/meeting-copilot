@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import smtplib
 from email.message import EmailMessage
@@ -820,7 +821,7 @@ class MeetingArchive:
                 continue
             wants_drive = delivery_enabled(settings, "drive")
             wants_mail = delivery_enabled(settings, "email") and meta.get("mail_status") != "unknown"
-            wants_telegram = delivery_enabled(settings, "telegram")
+            wants_telegram = delivery_enabled(settings, "telegram") and meta.get("telegram_status") != "unknown"
             pending = (
                 (wants_drive and meta.get("drive_status") != "uploaded")
                 or (wants_drive and settings.get("drive_folder_id") and not drive_links_ready(meta))
@@ -1122,6 +1123,16 @@ class MeetingArchive:
 
     def _gws_call(self, *args: str, timeout: int = 60, diagnostics: dict | None = None) -> dict | None:
         """Use the already-authorized Workspace CLI without exposing tokens."""
+        if self.delivery_settings.profile() == "custom":
+            from google_api import delivery
+            try:
+                return delivery(self.delivery_settings.oauth, args, timeout)
+            except (ValueError, OSError, KeyError) as error:
+                safe = {"permission_missing", "authorization_required", "authorization_expired", "rate_limited",
+                        "google_api_failed", "timeout_outcome_unknown", "invalid_response", "attachment_too_large"}
+                if diagnostics is not None:
+                    diagnostics.update(provider="google_oauth", reason=str(error) if str(error) in safe else "client_unavailable")
+                return None
         try:
             gws = self.delivery_settings.executable()
         except ValueError as error:
@@ -1284,8 +1295,12 @@ class MeetingArchive:
             gws = self.delivery_settings.executable()
         except ValueError:
             gws = None
+        if self.delivery_settings.profile() == "custom":
+            gws = True  # Product-native OAuth, not a subprocess executable.
         recipient = str(settings.get("email_to") or "").strip() if allowed("email") else ""
         google_account = str(settings.get("google_account") or recipient).strip()
+        if self.delivery_settings.profile() == "custom":
+            google_account = self.delivery_settings.own_google_status().get("account", "")
         reports_folder_id = str(settings.get("drive_folder_id") or "").strip()
         if not allowed("drive"):
             reports_folder_id, local_drive, remote = "", None, ""
@@ -1411,10 +1426,10 @@ class MeetingArchive:
         telegram_account = str(settings.get("telegram_account") or "").strip()
         telegram_target = str(settings.get("telegram_target") or "me").strip()
         telegram_helper = Path(__file__).with_name("telegram_delivery.py")
-        if (allowed("telegram") and telegram_status != "sent" and telegram_account
-                and telegram_config.is_file() and drive_status == "uploaded"):
+        if (allowed("telegram") and telegram_status not in {"sent", "unknown"} and telegram_account
+                and telegram_config.is_file()):
             command = [
-                "/opt/homebrew/bin/python3", str(telegram_helper),
+                sys.executable, str(telegram_helper),
                 "--config", str(telegram_config),
                 "--account", telegram_account,
                 "--target", telegram_target,
@@ -1432,12 +1447,20 @@ class MeetingArchive:
             try:
                 result = subprocess.run(
                     command, capture_output=True, text=True, timeout=180,
-                    env=os.environ | {"PATH": "/opt/homebrew/bin:/usr/bin:/bin"},
                 )
                 payload = json.loads(result.stdout or "{}")
-                telegram_status = str(payload.get("status") or "failed")
-                telegram_message_id = payload.get("message_id")
-            except (OSError, ValueError, subprocess.TimeoutExpired):
+                if payload.get("ok") and payload.get("status") == "sent" and isinstance(payload.get("message_id"), int):
+                    telegram_status = "sent"
+                    telegram_message_id = payload["message_id"]
+                else:
+                    telegram_status = payload.get("status") if payload.get("status") in {
+                        "auth_required", "dependency_missing", "missing_pdf", "failed", "unknown"
+                    } else "unknown"
+            except (ValueError, subprocess.TimeoutExpired):
+                # A lost acknowledgement is not evidence that Telegram rejected
+                # the upload. Require an explicit retry to avoid duplicates.
+                telegram_status = "unknown"
+            except OSError:
                 telegram_status = "failed"
         outcome = {
             "drive_status": drive_status,

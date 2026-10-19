@@ -1,12 +1,12 @@
 import AppKit
 
-/// AI Agent Labs capture mark: a compact waveform on a rounded field.
+/// MeetOnTrack M-and-dot mark, matching the product website.
 /// It stays legible at menu-bar size and changes colour with recorder state.
 enum BrandIcon {
     static func color(recording: Bool, paused: Bool) -> NSColor {
         if paused { return .systemOrange }
         if recording { return .systemRed }
-        return NSColor(calibratedRed: 0.055, green: 0.255, blue: 0.205, alpha: 1)
+        return NSColor(calibratedRed: 23/255, green: 76/255, blue: 62/255, alpha: 1)
     }
 
     static func image(size: CGFloat, color: NSColor?) -> NSImage {
@@ -20,18 +20,21 @@ enum BrandIcon {
                 yRadius: size * 0.23
             ).fill()
 
-            NSColor.white.setFill()
-            let heights: [CGFloat] = [0.26, 0.48, 0.72, 0.48, 0.26]
-            let barWidth = max(1, size * 0.075)
-            let gap = size * 0.065
-            let total = barWidth * CGFloat(heights.count) + gap * CGFloat(heights.count - 1)
-            var x = rect.midX - total / 2
-            for ratio in heights {
-                let height = size * ratio
-                let bar = NSRect(x: x, y: rect.midY - height / 2, width: barWidth, height: height)
-                NSBezierPath(roundedRect: bar, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
-                x += barWidth + gap
-            }
+            // Website coordinates are top-down; AppKit's drawing space is bottom-up.
+            let mark = NSBezierPath()
+            mark.move(to: NSPoint(x: size * 14/64, y: size * 19/64))
+            mark.line(to: NSPoint(x: size * 14/64, y: size * 45/64))
+            mark.line(to: NSPoint(x: size * 32/64, y: size * 28/64))
+            mark.line(to: NSPoint(x: size * 50/64, y: size * 45/64))
+            mark.line(to: NSPoint(x: size * 50/64, y: size * 19/64))
+            mark.lineWidth = size * 6/64
+            mark.lineCapStyle = .round
+            mark.lineJoinStyle = .round
+            NSColor(calibratedRed: 243/255, green: 244/255, blue: 239/255, alpha: 1).setStroke()
+            mark.stroke()
+            NSColor(calibratedRed: 220/255, green: 234/255, blue: 227/255, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSRect(x: size * 28/64, y: size * 14/64,
+                                       width: size * 8/64, height: size * 8/64)).fill()
             return true
         }
     }

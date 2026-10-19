@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deliver a Meeting Copilot memo to the owner's Telegram Saved Messages."""
+"""Deliver a MeetOnTrack memo using the explicitly configured Telegram account."""
 
 from __future__ import annotations
 
@@ -9,9 +9,6 @@ import json
 import re
 import sys
 from pathlib import Path
-
-from telethon import TelegramClient
-
 
 def load_account(config_path: Path, label: str) -> dict:
     values: dict[str, str] = {}
@@ -45,6 +42,13 @@ def load_account(config_path: Path, label: str) -> dict:
 
 
 async def deliver(args: argparse.Namespace) -> dict:
+    # Import inside the guarded operation so missing package dependencies are
+    # reported as a safe reason code instead of leaking a traceback.
+    vendor = Path(__file__).resolve().parent / "_vendor"
+    if vendor.is_dir():
+        sys.path.insert(0, str(vendor))
+    from telethon import TelegramClient
+
     account = load_account(args.config, args.account)
     client = TelegramClient(
         account["session"], account["api_id"], account["api_hash"]
@@ -53,9 +57,11 @@ async def deliver(args: argparse.Namespace) -> dict:
     try:
         if not await client.is_user_authorized():
             return {"ok": False, "status": "auth_required"}
+        if args.check:
+            return {"ok": True, "status": "connected"}
         text = (
-            f"Meeting Copilot by aiagentlbs.com\n{args.title}\n{args.date}\n\n"
-            "HTML и PDF сохранены в Google Drive. PDF приложен к сообщению."
+            f"MeetOnTrack by aiagentlbs.com\n{args.title}\n{args.date}\n\n"
+            "PDF приложен к сообщению."
         )
         links = [
             ("Папка", args.drive_folder_url),
@@ -65,12 +71,12 @@ async def deliver(args: argparse.Namespace) -> dict:
         available = [f"{label}: {url}" for label, url in links if url]
         if available:
             text += "\n\nСсылки Google Drive:\n" + "\n".join(available)
-        message = await client.send_file(
-            args.target,
-            str(args.pdf),
-            caption=text,
-            force_document=True,
-        )
+        try:
+            message = await client.send_file(
+                args.target, str(args.pdf), caption=text, force_document=True,
+            )
+        except Exception:
+            return {"ok": False, "status": "unknown"}
         return {"ok": True, "status": "sent", "message_id": message.id}
     finally:
         await client.disconnect()
@@ -81,18 +87,22 @@ def main() -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--account", required=True)
     parser.add_argument("--target", default="me")
-    parser.add_argument("--pdf", type=Path, required=True)
-    parser.add_argument("--title", required=True)
-    parser.add_argument("--date", required=True)
+    parser.add_argument("--check", action="store_true", help="Verify existing authorization without sending anything")
+    parser.add_argument("--pdf", type=Path)
+    parser.add_argument("--title", default="")
+    parser.add_argument("--date", default="")
     parser.add_argument("--drive-folder-url", default="")
     parser.add_argument("--drive-html-url", default="")
     parser.add_argument("--drive-pdf-url", default="")
     args = parser.parse_args()
-    if not args.pdf.is_file():
+    if not args.check and (not args.pdf or not args.pdf.is_file()):
         print(json.dumps({"ok": False, "status": "missing_pdf"}))
         return 2
     try:
         result = asyncio.run(deliver(args))
+    except ModuleNotFoundError:
+        print(json.dumps({"ok": False, "status": "dependency_missing"}))
+        return 1
     except Exception as exc:
         print(json.dumps({"ok": False, "status": "failed", "error": type(exc).__name__}))
         return 1

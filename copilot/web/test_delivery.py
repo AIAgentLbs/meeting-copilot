@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -49,6 +50,41 @@ class DeliveryTests(unittest.TestCase):
             run.reset_mock()
             self.archive.deliver(self.detail, report, previous=result)
             self.assertFalse(any("gmail" in call.args[0] for call in run.call_args_list))
+
+    def telegram_setup(self):
+        settings = {"email_enabled": False, "drive_enabled": False,
+                    "telegram_enabled": True, "telegram_account": "synthetic",
+                    "telegram_config": str(self.config / "telegram.env")}
+        (self.config / "telegram.env").write_text("# Synthetic fixture: no credentials")
+        (self.config / "delivery.json").write_text(json.dumps(settings))
+
+    def test_telegram_uses_own_runtime_and_does_not_require_drive(self):
+        self.telegram_setup()
+        with patch("archive.subprocess.run", return_value=subprocess.CompletedProcess(
+                [], 0, '{"ok":true,"status":"sent","message_id":42}', "")) as run:
+            result = self.archive.deliver(self.detail, {"pdf_path": str(self.pdf)})
+        self.assertEqual(result["telegram_status"], "sent")
+        self.assertEqual(result["telegram_message_id"], 42)
+        self.assertEqual(run.call_args.args[0][0], sys.executable)
+
+    def test_telegram_lost_acknowledgement_does_not_automatically_repeat(self):
+        self.telegram_setup()
+        for error in (subprocess.TimeoutExpired([], 180), ValueError("broken json")):
+            with patch("archive.subprocess.run", side_effect=error) as run:
+                result = self.archive.deliver(self.detail, {"pdf_path": str(self.pdf)})
+                self.assertEqual(result["telegram_status"], "unknown")
+                run.reset_mock()
+                self.archive.deliver(self.detail, {"pdf_path": str(self.pdf)}, previous=result)
+                run.assert_not_called()
+
+    def test_telegram_missing_dependency_and_invalid_ack_are_not_sent(self):
+        self.telegram_setup()
+        for payload, expected in (({"status": "dependency_missing"}, "dependency_missing"),
+                                  ({"ok": True, "status": "sent"}, "unknown")):
+            with patch("archive.subprocess.run", return_value=subprocess.CompletedProcess(
+                    [], 0, json.dumps(payload), "")):
+                result = self.archive.deliver(self.detail, {"pdf_path": str(self.pdf)})
+            self.assertEqual(result["telegram_status"], expected)
 
     def test_failed_delivery_retries_once_then_waits(self):
         report_dir = self.archive.reports_root / "meeting-1"

@@ -1,0 +1,6 @@
+# Pure-Python Telegram client and its transitive dependencies are bundled in
+# both platform runtimes. No account/session material belongs in this payload.
+Telethon==1.43.0
+google-auth-oauthlib==1.2.3
+# Force pure-Python decoding: no platform-specific charset-normalizer wheel.
+charset-normalizer==3.4.4

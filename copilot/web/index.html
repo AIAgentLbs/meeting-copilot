@@ -63,37 +63,66 @@
           <p id="delivery-local-path"></p>
           <form id="delivery-settings-form">
             <fieldset>
-              <legend data-delivery-text="google">Аккаунт Google</legend>
-              <label for="delivery-profile" data-delivery-text="account">Аккаунт для Gmail и Google Drive</label>
-              <select id="delivery-profile"></select>
-              <p data-delivery-text="accountHelp">Подключение аккаунта само по себе не включает отправку. Поиск контекста настраивается отдельно.</p>
-              <div class="delivery-actions">
-                <button type="button" class="quiet-button" id="delivery-google-connect" data-delivery-text="connect">Подключить Google</button>
-                <button type="button" class="quiet-button" id="delivery-google-check" data-delivery-text="checkGoogle">Проверить аккаунт</button>
-                <button type="button" class="quiet-button" id="delivery-google-disconnect" data-delivery-text="disconnect">Отключить от MeetOnTrack</button>
-              </div>
-              <p id="delivery-account-status" role="status"></p>
-            </fieldset>
-            <fieldset>
               <legend data-delivery-text="mail">Письмо после встречи</legend>
               <label class="switch-label"><input type="checkbox" id="delivery-email-enabled"><span data-delivery-text="autoMail">Автоматически отправлять отчет по почте</span></label>
               <div class="delivery-fields">
-                <div><label for="delivery-provider" data-delivery-text="provider">Способ отправки</label><select id="delivery-provider"><option value="gmail">Gmail</option><option value="smtp">SMTP</option></select></div>
+                <div><label for="delivery-provider" data-delivery-text="provider">Способ отправки</label><select id="delivery-provider"><option value="smtp">SMTP</option><option value="gmail">Gmail API (OAuth)</option></select></div>
                 <div><label for="delivery-recipient" data-delivery-text="recipient">Получатель отчета</label><input id="delivery-recipient" type="email" maxlength="254" autocomplete="email"></div>
               </div>
               <p data-delivery-text="attachment">PDF прикладывается к письму. Google Drive для этого не нужен.</p>
               <div id="delivery-smtp" hidden>
+                <p data-delivery-text="smtpHelp"></p>
                 <div class="delivery-fields">
                   <div><label for="delivery-smtp-host" data-delivery-text="host">SMTP-сервер</label><input id="delivery-smtp-host" autocomplete="off" maxlength="253"></div>
                   <div><label for="delivery-smtp-port" data-delivery-text="port">Порт</label><input id="delivery-smtp-port" type="number" min="1" max="65535" value="587"></div>
                   <div><label for="delivery-smtp-security" data-delivery-text="security">Защита соединения</label><select id="delivery-smtp-security"><option value="starttls">STARTTLS</option><option value="tls">TLS</option></select></div>
                   <div><label for="delivery-smtp-user" data-delivery-text="username">Логин SMTP</label><input id="delivery-smtp-user" autocomplete="username" maxlength="254"></div>
                   <div><label for="delivery-smtp-from" data-delivery-text="sender">Адрес отправителя</label><input id="delivery-smtp-from" type="email" maxlength="254"></div>
-                  <div><label for="delivery-smtp-password" data-delivery-text="password">Пароль приложения SMTP</label><input id="delivery-smtp-password" type="password" autocomplete="new-password" maxlength="4096"></div>
+                  <div><label for="delivery-smtp-password" data-delivery-text="password">Пароль SMTP или пароль приложения</label><input id="delivery-smtp-password" type="password" autocomplete="new-password" maxlength="4096"></div>
                 </div>
                 <p id="delivery-password-help"></p>
+                <details>
+                  <summary>Gmail SMTP</summary>
+                  <p data-delivery-text="smtpGoogleHelp"></p>
+                  <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noopener noreferrer" data-delivery-text="smtpGoogleDocs"></a>
+                </details>
                 <button type="button" class="quiet-button" id="delivery-smtp-check" data-delivery-text="checkSmtp">Проверить SMTP без отправки письма</button>
               </div>
+            </fieldset>
+            <fieldset>
+              <legend data-delivery-text="google">Google — необязательно, свой OAuth-клиент</legend>
+              <label for="delivery-profile" data-delivery-text="account">Аккаунт для Gmail и Google Drive</label>
+              <select id="delivery-profile"></select>
+              <p data-delivery-text="accountHelp"></p>
+              <label for="delivery-oauth-json" data-delivery-text="oauthFile"></label>
+              <input id="delivery-oauth-json" type="file" accept="application/json,.json" aria-describedby="delivery-oauth-import-help">
+              <p id="delivery-oauth-import-help" data-delivery-text="oauthImportHelp"></p>
+              <button type="button" class="quiet-button" id="delivery-google-import" data-delivery-text="oauthImport"></button>
+              <div id="delivery-own-google" hidden>
+                <label for="delivery-google-email" data-delivery-text="oauthEmail"></label>
+                <input id="delivery-google-email" type="email" maxlength="254" autocomplete="email">
+                <p data-delivery-text="oauthPermissions"></p>
+                <label class="switch-label"><input type="checkbox" id="delivery-oauth-mail"><span data-delivery-text="oauthMail"></span></label>
+                <label class="switch-label"><input type="checkbox" id="delivery-oauth-drive"><span data-delivery-text="oauthDrive"></span></label>
+                <label class="switch-label"><input type="checkbox" id="delivery-oauth-context"><span data-delivery-text="oauthContext"></span></label>
+                <p data-delivery-text="oauthConsentHelp"></p>
+              </div>
+              <div class="delivery-actions">
+                <button type="button" class="quiet-button" id="delivery-google-connect" data-delivery-text="connect">Подключить Google</button>
+                <button type="button" class="quiet-button" id="delivery-google-check" data-delivery-text="checkGoogle">Проверить аккаунт</button>
+                <button type="button" class="quiet-button" id="delivery-google-disconnect" data-delivery-text="disconnect">Отключить от MeetOnTrack</button>
+              </div>
+              <p id="delivery-account-status" role="status"></p>
+              <a id="delivery-google-login-link" hidden target="_blank" rel="noopener noreferrer" data-delivery-text="oauthOpen"></a>
+              <details>
+                <summary data-delivery-text="googleGuide"></summary>
+                <ol>
+                  <li data-delivery-text="googleStep1"></li>
+                  <li data-delivery-text="googleStep2"></li>
+                  <li data-delivery-text="googleStep3"></li>
+                </ol>
+                <a href="https://developers.google.com/identity/protocols/oauth2/native-app" target="_blank" rel="noopener noreferrer" data-delivery-text="googleDocs"></a>
+              </details>
             </fieldset>
             <fieldset>
               <legend>Google Drive</legend>
@@ -117,6 +146,12 @@
           <label><input type="checkbox" id="updates-enabled" /><span id="updates-enabled-label"></span></label>
           <p id="updates-status" role="status"></p>
           <button class="quiet-button" type="button" id="updates-check"></button>
+          <div id="updates-manual" hidden>
+            <p id="updates-command-help"></p>
+            <pre id="updates-command" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+            <button class="quiet-button" type="button" id="updates-copy"></button>
+            <p id="updates-copy-status" role="status"></p>
+          </div>
           <div id="updates-release" hidden>
             <h4 id="updates-version"></h4>
             <pre id="updates-notes"></pre>

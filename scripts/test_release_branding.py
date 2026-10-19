@@ -36,6 +36,18 @@ class ReleaseBrandingTests(unittest.TestCase):
                       'A fresh clone must regenerate the brand, regardless of tracked icon timestamps')
         self.assertTrue((ROOT / 'capture/THIRD-PARTY-NOTICES.md').is_file())
 
+    def test_all_mac_icon_paths_share_the_product_mark(self):
+        generator = (ROOT / 'capture/Packaging/GenerateMeetingCopilotIcon.swift').read_text()
+        renderer = (ROOT / 'capture/Sources/meetingcopilot/UI/BrandIcon.swift').read_text()
+        legacy = (ROOT / 'capture/scripts/make-icon.swift').read_text()
+        self.assertIn('BrandIcon.image', generator)
+        self.assertNotIn('let heights', generator + renderer)
+        self.assertNotIn('feather', legacy.lower())
+        self.assertIn('"icon"', legacy)
+        self.assertIn('M-and-dot', renderer)
+        for name in ('AboutWindow', 'StatusWindow', 'MenuBarController'):
+            self.assertIn('BrandIcon.image', (ROOT / f'capture/Sources/meetingcopilot/UI/{name}.swift').read_text())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -67,6 +67,8 @@ class DeliveryRetry:
                     report["last_delivery_result"] = {"state": "outcome_unknown"}
                     if "email" in channels:
                         report["mail_status"] = "unknown"
+                    if "telegram" in channels:
+                        report["telegram_status"] = "unknown"
                     write_json(path, report)
                     delivery = self.archive.deliver(detail, {**report, "pdf_path": str(pdf)},
                                                     previous=previous, channels=channels, manual=True)

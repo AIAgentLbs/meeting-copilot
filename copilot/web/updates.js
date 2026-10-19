@@ -12,6 +12,8 @@
       link: "Open release and installation instructions", dismiss: "Dismiss notification",
       safe: "Opening the release does not install it. Finish your call before installing; recording will not be restarted automatically.",
       stable: "Stable channel", beta: "Beta channel", saveError: "Could not save the setting. Please try again."
+      , commandHelp: "Manual update: finish your call, quit Capture, then run this in {shell}. This runs the official installer; it installs the version currently published on the website, which may lag the release notice. Check the installed version afterwards. It is not run automatically.",
+      copyCommand: "Copy update command", copied: "Command copied. Run it after your call.", copyFailed: "Could not copy. Select and copy the command above."
     },
     ru: {
       heading: "Обновления MeetOnTrack", help: "Проверяет опубликованные релизы при запуске и каждые 15 минут при наличии интернета. Содержимое встреч и статистика использования не отправляются.",
@@ -23,12 +25,21 @@
       link: "Открыть релиз и инструкцию по установке", dismiss: "Скрыть уведомление",
       safe: "Открытие релиза ничего не устанавливает. Устанавливайте после звонка: автоматического перезапуска записи не будет.",
       stable: "Стабильные версии", beta: "Бета-версии", saveError: "Не удалось сохранить настройку. Попробуйте ещё раз."
+      , commandHelp: "Обновление вручную: завершите звонок, закройте Capture и выполните команду в {shell}. Она запускает официальный установщик версии, опубликованной на сайте; та может отставать от уведомления о релизе. После установки проверьте версию. Автоматически команда не запускается.",
+      copyCommand: "Скопировать команду обновления", copied: "Команда скопирована. Выполните её после звонка.", copyFailed: "Не удалось скопировать. Выделите и скопируйте команду выше."
     }
   };
   let state = {}, actionError = false;
   function render(data = state) {
     state = data;
     const text = copy[document.documentElement.lang === "ru" ? "ru" : "en"];
+    const supported = ["macos", "windows"].includes(data.platform);
+    find("updates-manual").hidden = !supported;
+    find("updates-command").textContent = !supported ? "" : data.platform === "windows"
+      ? "irm https://meetontrack.com/install.ps1 | iex"
+      : "curl -fsSL https://meetontrack.com/install.sh | bash";
+    find("updates-command-help").textContent = text.commandHelp.replace("{shell}", data.platform === "windows" ? "PowerShell" : "Terminal");
+    find("updates-copy").textContent = text.copyCommand;
     for (const [id, key] of Object.entries({"updates-heading": "heading", "updates-help": "help", "updates-enabled-label": "enabled", "updates-safe-install": "safe", "updates-link": "link", "updates-dismiss": "dismiss"})) find(id).textContent = text[key];
     find("updates-enabled").checked = data.enabled !== false;
     find("updates-check").disabled = Boolean(data.checking || !data.version);
@@ -71,6 +82,13 @@
   find("updates-check").addEventListener("click", () => void action("/api/updates/check", {}));
   find("updates-enabled").addEventListener("change", event => void action("/api/updates/settings", {enabled: event.target.checked}));
   find("updates-dismiss").addEventListener("click", () => void action("/api/updates/settings", {dismiss: state.latest?.version}));
+  find("updates-copy").addEventListener("click", async () => {
+    const text = copy[document.documentElement.lang === "ru" ? "ru" : "en"];
+    try {
+      await navigator.clipboard.writeText(find("updates-command").textContent);
+      find("updates-copy-status").textContent = text.copied;
+    } catch (_) { find("updates-copy-status").textContent = text.copyFailed; }
+  });
   new MutationObserver(() => render()).observe(document.documentElement, {attributes: true, attributeFilter: ["lang"]});
   window.renderReleaseUpdates = render;
   render();

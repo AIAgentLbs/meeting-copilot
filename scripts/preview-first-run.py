@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "copilot/web"))
 parser = argparse.ArgumentParser()
 parser.add_argument("--port", type=int, default=43990)
 parser.add_argument("--delivery-fixture", action="store_true", help="Synthetic report and stubbed delivery; never sends")
+parser.add_argument("--updates-fixture", choices=("macos", "windows"), help="Synthetic release notice; never contacts a release feed")
 args = parser.parse_args()
 with tempfile.TemporaryDirectory(prefix="meetontrack-preview-") as directory:
     preview_root = Path(directory)
@@ -35,7 +36,26 @@ with tempfile.TemporaryDirectory(prefix="meetontrack-preview-") as directory:
     server.RECOGNITION_GUARD.binary = preview_root / "not-installed"
     server.AI_READINESS = server.AIReadiness(preview_root / "not-installed", {})
     server.GOOGLE_CONTEXT._executable = ""
+    if args.updates_fixture:
+        from release_updates import ReleaseUpdates
+        platform = args.updates_fixture
+        prefix = "windows-" if platform == "windows" else ""
+        fixture = {"tag_name": prefix + "v0.1.10", "html_url": "https://github.com/AIAgentLbs/meeting-copilot/releases/tag/" + prefix + "v0.1.10",
+                   "body": "Synthetic update preview — no installation.\nImproved recording and MeetOnTrack branding.",
+                   "assets": [{"name": "meeting-copilot-windows-v0.1.10-x64.zip" if platform == "windows" else "meeting-copilot-macos.zip"}]}
+        server.UPDATES = ReleaseUpdates(preview_root / "updates.json", {"version": "0.1.9", "platform": platform, "channel": "technical-beta"}, fetch=lambda: [fixture])
+        server.UPDATES.check(force=True)
     if args.delivery_fixture:
+        # Keep synthetic OAuth import tests out of the real OS credential store.
+        class PreviewSecrets:
+            value = ""
+            def get(self): return self.value
+            def set(self, value): self.value = value
+            def delete(self): self.value = ""
+        server.ARCHIVE.delivery_settings.oauth.store = PreviewSecrets()
+        def no_google_login(*args, **kwargs):
+            raise ValueError("google_login_failed")
+        server.ARCHIVE.delivery_settings.oauth.start = no_google_login
         from datetime import datetime, timedelta, timezone
         report_dir = server.ARCHIVE.reports_root / "synthetic-delivery"
         report_dir.mkdir(parents=True)

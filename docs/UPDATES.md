@@ -34,13 +34,19 @@ the version, release notes, and the official release page. Dismissal persists
 across service restarts; notes remain accessible in Settings. Notes are rendered
 as plain text, never as HTML. This is an in-app notice, not an OS notification.
 
+Settings also shows the official platform-specific installer command with a
+copy button (Terminal on Mac, PowerShell on Windows). It is available even when
+no newer release is detected. The website installer is version-pinned and can
+lag release metadata; the UI explicitly says to check the installed version.
+Publication must update the installer pin/checksum alongside the release.
+
 This feature never downloads executables, installs updates, quits the app, or
 restarts recording. The user opens the release instructions and installs after
 the call. Native Sparkle installation stays disabled until a signed appcast and
 signing/recovery acceptance are available. Existing users receive this checker
 only after installing a package that includes it.
 
-## Automatic installation: release-blocking requirement
+## Automatic installation: deferred
 
 Developer ID app signing/notarization and Sparkle Ed25519 update-archive signing
 are separate mechanisms. Apple Developer membership is not a prerequisite for
@@ -52,9 +58,11 @@ Validate the actual package's launch, framework loading and recording permission
 across an update. References: https://sparkle-project.org/documentation/ and
 https://developer.apple.com/developer-id/ (checked 2026-10-19).
 
-Owner requirement (2026-10-19): beta users must receive fixes automatically,
-without repeating the website installation command for each release. The faster
-checker above is NOT an automatic installer and does not satisfy that requirement.
+Latest owner decision (2026-10-19) supersedes the earlier automatic-install
+requirement: ship release notifications, notes and a manual update command now.
+Automatic installation is deferred, not a current release blocker. The checklist
+below applies when that separate feature is resumed; do not describe the current
+checker as an automatic installer.
 
 The release must update Capture, web UI and embedded Python as a single unit.
 macOS currently installs these into separate locations; simply enabling Sparkle

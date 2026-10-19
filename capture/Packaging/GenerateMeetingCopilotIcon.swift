@@ -1,6 +1,9 @@
 import AppKit
 import Foundation
 
+@main
+enum GenerateMeetingCopilotIcon {
+static func main() throws {
 guard CommandLine.arguments.count == 2 else {
     fatalError("usage: swift GenerateMeetingCopilotIcon.swift OUTPUT.iconset")
 }
@@ -27,25 +30,8 @@ func png(size: Int, name: String) throws {
     NSGraphicsContext.current = context
     defer { NSGraphicsContext.restoreGraphicsState() }
 
-    NSColor(calibratedRed: 0.055, green: 0.255, blue: 0.205, alpha: 1).setFill()
-    NSBezierPath(
-        roundedRect: NSRect(x: side * 0.04, y: side * 0.04, width: side * 0.92, height: side * 0.92),
-        xRadius: side * 0.22,
-        yRadius: side * 0.22
-    ).fill()
-
-    NSColor.white.setFill()
-    let heights: [CGFloat] = [0.26, 0.48, 0.72, 0.48, 0.26]
-    let barWidth = max(1, side * 0.075)
-    let gap = side * 0.065
-    let total = barWidth * CGFloat(heights.count) + gap * CGFloat(heights.count - 1)
-    var x = side / 2 - total / 2
-    for ratio in heights {
-        let height = side * ratio
-        let rect = NSRect(x: x, y: side / 2 - height / 2, width: barWidth, height: height)
-        NSBezierPath(roundedRect: rect, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
-        x += barWidth + gap
-    }
+    // The bundle, Dock, menu bar and native windows use the exact same renderer.
+    BrandIcon.image(size: side, color: nil).draw(in: NSRect(x: 0, y: 0, width: side, height: side))
 
     context.flushGraphics()
     guard let data = bitmap.representation(using: .png, properties: [:])
@@ -61,3 +47,5 @@ let files = [
     (512, "icon_512x512.png"), (1024, "icon_512x512@2x.png"),
 ]
 for (size, name) in files { try png(size: size, name: name) }
+}
+}

@@ -1,5 +1,6 @@
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -17,6 +18,43 @@ class DeliverySettingsTests(unittest.TestCase):
         value = self.settings.snapshot()
         for channel in ("email", "drive", "telegram"):
             self.assertFalse(value[channel + "_enabled"])
+        self.assertEqual(value["email_provider"], "smtp")
+
+    def test_status_does_not_wait_for_slow_archive_delivery(self):
+        result = []
+        finished = threading.Event()
+        def read_status():
+            try:
+                result.append(self.settings.snapshot())
+            finally:
+                finished.set()
+        with patch.object(self.settings, "profiles", return_value=[]), patch.object(self.settings, "own_google_status", return_value={}):
+            with self.settings.lock:
+                worker = threading.Thread(target=read_status, daemon=True)
+                worker.start()
+                completed_while_sending = finished.wait(1)
+            worker.join(2)
+        self.assertTrue(completed_while_sending, "Reading settings must not wait for archive/network lock")
+        self.assertEqual(result[0]["email_provider"], "smtp")
+
+    def test_edit_reports_busy_without_switching_inflight_delivery(self):
+        errors = []
+        def edit():
+            try:
+                self.settings.configure({"email_enabled": False})
+            except ValueError as error:
+                errors.append(str(error))
+        with self.settings.lock:
+            worker = threading.Thread(target=edit, daemon=True)
+            worker.start()
+            worker.join(1)
+            self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, ["delivery_busy"])
+        self.assertFalse(self.settings.path.exists())
+
+    def test_legacy_provider_is_not_changed_to_smtp(self):
+        self.settings.path.write_text(json.dumps({"email_to": "a@example.com"}))
+        self.assertEqual(self.settings.snapshot()["email_provider"], "gmail")
 
     def test_legacy_consent_preserved_until_explicitly_disabled(self):
         self.settings.path.write_text(json.dumps({"email_to":"a@example.com", "drive_folder_id":"folder"}))
@@ -40,12 +78,23 @@ class DeliverySettingsTests(unittest.TestCase):
         self.assertFalse(value["drive_enabled"])
 
     def test_activation_records_cutoff(self):
-        self.settings.configure({"email_to":"a@example.com","email_enabled":True})
+        self.settings.configure({"email_provider":"gmail","email_to":"a@example.com","email_enabled":True})
         self.assertTrue(self.settings.read()["email_enabled_at"])
 
     def test_no_ambient_google_fallback(self):
         with self.assertRaisesRegex(ValueError,"google_not_connected"):
             self.settings.executable()
+
+    def test_abandoned_google_login_expires_without_logging_out(self):
+        process = Mock()
+        process.poll.return_value = None
+        self.settings.login = process
+        self.settings.login_started = 1
+        with patch("delivery_settings.time.monotonic", return_value=302):
+            result = self.settings.google_status()
+        self.assertEqual(result["state"], "google_login_timeout")
+        process.terminate.assert_called_once()
+        process.wait.assert_called_once_with(timeout=2)
 
     def test_password_never_in_settings_or_snapshot(self):
         value = self.settings.configure({"smtp_password":"secret-test-value"})

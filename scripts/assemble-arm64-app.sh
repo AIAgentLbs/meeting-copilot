@@ -17,7 +17,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Models" "$APP/Contents/R
 cp "$BIN" "$APP/Contents/MacOS/MeetingCopilotCapture"
 sed -e "s/__SHORT_VERSION__/$VERSION/" -e "s/__BUILD_VERSION__/$BUILD/" "$CAPTURE/Packaging/MeetingCopilot-Info.plist" > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
-cp "$CAPTURE/Resources/MeetingCopilot.icns" "$APP/Contents/Resources/"
+cp "$CAPTURE/Resources/MeetingCopilot.icns" "$APP/Contents/Resources/MeetOnTrack.icns"
 cp "$CAPTURE/LICENSE" "$APP/Contents/Resources/LICENSE"
 cp "$CAPTURE/THIRD-PARTY-NOTICES.md" "$APP/Contents/Resources/"
 cp "$DONOR/Contents/Frameworks/liblocalvqe.dylib" "$APP/Contents/Frameworks/"

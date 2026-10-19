@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 import os
 import re
@@ -12,7 +13,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
+from contextlib import contextmanager
 
 
 def read_json(path):
@@ -59,13 +62,14 @@ def email(value, optional=False):
 
 class PasswordStore:
     """macOS Keychain or Windows user-bound DPAPI; never plaintext/argv/logs."""
-    def __init__(self, root):
-        self.path = Path(root) / "smtp-password.dpapi"
+    def __init__(self, root, service="com.aiagentlbs.meetontrack.smtp", filename="smtp-password.dpapi"):
+        self.path = Path(root) / filename
+        self.service = service.encode("utf-8")
 
-    def _mac(self, password=None):
+    def _mac(self, password=None, delete=False):
         sec = ctypes.CDLL("/System/Library/Frameworks/Security.framework/Security")
         cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
-        service, account = b"com.aiagentlbs.meetontrack.smtp", b"smtp"
+        service, account = self.service, b"smtp"
         length, data, item = ctypes.c_uint32(), ctypes.c_void_p(), ctypes.c_void_p()
         sec.SecKeychainFindGenericPassword.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
             ctypes.c_uint32, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint32), ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_void_p)]
@@ -74,9 +78,16 @@ class PasswordStore:
         sec.SecKeychainAddGenericPassword.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_char_p,
             ctypes.c_uint32, ctypes.c_char_p, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_void_p]
         cf.CFRelease.argtypes = [ctypes.c_void_p]
+        sec.SecKeychainItemDelete.argtypes = [ctypes.c_void_p]
         status = sec.SecKeychainFindGenericPassword(None, len(service), service, len(account), account,
                                                   ctypes.byref(length), ctypes.byref(data), ctypes.byref(item))
         try:
+            if delete:
+                if status == -25300:
+                    return
+                if status or sec.SecKeychainItemDelete(item):
+                    raise ValueError("credential_store_unavailable")
+                return
             if password is None:
                 if status == -25300:
                     return ""
@@ -136,6 +147,14 @@ class PasswordStore:
         else:
             raise ValueError("credential_store_unavailable")
 
+    def delete(self):
+        if sys.platform == "darwin":
+            self._mac(delete=True)
+        elif os.name == "nt":
+            self.path.unlink(missing_ok=True)
+        else:
+            raise ValueError("credential_store_unavailable")
+
 
 class DeliverySettings:
     def __init__(self, root, lock=None):
@@ -143,21 +162,70 @@ class DeliverySettings:
         self.root = Path(root)
         self.path = self.root / "delivery.json"
         self.lock = lock or threading.RLock()
+        self.login_lock = threading.RLock()
         self.passwords = PasswordStore(root)
+        from google_oauth import GoogleOAuth
+        store_id = hashlib.sha256(str(self.root.resolve()).encode()).hexdigest()[:16]
+        self.oauth = GoogleOAuth(PasswordStore(root, "com.aiagentlbs.meetontrack.google." + store_id, "google-oauth.dpapi"))
         self.login = None
+        self.login_started = 0
+        self.login_error = ""
+
+    def _expire_login(self):
+        with self.login_lock:
+            self._expire_login_locked()
+
+    def _expire_login_locked(self):
+        if self.login is not None and self.login.poll() is None and time.monotonic() - self.login_started >= 300:
+            self.login.terminate()
+            try:
+                self.login.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.login.kill()
+                self.login.wait(timeout=2)
+            self.login_error = "google_login_timeout"
 
     def read(self):
         return read_json(self.path)
 
+    @contextmanager
+    def _edit(self):
+        # Preserve identity/consent serialization with delivery, but return an
+        # actionable busy response instead of hanging the settings form.
+        if not self.lock.acquire(timeout=0.25):
+            raise ValueError("delivery_busy")
+        try:
+            yield
+        finally:
+            self.lock.release()
+
     def profiles(self):
         registry = read_json(self.home / ".config/gws-profiles/accounts.json")
-        return [{"id": key, "email": value.get("email", "")} for key, value in registry.items()
-                if key in {"personal", "work"} and isinstance(value, dict)]
+        result = [{"id": key, "email": value.get("email", "")} for key, value in registry.items()
+                  if key in {"personal", "work"} and isinstance(value, dict)]
+        own = self.own_google_status()
+        if own.get("client_configured"):
+            result.append({"id": "custom", "email": own.get("account", "")})
+        return result
+
+    def own_google_status(self):
+        try:
+            return self.oauth.status()
+        except (ValueError, OSError):
+            return {"state": "credential_store_unavailable", "client_configured": False}
+
+    def import_google(self, value):
+        with self._edit():
+            self.oauth.import_client(value)
+            changes = {"google_profile": "custom", "drive_enabled": False}
+            if self.read().get("email_provider", "gmail") == "gmail":
+                changes["email_enabled"] = False
+            return self.configure(changes)
 
     def profile(self):
         raw = self.read()
         selected = raw.get("google_profile")
-        if selected in {"personal", "work"}:
+        if selected in {"personal", "work", "custom"}:
             return selected
         account = raw.get("google_account")
         return next((p["id"] for p in self.profiles() if account and p["email"] == account), "")
@@ -166,6 +234,8 @@ class DeliverySettings:
         profile = self.profile()
         if not profile:
             raise ValueError("google_not_connected")
+        if profile == "custom":
+            raise ValueError("google_native_connector")
         name = "gws-" + profile
         path = shutil.which(name)
         local = self.home / ".local/bin" / name
@@ -176,21 +246,28 @@ class DeliverySettings:
         return path
 
     def snapshot(self):
+        # The shared archive lock can be held by a slow provider request. Atomic
+        # settings reads/status must not freeze the form for the entire upload.
+        self._expire_login()
         raw = self.read()
         return {"email_enabled": enabled(raw, "email"), "drive_enabled": enabled(raw, "drive"),
-                "telegram_enabled": enabled(raw, "telegram"), "email_provider": raw.get("email_provider", "gmail"),
+                # A fresh form suggests SMTP, without opting in to delivery.
+                # Legacy configurations without a provider still mean Gmail.
+                "telegram_enabled": enabled(raw, "telegram"), "email_provider": raw.get("email_provider", "gmail" if raw else "smtp"),
                 "email_to": raw.get("email_to", ""), "google_profile": self.profile(),
                 "google_account": raw.get("google_account", ""), "drive_folder_id": raw.get("drive_folder_id", ""),
                 "profiles": self.profiles(), "smtp": {key: value for key, value in raw.get("smtp", {}).items()
                     if key in {"host", "port", "security", "username", "from"}},
                 "smtp_password_saved": raw.get("smtp_password_saved", False),
                 "login_pending": self.login is not None and self.login.poll() is None,
+                "own_google": self.own_google_status(),
                 "telegram_configured": bool(raw.get("telegram_account") and raw.get("telegram_config")),
                 "local_reports": str(self.home / ".local/share/meeting-copilot/reports")}
 
     def configure(self, payload):
-        with self.lock:
+        with self._edit():
             raw = self.read()
+            raw.setdefault("email_provider", "gmail" if raw else "smtp")
             for channel in ("email", "drive", "telegram"):
                 key = channel + "_enabled"
                 if key in payload and type(payload[key]) is not bool:
@@ -273,6 +350,14 @@ class DeliverySettings:
             return self.snapshot()
 
     def google_status(self):
+        if self.profile() == "custom":
+            try:
+                return self.oauth.check()
+            except ValueError as error:
+                return {"state": str(error)}
+        self._expire_login()
+        if self.login_error:
+            return {"state": self.login_error}
         if self.login is not None and self.login.poll() is None:
             return {"state": "connecting"}
         try:
@@ -287,17 +372,24 @@ class DeliverySettings:
         except (ValueError, OSError, subprocess.TimeoutExpired) as error:
             return {"state": str(error) if isinstance(error, ValueError) else "google_unavailable"}
 
-    def connect(self):
-        with self.lock:
+    def connect(self, payload=None):
+        if self.profile() == "custom":
+            payload = payload or {}
+            return self.oauth.start(payload.get("account", ""), payload.get("permissions"))
+        with self._edit():
             if self.google_status()["state"] == "connected":
                 return self.google_status()
             if self.login is None or self.login.poll() is not None:
                 self.login = subprocess.Popen([self.executable(), "auth", "login", "--full"],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.login_started = time.monotonic()
+                self.login_error = ""
             return {"state": "connecting"}
 
     def disconnect(self):
-        with self.lock:
+        with self._edit():
+            if self.profile() == "custom":
+                self.oauth.disconnect()
             raw = self.read()
             raw.update(google_profile="", google_account="", drive_enabled=False)
             if raw.get("email_provider", "gmail") == "gmail":
@@ -305,6 +397,12 @@ class DeliverySettings:
             write_json(self.path, raw)
             if self.login is not None and self.login.poll() is None:
                 self.login.terminate()
+                try:
+                    self.login.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.login.kill()
+                    self.login.wait(timeout=2)
+            self.login_error = ""
             # Do not log out a shared account used by other applications.
             return self.snapshot()
 

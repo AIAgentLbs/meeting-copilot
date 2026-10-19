@@ -616,8 +616,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             title: SetupLayout.title(localised("In the top menu bar on your Mac", "В верхнем меню Mac")),
             detail: SetupLayout.detail(
                 localised(
-                    "The MeetOnTrack waveform icon shows the recording timer. Click it to open the assistant or recording controls.",
-                    "Значок звуковой волны MeetOnTrack показывает время записи. Нажмите, чтобы открыть помощник или управление записью."),
+                    "The MeetOnTrack M icon shows the recording timer. Click it to open the assistant or recording controls.",
+                    "Значок M MeetOnTrack показывает время записи. Нажмите, чтобы открыть помощник или управление записью."),
                 lines: 2, width: 520))
     }
 

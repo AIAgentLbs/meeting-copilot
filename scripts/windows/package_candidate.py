@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -62,6 +63,8 @@ def main():
         unpack(args.donor, stage, lambda name: name if name.startswith(allowed) else None)
         unpack(args.managed, stage, lambda name: 'capture/' + name)
         shutil.copytree(ROOT / 'copilot/web', stage / 'web', ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.log'))
+        subprocess.run([sys.executable, str(ROOT / 'scripts/vendor-delivery.py'),
+                        str(stage / 'web/_vendor')], check=True)
         for name in ('meeting-copilot.ps1', 'refresh-repos.py'):
             shutil.copy2(ROOT / 'scripts/windows' / name, stage / name)
         shutil.copy2(ROOT / 'copilot/config/SESSION.md', stage / 'SESSION.md')
