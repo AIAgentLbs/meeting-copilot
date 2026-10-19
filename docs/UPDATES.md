@@ -42,6 +42,16 @@ only after installing a package that includes it.
 
 ## Automatic installation: release-blocking requirement
 
+Developer ID app signing/notarization and Sparkle Ed25519 update-archive signing
+are separate mechanisms. Apple Developer membership is not a prerequisite for
+the latter, nor for serving an HTTPS appcast and update archives. Developer ID
+remains a distribution-hardening goal; command-line installation does not remove
+macOS execution and permission checks. Do not claim that membership alone fixes
+recording permissions, or block updater implementation solely on enrollment.
+Validate the actual package's launch, framework loading and recording permissions
+across an update. References: https://sparkle-project.org/documentation/ and
+https://developer.apple.com/developer-id/ (checked 2026-10-19).
+
 Owner requirement (2026-10-19): beta users must receive fixes automatically,
 without repeating the website installation command for each release. The faster
 checker above is NOT an automatic installer and does not satisfy that requirement.

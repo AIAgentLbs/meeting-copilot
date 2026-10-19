@@ -34,6 +34,7 @@ from live_translation import LiveTranslation
 from frame_relevance import frame_relevance
 from chat_import import parse_chat_export, normalize_chat_times
 from interface_preferences import interface_preferences
+from delivery_retry import DeliveryRetry
 from release_updates import ReleaseUpdates, installed_release
 from summary_rewrite import SummaryRewrites, codex_summary_runner
 from question_quality import register_question, useful_question
@@ -2188,6 +2189,7 @@ ARCHIVE = MeetingArchive(
     frames_provider=lambda: FRAMES.archive_items(),
     event_router=routed_event,
 )
+DELIVERY_RETRY = DeliveryRetry(ARCHIVE)
 SUMMARY_REWRITES = SummaryRewrites(ARCHIVE, codex_summary_runner(CODEX, PROCESS_ENV))
 
 
@@ -2386,6 +2388,8 @@ class Handler(BaseHTTPRequestHandler):
             self._static("styles.css", "text/css; charset=utf-8")
         elif path == "/app.js":
             self._static("app.js", "text/javascript; charset=utf-8")
+        elif path == "/delivery.js":
+            self._static("delivery.js", "text/javascript; charset=utf-8")
         elif path == "/updates.js":
             self._static("updates.js", "text/javascript; charset=utf-8")
         elif path == "/getting-started.js":
@@ -2449,6 +2453,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "meetings": ARCHIVE.list_meetings(query=query), "delivery": ARCHIVE.delivery_health()})
         elif path == "/api/delivery":
             self._json({"ok": True, "delivery": ARCHIVE.delivery_health()})
+        elif path == "/api/delivery/settings":
+            self._json({"ok": True, "settings": ARCHIVE.delivery_settings.snapshot()})
+        elif path == "/api/delivery/job":
+            self._json({"ok": True, "job": DELIVERY_RETRY.snapshot()})
         elif path.startswith("/api/archive/frame/"):
             frame = ARCHIVE.frame_path(path.removeprefix("/api/archive/frame/"))
             if frame is None:
@@ -2565,6 +2573,25 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/delivery/ack":
                 ARCHIVE.delivery_monitor.acknowledge(payload.get("through"))
                 self._json({"ok": True, "delivery": ARCHIVE.delivery_health()})
+            elif path == "/api/delivery/settings":
+                prior_profile = ARCHIVE.delivery_settings.profile()
+                settings = ARCHIVE.delivery_settings.configure(payload)
+                if prior_profile != ARCHIVE.delivery_settings.profile():
+                    GOOGLE_CONTEXT.disconnect()
+                self._json({"ok": True, "settings": settings})
+                ARCHIVE.check_delivery_health()
+            elif path == "/api/delivery/google/check":
+                self._json({"ok": True, "account": ARCHIVE.delivery_settings.google_status()})
+            elif path == "/api/delivery/google/connect":
+                self._json({"ok": True, "account": ARCHIVE.delivery_settings.connect()})
+            elif path == "/api/delivery/google/disconnect":
+                settings = ARCHIVE.delivery_settings.disconnect()
+                GOOGLE_CONTEXT.disconnect()
+                self._json({"ok": True, "settings": settings})
+            elif path == "/api/delivery/smtp/check":
+                self._json({"ok": True, "account": ARCHIVE.delivery_settings.smtp_check(payload)})
+            elif path == "/api/delivery/retry":
+                self._json({"ok": True, "job": DELIVERY_RETRY.submit(payload)})
             elif path == "/api/google-context/settings":
                 sources = GOOGLE_CONTEXT.configure(payload.get("sources"))
                 self._json({"ok": True, "sources": sources})

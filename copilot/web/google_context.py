@@ -37,12 +37,22 @@ def json_payload(text: str) -> dict:
 class GoogleContext:
     def __init__(self, preferences: Path, executable: str | None = None):
         self.preferences = preferences
-        self.executable = executable if executable is not None else shutil.which("gws")
+        self._executable = executable
         self._lock = threading.RLock()
         self._search_lock = threading.Lock()
         self._generation = 0
         self._login = None
         self._results: dict[str, tuple[float, dict]] = {}
+
+    @property
+    def executable(self):
+        if self._executable is not None:
+            return self._executable
+        from delivery_settings import DeliverySettings
+        try:
+            return DeliverySettings(self.preferences.parent).executable()
+        except ValueError:
+            return None
 
     def _preferences(self) -> dict:
         try:
@@ -113,7 +123,7 @@ class GoogleContext:
             if self._login is None or self._login.poll() is not None:
                 # Started only by the user's Connect click, never at startup.
                 self._login = subprocess.Popen(
-                    [self.executable, "auth", "login", "--readonly", "--services", "calendar,gmail,drive"],
+                    [self.executable, "auth", "login", "--full"],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 threading.Thread(target=self._finish_login, args=(self._login, self._generation), daemon=True).start()
         return {**status, "login_pending": True}

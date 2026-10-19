@@ -894,7 +894,7 @@ elements.recognitionResume.addEventListener("click", async () => {
   }
 });
 
-const deliveryChannelNames = { drive: "Google Drive", gmail: "Gmail", telegram: "Telegram" };
+const deliveryChannelNames = { drive: "Google Drive", get gmail() { return uiLanguage === "ru" ? "Почта" : "Email"; }, telegram: "Telegram" };
 
 function renderDeliveryHealth(health = {}) {
   deliveryHealth = health;
@@ -2407,6 +2407,7 @@ function renderArchiveDetail(meeting) {
   report.append(reportActions);
   const delivery = document.createElement("p");
   delivery.className = "archive-delivery";
+  const refreshDelivery = () => {
   const statuses = [];
   for (const [channel, field] of [["drive", "drive_status"], ["gmail", "mail_status"], ["telegram", "telegram_status"]]) {
     const raw = meeting.report?.[field] || "not_configured";
@@ -2416,7 +2417,11 @@ function renderArchiveDetail(meeting) {
     statuses.push(`${deliveryChannelNames[channel]}: ${t(`delivery.state.${state}`, { count: 1 })}`);
   }
   delivery.textContent = statuses.join(" · ");
+  };
+  refreshDelivery();
+  report.addEventListener("delivery-complete", refreshDelivery);
   report.append(delivery);
+  if (window.deliveryControls) report.append(window.deliveryControls(meeting));
   root.append(report);
 
   if (meeting.call_plan) {

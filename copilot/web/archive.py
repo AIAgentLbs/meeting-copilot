@@ -12,6 +12,9 @@ import re
 import shutil
 import subprocess
 import tempfile
+import smtplib
+from email.message import EmailMessage
+from email.utils import make_msgid
 import threading
 import time
 from collections import Counter
@@ -23,6 +26,7 @@ from speaker_edits import SpeakerEdits
 from delivery_health import DeliveryHealth, drive_links_ready
 from recording_health import RecordingLocations
 from question_quality import register_question
+from delivery_settings import DeliverySettings, enabled as delivery_enabled
 
 
 def _json(path: Path, fallback: Any) -> Any:
@@ -104,6 +108,7 @@ class MeetingArchive:
         self.reports_root = reports_root
         self.config_root = config_root
         self.lock = threading.RLock()
+        self.delivery_settings = DeliverySettings(config_root, self.lock)
         self._index_state = threading.local()
         self.speaker_edits = SpeakerEdits(archive_root)
         self.delivery_monitor = DeliveryHealth(
@@ -728,7 +733,9 @@ class MeetingArchive:
             self._print_pdf(html_path, pdf_path)
             pdf_path.chmod(0o600)
 
-            previous_report = detail.get("report") or {}
+            previous_report = {**(detail.get("report") or {}),
+                               **_json(report_dir / "report.json", {}),
+                               **_json(report_dir / "delivery-receipts.json", {})}
             source_signature = self.source_signature(detail)
             previous_delivery = dict(previous_report)
             if (previous_report.get("source_signature") != source_signature
@@ -737,6 +744,7 @@ class MeetingArchive:
                 # delivered email or Telegram message must never be resent.
                 previous_delivery["drive_status"] = "pending"
             meta = {
+                **{key: previous_report[key] for key in ("last_delivery_request", "last_delivery_result", "mail_error") if key in previous_report},
                 "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 "html": f"/api/archive/report/{detail['meeting_id']}/index.html",
                 "pdf": f"/api/archive/report/{detail['meeting_id']}/meeting-report.pdf",
@@ -810,12 +818,12 @@ class MeetingArchive:
             retry_at = _date(str(meta.get("delivery_retry_at") or ""))
             if retry_at and retry_at > now:
                 continue
-            wants_drive = bool(settings.get("drive_folder_id") or settings.get("drive_remote") or settings.get("drive_local_path"))
-            wants_mail = bool(settings.get("email_to"))
-            wants_telegram = bool(settings.get("telegram_account") and settings.get("telegram_config"))
+            wants_drive = delivery_enabled(settings, "drive")
+            wants_mail = delivery_enabled(settings, "email") and meta.get("mail_status") != "unknown"
+            wants_telegram = delivery_enabled(settings, "telegram")
             pending = (
                 (wants_drive and meta.get("drive_status") != "uploaded")
-                or (settings.get("drive_folder_id") and not drive_links_ready(meta))
+                or (wants_drive and settings.get("drive_folder_id") and not drive_links_ready(meta))
                 or (wants_mail and meta.get("mail_status") != "sent")
                 or (wants_telegram and meta.get("telegram_status") != "sent")
             )
@@ -1112,45 +1120,76 @@ class MeetingArchive:
         )
         return ("uploaded" if links else "failed"), links
 
-    @staticmethod
-    def _gws_call(*args: str, timeout: int = 60) -> dict | None:
+    def _gws_call(self, *args: str, timeout: int = 60, diagnostics: dict | None = None) -> dict | None:
         """Use the already-authorized Workspace CLI without exposing tokens."""
-        gws = shutil.which("gws")
-        if not gws:
+        try:
+            gws = self.delivery_settings.executable()
+        except ValueError as error:
+            if diagnostics is not None:
+                diagnostics.update(provider="gws", reason=str(error))
             return None
         try:
+            # gws confines uploads/attachments to cwd. Keep it local to this
+            # subprocess; os.chdir would race other requests and recordings.
+            file_flag = next((flag for flag in ("--attach", "--upload") if flag in args), None)
+            cwd = str(Path(args[args.index(file_flag) + 1]).resolve().parent) if file_flag else None
             result = subprocess.run(
                 [gws, *args], capture_output=True, text=True, timeout=timeout,
-                env=os.environ | {"PATH": "/opt/homebrew/bin:/usr/bin:/bin"},
+                cwd=cwd,
             )
             if result.returncode != 0:
+                if diagnostics is not None:
+                    diagnostics.update(MeetingArchive._delivery_failure("gws", result))
                 return None
-            payload = json.loads(result.stdout or "{}")
+            from google_context import json_payload
+            payload = json_payload(result.stdout or "{}")
             return payload if isinstance(payload, dict) else None
-        except (OSError, ValueError, subprocess.TimeoutExpired):
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+            if diagnostics is not None:
+                diagnostics.update(provider="gws", reason=(
+                    "timeout_outcome_unknown" if isinstance(exc, subprocess.TimeoutExpired)
+                    else "invalid_response" if isinstance(exc, ValueError) else "client_unavailable"
+                ))
             return None
 
-    @classmethod
-    def _gws_items(cls, parent_id: str, name: str) -> list[dict]:
+    @staticmethod
+    def _delivery_failure(provider: str, result: subprocess.CompletedProcess) -> dict:
+        """Persist only allowlisted diagnostics, never raw CLI output or mail content."""
+        message = f"{result.stderr or ''}\n{result.stdout or ''}".lower()
+        reason = "client_failed"
+        for needles, code in (
+            (("insufficient authentication scopes", "insufficientpermissions", "insufficient_scope"), "permission_missing"),
+            (("invalid_grant", "token has been expired or revoked"), "authorization_expired"),
+            (("no credentials", "credentials not found", "no token", "not authenticated"), "authorization_missing"),
+            (("service_disabled", "accessnotconfigured"), "api_disabled"),
+            (("ratelimitexceeded", "rate limit", "quota exceeded"), "rate_limited"),
+            (("attachment too large", "message too large", "size limit"), "attachment_too_large"),
+            (("outside the current directory",), "attachment_outside_working_directory"),
+        ):
+            if any(needle in message for needle in needles):
+                reason = code
+                break
+        return {"provider": provider, "reason": reason, "exit_code": result.returncode}
+
+    def _gws_items(self, parent_id: str, name: str) -> list[dict]:
         escaped = name.replace("'", "\\'")
         params = json.dumps({
             "q": f"'{parent_id}' in parents and name = '{escaped}' and trashed = false",
             "fields": "files(id,name,mimeType,webViewLink)", "pageSize": 20,
         })
-        payload = cls._gws_call("drive", "files", "list", "--params", params) or {}
+        payload = self._gws_call("drive", "files", "list", "--params", params) or {}
         return [item for item in payload.get("files", []) if isinstance(item, dict)]
 
-    @classmethod
     def _upload_drive_report_gws(
-        cls, reports_folder_id: str, folder_name: str, source: Path
+        self, reports_folder_id: str, folder_name: str, source: Path
     ) -> tuple[str, dict[str, str]]:
         """Upload a private report tree with the user's existing Google token."""
         folder = next(
-            (item for item in cls._gws_items(reports_folder_id, folder_name)
+            (item for item in self._gws_items(reports_folder_id, folder_name)
              if item.get("mimeType") == "application/vnd.google-apps.folder"), None
         )
         if not folder:
-            folder = cls._gws_call(
+            folder = self._gws_call(
                 "drive", "files", "create", "--json", json.dumps({
                     "name": folder_name, "parents": [reports_folder_id],
                     "mimeType": "application/vnd.google-apps.folder",
@@ -1168,11 +1207,11 @@ class MeetingArchive:
             parent = folder_id
             if path.parent.name == "assets":
                 assets = next(
-                    (item for item in cls._gws_items(folder_id, "assets")
+                    (item for item in self._gws_items(folder_id, "assets")
                      if item.get("mimeType") == "application/vnd.google-apps.folder"), None
                 )
                 if not assets:
-                    assets = cls._gws_call(
+                    assets = self._gws_call(
                         "drive", "files", "create", "--json", json.dumps({
                             "name": "assets", "parents": [folder_id],
                             "mimeType": "application/vnd.google-apps.folder",
@@ -1181,16 +1220,16 @@ class MeetingArchive:
                 parent = str((assets or {}).get("id") or "")
                 if not parent:
                     return "failed", {}
-            existing = next(iter(cls._gws_items(parent, path.name)), None)
+            existing = next(iter(self._gws_items(parent, path.name)), None)
             params = json.dumps({"fields": "id,name,webViewLink"})
             if existing:
                 params = json.dumps({"fileId": existing["id"], "fields": "id,name,webViewLink"})
-                item = cls._gws_call(
+                item = self._gws_call(
                     "drive", "files", "update", "--params", params,
                     "--upload", str(path), timeout=180,
                 )
             else:
-                item = cls._gws_call(
+                item = self._gws_call(
                     "drive", "files", "create", "--json", json.dumps({
                         "name": path.name, "parents": [parent],
                     }), "--params", params, "--upload", str(path), timeout=180,
@@ -1207,9 +1246,17 @@ class MeetingArchive:
         }
         return "uploaded", links
 
-    def deliver(self, detail: dict, report: dict, *, previous: dict | None = None) -> dict:
+    def deliver(self, detail: dict, report: dict, *, previous: dict | None = None, channels: set[str] | None = None, manual: bool = False) -> dict:
         settings = _json(self.config_root / "delivery.json", {})
         previous = previous or {}
+        def allowed(channel):
+            if channels is not None and channel not in channels:
+                return False
+            if not delivery_enabled(settings, channel):
+                return False
+            boundary = _date(settings.get(channel + "_enabled_at"))
+            started = _date(detail.get("started_at"))
+            return manual or not boundary or bool(started and started >= boundary)
         local_drive_setting = str(settings.get("drive_local_path") or "").strip()
         local_drive = Path(local_drive_setting).expanduser() if local_drive_setting else None
         remote = str(settings.get("drive_remote") or "").strip()
@@ -1219,6 +1266,9 @@ class MeetingArchive:
         title = re.sub(r"[/\\:*?\"<>|]+", "-", detail["title"]).strip()[:80]
         folder_name = f"{stamp} {time_stamp} {title} [{detail['meeting_id'][-8:]}]"
         source = self.reports_root / detail["meeting_id"]
+        receipts = _json(source / "delivery-receipts.json", {})
+        if not manual:
+            previous = {**previous, **receipts}
         drive_status = str(previous.get("drive_status") or "not_configured")
         drive_folder = str(previous.get("drive_folder") or "")
         drive_links: dict[str, str] = {
@@ -1229,11 +1279,16 @@ class MeetingArchive:
         if settings.get("drive_folder_id") and not drive_links_ready(previous):
             drive_links = {}
 
-        gog = shutil.which("gog")
-        gws = shutil.which("gws")
-        recipient = str(settings.get("email_to") or "").strip()
+        # Never select a shared ambient account or fall back to another provider.
+        try:
+            gws = self.delivery_settings.executable()
+        except ValueError:
+            gws = None
+        recipient = str(settings.get("email_to") or "").strip() if allowed("email") else ""
         google_account = str(settings.get("google_account") or recipient).strip()
         reports_folder_id = str(settings.get("drive_folder_id") or "").strip()
+        if not allowed("drive"):
+            reports_folder_id, local_drive, remote = "", None, ""
 
         # The API upload is authoritative: delivery proceeds only after Google
         # returns private webViewLink values for both report files.
@@ -1245,16 +1300,6 @@ class MeetingArchive:
                 if refreshed == "uploaded":
                     drive_links = links
                     drive_folder = links.get("drive_folder_url", drive_folder)
-        elif gog and google_account and reports_folder_id:
-            drive_status, drive_links = self._upload_drive_report(
-                gog, google_account, reports_folder_id, folder_name, source
-            )
-            drive_folder = drive_links.get("drive_folder_url", "")
-            if drive_status != "uploaded" and gws:
-                drive_status, drive_links = self._upload_drive_report_gws(
-                    reports_folder_id, folder_name, source
-                )
-                drive_folder = drive_links.get("drive_folder_url", "")
         elif gws and google_account and reports_folder_id:
             drive_status, drive_links = self._upload_drive_report_gws(
                 reports_folder_id, folder_name, source
@@ -1293,10 +1338,12 @@ class MeetingArchive:
 
         mail_status = str(previous.get("mail_status") or "not_configured")
         gmail_message_id = previous.get("gmail_message_id")
-        if gog and drive_status == "uploaded" and not drive_links:
-            drive_links = self._drive_links(
-                gog, google_account, reports_folder_id, folder_name
-            )
+        mail_error = {
+            key: value for key, value in (previous.get("mail_error") or {}).items()
+            if key in {"provider", "reason", "exit_code"}
+        } if isinstance(previous.get("mail_error"), dict) else {}
+        if mail_status == "sent":
+            mail_error.clear()
         links_text = ""
         if drive_links:
             links_text = (
@@ -1305,7 +1352,9 @@ class MeetingArchive:
                 f"HTML: {drive_links['drive_html_url']}\n"
                 f"PDF: {drive_links['drive_pdf_url']}"
             )
-        if mail_status != "sent" and (gog or gws) and recipient:
+        smtp = settings.get("email_provider") == "smtp"
+        if mail_status not in {"sent", "unknown"} and recipient:
+            mail_error.clear()
             subject = f"{self.product_name}: {detail['title']} — {stamp}"
             body = (
                 f"Отчёт по встрече «{detail['title']}» от {stamp}.\n\n"
@@ -1315,30 +1364,44 @@ class MeetingArchive:
                 + "PDF приложен к письму."
                 + links_text
             )
-            if gog:
+            if smtp:
+                message = EmailMessage()
+                message["From"] = settings.get("smtp", {}).get("from", "")
+                message["To"] = recipient
+                message["Subject"] = subject
+                message["Message-ID"] = make_msgid(domain="meetontrack.com")
+                message.set_content(body)
+                accepted = False
                 try:
-                    result = subprocess.run(
-                        [gog, "--account", recipient, "--no-input", "--json", "gmail",
-                         "send", "--to", recipient, "--subject", subject,
-                         "--body", body, "--attach", report["pdf_path"]],
-                        capture_output=True, text=True, timeout=180,
-                    )
-                    mail_status = (
-                        "sent" if result.returncode == 0 else
-                        "auth_required" if result.returncode == 4 else "failed"
-                    )
-                except (OSError, subprocess.TimeoutExpired):
-                    mail_status = "failed"
-            # An arbitrary gog failure may have happened after Gmail accepted
-            # the message. Fall back only for a confirmed auth failure.
-            if gws and (not gog or mail_status in {"not_configured", "auth_required"}):
+                    message.add_attachment(Path(report["pdf_path"]).read_bytes(), maintype="application", subtype="pdf", filename="meeting-report.pdf")
+                    with self.delivery_settings.smtp_client() as client:
+                        refused = client.send_message(message)
+                        accepted = not refused
+                        if refused:
+                            mail_error.update(provider="smtp", reason="smtp_recipient_rejected")
+                    mail_status = "sent" if accepted else "failed"
+                except smtplib.SMTPAuthenticationError:
+                    mail_status = "auth_required"
+                    mail_error.update(provider="smtp", reason="smtp_auth_failed")
+                except (OSError, smtplib.SMTPException, ValueError, KeyError):
+                    mail_status = "sent" if accepted else "unknown"
+                    if not accepted:
+                        mail_error.update(provider="smtp", reason="smtp_outcome_unknown")
+            if not smtp:
+                mail_error.clear()
                 sent = self._gws_call(
                     "gmail", "+send", "--to", recipient, "--subject", subject,
                     "--body", body, "--attach", report["pdf_path"], timeout=180,
+                    diagnostics=mail_error,
                 )
                 mail_status = "sent" if sent and sent.get("id") else "failed"
                 if mail_status == "sent":
                     gmail_message_id = sent["id"]
+                    mail_error.clear()
+                elif not mail_error:
+                    mail_error.update(provider="gws", reason="missing_send_acknowledgement")
+                if mail_error.get("reason") in {"timeout_outcome_unknown", "invalid_response", "missing_send_acknowledgement"}:
+                    mail_status = "unknown"
 
         telegram_status = str(previous.get("telegram_status") or "not_configured")
         telegram_message_id = previous.get("telegram_message_id")
@@ -1348,7 +1411,7 @@ class MeetingArchive:
         telegram_account = str(settings.get("telegram_account") or "").strip()
         telegram_target = str(settings.get("telegram_target") or "me").strip()
         telegram_helper = Path(__file__).with_name("telegram_delivery.py")
-        if (telegram_status != "sent" and telegram_account
+        if (allowed("telegram") and telegram_status != "sent" and telegram_account
                 and telegram_config.is_file() and drive_status == "uploaded"):
             command = [
                 "/opt/homebrew/bin/python3", str(telegram_helper),
@@ -1376,16 +1439,25 @@ class MeetingArchive:
                 telegram_message_id = payload.get("message_id")
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 telegram_status = "failed"
-        return {
+        outcome = {
             "drive_status": drive_status,
             "drive_folder": drive_folder,
             **drive_links,
             "drive_links_status": "ready" if drive_links else "unavailable",
             "mail_status": mail_status,
             "gmail_message_id": gmail_message_id,
+            "mail_error": mail_error,
             "telegram_status": telegram_status,
             "telegram_message_id": telegram_message_id,
         }
+        if source.is_dir():
+            for channel, keys in (("mail_status", ("mail_status", "gmail_message_id")),
+                                  ("telegram_status", ("telegram_status", "telegram_message_id"))):
+                if outcome[channel] == "sent":
+                    receipts.update({key: outcome[key] for key in keys})
+            if receipts:
+                _atomic_json(source / "delivery-receipts.json", receipts)
+        return outcome
 
     def report_path(self, meeting_id: str, relative: str) -> Path | None:
         base = (self.reports_root / _safe(meeting_id)).resolve()

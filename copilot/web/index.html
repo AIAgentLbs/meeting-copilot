@@ -57,6 +57,60 @@
         <button class="quiet-button" id="settings-close" type="button" data-i18n="common.close">Закрыть</button>
       </div>
       <div id="settings-content">
+        <section id="delivery-settings" class="delivery-settings" aria-labelledby="delivery-settings-heading">
+          <h3 id="delivery-settings-heading" data-delivery-text="heading">Хранение и доставка отчетов</h3>
+          <p data-delivery-text="local">Записи и отчеты сохраняются на компьютере. Облачные сервисы подключать необязательно.</p>
+          <p id="delivery-local-path"></p>
+          <form id="delivery-settings-form">
+            <fieldset>
+              <legend data-delivery-text="google">Аккаунт Google</legend>
+              <label for="delivery-profile" data-delivery-text="account">Аккаунт для Gmail и Google Drive</label>
+              <select id="delivery-profile"></select>
+              <p data-delivery-text="accountHelp">Подключение аккаунта само по себе не включает отправку. Поиск контекста настраивается отдельно.</p>
+              <div class="delivery-actions">
+                <button type="button" class="quiet-button" id="delivery-google-connect" data-delivery-text="connect">Подключить Google</button>
+                <button type="button" class="quiet-button" id="delivery-google-check" data-delivery-text="checkGoogle">Проверить аккаунт</button>
+                <button type="button" class="quiet-button" id="delivery-google-disconnect" data-delivery-text="disconnect">Отключить от MeetOnTrack</button>
+              </div>
+              <p id="delivery-account-status" role="status"></p>
+            </fieldset>
+            <fieldset>
+              <legend data-delivery-text="mail">Письмо после встречи</legend>
+              <label class="switch-label"><input type="checkbox" id="delivery-email-enabled"><span data-delivery-text="autoMail">Автоматически отправлять отчет по почте</span></label>
+              <div class="delivery-fields">
+                <div><label for="delivery-provider" data-delivery-text="provider">Способ отправки</label><select id="delivery-provider"><option value="gmail">Gmail</option><option value="smtp">SMTP</option></select></div>
+                <div><label for="delivery-recipient" data-delivery-text="recipient">Получатель отчета</label><input id="delivery-recipient" type="email" maxlength="254" autocomplete="email"></div>
+              </div>
+              <p data-delivery-text="attachment">PDF прикладывается к письму. Google Drive для этого не нужен.</p>
+              <div id="delivery-smtp" hidden>
+                <div class="delivery-fields">
+                  <div><label for="delivery-smtp-host" data-delivery-text="host">SMTP-сервер</label><input id="delivery-smtp-host" autocomplete="off" maxlength="253"></div>
+                  <div><label for="delivery-smtp-port" data-delivery-text="port">Порт</label><input id="delivery-smtp-port" type="number" min="1" max="65535" value="587"></div>
+                  <div><label for="delivery-smtp-security" data-delivery-text="security">Защита соединения</label><select id="delivery-smtp-security"><option value="starttls">STARTTLS</option><option value="tls">TLS</option></select></div>
+                  <div><label for="delivery-smtp-user" data-delivery-text="username">Логин SMTP</label><input id="delivery-smtp-user" autocomplete="username" maxlength="254"></div>
+                  <div><label for="delivery-smtp-from" data-delivery-text="sender">Адрес отправителя</label><input id="delivery-smtp-from" type="email" maxlength="254"></div>
+                  <div><label for="delivery-smtp-password" data-delivery-text="password">Пароль приложения SMTP</label><input id="delivery-smtp-password" type="password" autocomplete="new-password" maxlength="4096"></div>
+                </div>
+                <p id="delivery-password-help"></p>
+                <button type="button" class="quiet-button" id="delivery-smtp-check" data-delivery-text="checkSmtp">Проверить SMTP без отправки письма</button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Google Drive</legend>
+              <label class="switch-label"><input type="checkbox" id="delivery-drive-enabled"><span data-delivery-text="autoDrive">Автоматически сохранять отчет на Google Drive</span></label>
+              <label for="delivery-drive-folder" data-delivery-text="folder">Ссылка или ID папки Google Drive</label>
+              <input id="delivery-drive-folder" maxlength="500" autocomplete="off">
+            </fieldset>
+            <fieldset>
+              <legend>Telegram</legend>
+              <label class="switch-label"><input type="checkbox" id="delivery-telegram-enabled"><span data-delivery-text="autoTelegram">Отправлять в подключенный Telegram</span></label>
+              <p id="delivery-telegram-help"></p>
+            </fieldset>
+            <p data-delivery-text="consent">Выключение канала останавливает новые отправки и ожидающие повторы, но не отзывает уже отправленное. После включения старые встречи автоматически не рассылаются: их можно отправить из истории.</p>
+            <button type="submit" class="primary-button" id="delivery-save" data-delivery-text="save">Сохранить настройки доставки</button>
+            <p id="delivery-settings-status" role="status" aria-live="polite"></p>
+          </form>
+        </section>
         <section id="updates-settings" tabindex="-1" aria-labelledby="updates-heading">
           <h3 id="updates-heading"></h3>
           <p id="updates-help"></p>
@@ -352,6 +406,7 @@
       </div>
     </dialog>
     <script src="/updates.js" defer></script>
+    <script src="/delivery.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/getting-started.js" defer></script>
   </body>

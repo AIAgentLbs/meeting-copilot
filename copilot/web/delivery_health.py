@@ -55,11 +55,11 @@ class DeliveryHealth:
 
     @staticmethod
     def configured(settings: dict) -> dict[str, bool]:
+        from delivery_settings import enabled
         return {
-            "drive": bool(settings.get("drive_folder_id") or settings.get("drive_remote")
-                          or settings.get("drive_local_path")),
-            "gmail": bool(settings.get("email_to")),
-            "telegram": bool(settings.get("telegram_account") and settings.get("telegram_config")),
+            "drive": enabled(settings, "drive"),
+            "gmail": enabled(settings, "email"),
+            "telegram": enabled(settings, "telegram"),
         }
 
     def _collect(self, settings: dict, now: datetime) -> tuple[dict, dict]:

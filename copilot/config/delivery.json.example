@@ -1,7 +1,12 @@
 {
-  "enabled": false,
-  "email": {"enabled": false, "to": "you@example.com"},
-  "google_drive": {"enabled": false, "folder_id": ""},
-  "telegram": {"enabled": false, "chat_id": ""}
+  "email_enabled": false,
+  "drive_enabled": false,
+  "telegram_enabled": false,
+  "email_provider": "gmail",
+  "email_to": "",
+  "google_profile": "",
+  "google_account": "",
+  "drive_folder_id": "",
+  "smtp": {"host": "", "port": 587, "security": "starttls", "username": "", "from": ""}
 }
 

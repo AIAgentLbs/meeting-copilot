@@ -178,7 +178,7 @@ class GoogleContextTests(unittest.TestCase):
             self.assertFalse(self.provider.connected())
             popen.assert_not_called()
             self.assertTrue(self.provider.connect()["login_pending"])
-            self.assertEqual(popen.call_args.args[0], ["/fake/gws", "auth", "login", "--readonly", "--services", "calendar,gmail,drive"])
+            self.assertEqual(popen.call_args.args[0], ["/fake/gws", "auth", "login", "--full"])
             self.provider.disconnect()
             process.terminate.assert_called_once()
             self.assertFalse(self.provider.connected())
