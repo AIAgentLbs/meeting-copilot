@@ -30,8 +30,10 @@ The integrated package version is 0.1.10; its independently versioned native
 component retains 0.6.6. The web update checker compares integrated versions.
 
 The native Windows build and core/live regressions passed in GitHub Actions.
-Exact packaged-install acceptance is recorded in the release acceptance document
-before this draft is published. Hardware audio is not tested on the hosted runner.
+Exact package acceptance passed on a Windows runner: 1,728 manifest hashes,
+fresh/repeat installation, recording preservation, native metadata, embedded
+server self-test, PowerShell syntax and five installer fixtures. Hardware audio
+is not tested on the hosted runner.
 
 ## Limits
 

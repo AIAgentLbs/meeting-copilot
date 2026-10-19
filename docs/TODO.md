@@ -5,6 +5,8 @@ and accepted public releases are different milestones. This file is the complete
 local backlog; closed source fixes below are not proof of both-platform release.
 Latest installed delivery/OAuth evidence:
 [2026-10-19 acceptance](releases/2026-10-19-delivery-acceptance.md).
+Public Mac/Windows 0.1.10 packages and remaining hardware gates:
+[distribution acceptance](releases/2026-10-19-public-distribution.md).
 
 Scope: end-user software only. Website/domain, analytics, SEO, comparisons,
 keyword/trademark research and promotion are tracked exclusively in
@@ -16,13 +18,13 @@ hashes, Pages removed, and the Windows installer relocated to
 
 ## Friendly-user release gate — 2026-10-19
 
-- Complete both-platform packaged acceptance in
-  [the candidate evidence record](releases/0.1.10-acceptance.md) before claiming
-  all installation feedback resolved. Windows is online in Tailscale, but the
-  latest SSH host-key scan timed out without a key; local Office
-  retrieval, real device reconnect tests, clean-Mac runtime/signing and new-account
-  Google onboarding remain distinct open requirements. Preserve the current public
-  installer until the replacement package and exact install route pass.
+- [x] Public 0.1.10 Mac/Windows packages passed exact archive and fresh/repeat
+  installation checks. Both public archives were downloaded without credentials
+  and match the pinned SHA-256 values. See the distribution acceptance above.
+- [ ] Complete real-device two-sided audio/permissions/reconnect testing on both
+  platforms and a clean Mac. The physical Windows host was offline at the final
+  release check. Local Office retrieval and new-account Google onboarding remain
+  distinct open requirements; do not call the technical beta a stable release.
 
 ## Meeting library follow-up
 
@@ -52,16 +54,12 @@ hashes, Pages removed, and the Windows installer relocated to
   cross-version acceptance are unfinished; Windows SSH returned no host key
   despite Tailscale online. No valid Mac Developer ID identity was found, but
   Apple enrollment is not a prerequisite for Ed25519-signed update archives.
-- Before publishing the newer source installer, verify `release.json` is present
-  in the actual public macOS archive and test a clean install of those exact
-  bytes. The website-only cutover preserves the existing public v0.1.9 installer;
-  source installer tests alone do not prove compatibility with that older asset.
-- Publish and verify the next Mac and Windows packages containing the new
-  branding and in-app release checker (`docs/UPDATES.md`). Existing installs
-  cannot acquire the checker until that first package is installed. Verify
-  platform/channel selection against the published assets, not just fixtures.
-  Signing/appcast validation belongs to the deferred automatic-installer work.
-  Never enable upstream feeds or restart active recordings.
+- [x] 0.1.10 public Mac archive contains release identity and embedded runtime;
+  anonymous downloaded bytes passed exact manifest/fresh/repeat acceptance.
+- [x] Published Mac/Windows packages contain the M icon and release checker.
+  Both platform/channel choices recognize the actual public 0.1.10 release feed.
+  Existing old installs without the checker require one manual update first.
+  Signing/appcast validation belongs to deferred automatic-installer work.
 
 ## Multilingual recognition acceptance
 
@@ -226,7 +224,8 @@ stored in this repository. Verify the public installed package as well as source
   and menu-bar icons changed. Mac bundle and native views share one renderer;
   legacy icon entry point delegates to it. Windows generator changed in the
   native capture repository, but real Windows build/tray/taskbar acceptance and
-  distribution of both updated public packages remain open (SSH returned no key).
+  both updated public packages are distributed as 0.1.10. Real Windows
+  tray/taskbar acceptance is still open; hosted native/package checks passed.
 - [ ] Add a discoverable context-connection walkthrough: show supported sources,
   connected/searchable status and a sample grounded answer. Explain repositories,
   local documents and Google sources individually; do not imply that spreadsheet
