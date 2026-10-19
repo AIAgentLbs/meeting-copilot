@@ -10,6 +10,10 @@ jobs:
   installer:
     runs-on: windows-2025
     timeout-minutes: 20
+    # Draft assets are not visible to a contents:read token. Restrict the
+    # collaborator permission to this candidate job; no publishing step runs.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Download private draft candidate
