@@ -84,6 +84,27 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .comparison-table thead th:first-child{width:22%}
 .comparison-table tbody th{font-weight:500}
 .comparison-table td p{margin:0}
+.compare-page .product-logo{width:32px;height:32px;object-fit:contain;vertical-align:middle;flex-shrink:0}
+.compare-page h1 .product-logo{width:44px;height:44px}
+.comparison-table thead .product-logo{background:#fff;border-radius:6px;padding:3px;margin-right:8px}
+.comparison-mark{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;line-height:1.5}
+.comparison-mark svg{flex-shrink:0}
+.mark-yes{color:#174c3e}
+.mark-no{color:#962f2f}
+.mark-partial{color:#755017}
+.mark-unknown,.mark-different{color:#43514b}
+.comparison-legend{display:flex;flex-wrap:wrap;gap:12px 24px;margin-top:24px}
+.comparison-key-note{font-size:14px;line-height:1.65;color:#43514b;max-width:75ch}
+.comparison-table td p.comparison-short{margin:9px 0 0;font-weight:500}
+.comparison-detail{margin-top:12px}
+.comparison-detail summary{cursor:pointer;min-height:44px;padding:10px 0;color:var(--forest);font-size:13px;text-decoration:underline;text-underline-offset:3px}
+.comparison-detail summary:hover{color:var(--ink)}
+.comparison-detail summary:focus-visible{outline:2px solid var(--forest);outline-offset:4px}
+.comparison-detail>div{padding-top:10px;font-size:14px}
+.comparison-directory{list-style:none;padding:0;border-top:1px solid var(--line)}
+.comparison-directory li{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:24px 0;border-bottom:1px solid var(--line)}
+.comparison-directory strong{display:flex;align-items:center;gap:12px}
+@media(max-width:740px){.comparison-directory li{grid-template-columns:1fr;gap:12px}.comparison-legend{gap:12px 18px}.compare-page h1 .product-logo{width:32px;height:32px}.comparison-table .product-logo{width:24px;height:24px}.comparison-table caption{display:block;width:100%}}
 .comparison-table #open-source{background:var(--mint)}
 .column-label{display:none}
 .cell-sources{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:14px;font-size:12px;line-height:1.5}

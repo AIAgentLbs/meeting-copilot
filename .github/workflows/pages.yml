@@ -2,7 +2,7 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/check-project-site.cjs", "scripts/stage-site-screenshots.cjs", "scripts/test-site-launch.cjs", "scripts/build-comparisons.cjs", "scripts/test-comparisons.cjs", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "install.sh", "INSTALL.md", "scripts/test_installer.py", "scripts/check-project-site.cjs", "scripts/stage-site-screenshots.cjs", "scripts/stage-comparison-logos.cjs", "scripts/test-site-launch.cjs", "scripts/build-comparisons.cjs", "scripts/test-comparisons.cjs", ".github/workflows/pages.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -38,6 +38,8 @@ jobs:
           cp -R docs/compare _site/compare
       - name: Stage verified screenshots without adding media to Git
         run: node scripts/stage-site-screenshots.cjs _site/media
+      - name: Stage verified product logos without adding media to Git
+        run: node scripts/stage-comparison-logos.cjs _site/media/logos
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

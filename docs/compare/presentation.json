@@ -1,0 +1,95 @@
+{
+  "labels": {
+    "yes": "Supported",
+    "no": "Not available",
+    "partial": "Limited / conditional",
+    "unknown": "Not verified",
+    "different": "Different approach"
+  },
+  "products": {
+    "meetontrack": {
+      "open-source": ["yes", "MIT application source"],
+      "capture": ["yes", "No meeting bot"],
+      "platforms": ["partial", "Mac + Windows; different beta requirements"],
+      "processing": ["partial", "Local transcription; external AI analysis"],
+      "recordings": ["yes", "Retained local audio"],
+      "context": ["different", "Selected local repositories and history"],
+      "live": ["yes", "Transcript, questions, risks and decisions"],
+      "languages": ["partial", "Depends on engine and installed build"],
+      "speakers": ["partial", "Attribution depends on capture and engine"],
+      "export": ["partial", "Local reports; delivery needs setup"],
+      "cost": ["different", "Open-source app; AI service costs separate"],
+      "readiness": ["partial", "Technical beta; manual setup and OS permissions"]
+    },
+    "meetscribe": {
+      "open-source": ["unknown", "Upstream MIT is not a full-product source licence"],
+      "capture": ["yes", "Bot-free capture advertised"],
+      "platforms": ["yes", "Mac and Windows downloads listed"],
+      "processing": ["unknown", "Local-processing and privacy wording differ"],
+      "recordings": ["unknown", "Replayable audio archive not established"],
+      "context": ["different", "Calendar and productivity integrations advertised"],
+      "live": ["yes", "Live transcript and action extraction advertised"],
+      "languages": ["unknown", "Language mix and switching not established"],
+      "speakers": ["yes", "Speaker detection advertised"],
+      "export": ["partial", "Export mentioned; formats not specified"],
+      "cost": ["unknown", "Pricing and FAQ describe different plans"],
+      "readiness": ["different", "Account and subscription for certain features"]
+    },
+    "granola": {
+      "open-source": ["unknown", "Full-product open-source rights not verified"],
+      "capture": ["yes", "Bot-free device capture"],
+      "platforms": ["yes", "Desktop and mobile apps listed"],
+      "processing": ["no", "Not local-only: external transcription and AI"],
+      "recordings": ["no", "No replayable meeting-audio archive"],
+      "context": ["different", "Meeting memory, calendar and integrations"],
+      "live": ["different", "AI notes and meeting chat"],
+      "languages": ["partial", "Multilingual; test mid-call switching"],
+      "speakers": ["yes", "Speaker tagging listed"],
+      "export": ["partial", "Sharing and integrations vary by plan"],
+      "cost": ["different", "Free Basic and paid per-user plans"],
+      "readiness": ["different", "Managed apps and plan-based team controls"]
+    },
+    "fireflies": {
+      "open-source": ["unknown", "Reviewed terms do not grant full-product source rights"],
+      "capture": ["yes", "Bot-free and bot capture paths"],
+      "platforms": ["partial", "Choose the supported app and capture path"],
+      "processing": ["no", "Managed cloud service, not an offline app"],
+      "recordings": ["partial", "Saved with bot; not with no-bot system audio"],
+      "context": ["different", "AskFred, meeting search and integrations"],
+      "live": ["yes", "Live Assist in both capture modes"],
+      "languages": ["partial", "Automatic / multilingual; check plan and mode"],
+      "speakers": ["partial", "Named or numbered labels depend on capture mode"],
+      "export": ["partial", "Downloads and integrations vary by plan and mode"],
+      "cost": ["different", "Free and paid per-seat tiers; separate allowances"],
+      "readiness": ["different", "Managed workspace with team options"]
+    },
+    "bluedot": {
+      "open-source": ["unknown", "Full-product open-source rights not established"],
+      "capture": ["yes", "Bot-free browser and desktop capture"],
+      "platforms": ["yes", "Chrome, Mac, Windows and mobile options listed"],
+      "processing": ["no", "Managed processing and cloud storage, not offline"],
+      "recordings": ["partial", "Managed library; recording and retention limits"],
+      "context": ["different", "Shared meeting history and CRM connections"],
+      "live": ["unknown", "Repository-grounded live help not verified"],
+      "languages": ["partial", "Automatic selection; mixed-language limits"],
+      "speakers": ["unknown", "Attribution on the exact capture path unverified"],
+      "export": ["partial", "Sharing and integrations depend on plan"],
+      "cost": ["different", "Limited free plan and paid per-user plans"],
+      "readiness": ["different", "Managed apps and workspace controls"]
+    },
+    "tldv": {
+      "open-source": ["unknown", "Full-product open-source rights not established"],
+      "capture": ["yes", "Bot recording and bot-free desktop capture"],
+      "platforms": ["yes", "Mac, Windows and Chrome extension"],
+      "processing": ["no", "Cloud processing and storage, not local-only"],
+      "recordings": ["partial", "Retained media depends on capture mode and plan"],
+      "context": ["different", "Meeting library and cross-meeting AI"],
+      "live": ["unknown", "Live statement checking not established"],
+      "languages": ["partial", "Mid-call switching described; plan restrictions"],
+      "speakers": ["partial", "Named or numbered labels depend on capture mode"],
+      "export": ["partial", "Sharing and clips; verify export formats"],
+      "cost": ["different", "Free entry plan and paid tiers with limits"],
+      "readiness": ["different", "Managed collaboration and team workflows"]
+    }
+  }
+}
