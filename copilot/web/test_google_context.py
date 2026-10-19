@@ -82,6 +82,35 @@ class GoogleContextTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["q"], '"topic  OR in:anywhere" newer_than:1y')
         self.assertEqual(len(result["sources"]["gmail"]["items"]), 3)
 
+    def test_drive_docs_read_in_memory_and_content_failure_is_explicit(self):
+        self.enable(drive=True)
+        calls = []
+        def run(command, params):
+            calls.append(command)
+            if command[0] == 'drive':
+                return {'files': [{'id': 'synthetic', 'name': 'Acme brief',
+                                  'mimeType': 'application/vnd.google-apps.document'}] * 5}
+            return {'tabs': [{'documentTab': {'body': {'content': [
+                {'paragraph': {'elements': [{'textRun': {'content': 'Acme supports CSV'}}]}}]}}}]}
+        with patch.object(self.provider, '_run', side_effect=run):
+            result = self.provider.search('call', 'Acme')
+        items = result['sources']['drive']['items']
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(items[0]['content_state'], 'document_excerpt')
+        self.assertIn('supports CSV', items[0]['excerpt'])
+        self.assertEqual(items[2]['content_state'], 'metadata_only')
+        self.assertNotIn('supports CSV', self.provider.preferences.read_text())
+        with patch.object(self.provider, '_run', side_effect=RuntimeError('access_or_api_error')):
+            result = self.provider._drive_content({'id': 'synthetic', 'mimeType': 'application/vnd.google-apps.document'}, 'Acme')
+        self.assertEqual(result['content_state'], 'metadata_only_content_unavailable')
+
+    def test_drive_sheets_bounded_range(self):
+        with patch.object(self.provider, '_run', return_value={'range': 'Sheet1!A1:Z80', 'values': [['Acme', 'CSV']]}) as run:
+            result = self.provider._drive_content({'id': 'synthetic', 'mimeType': 'application/vnd.google-apps.spreadsheet'}, 'Acme')
+        self.assertEqual(run.call_args.args[1]['range'], 'A1:Z80')
+        self.assertIn('Acme', result['excerpt'])
+        self.assertEqual(result['content_state'], 'first_sheet_A1_Z80')
+
     def test_preferences_change_during_search_discards_results(self):
         self.enable(drive=True)
         def search(source, query):

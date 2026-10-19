@@ -25,6 +25,7 @@
         <button class="quiet-button" id="updates-notice" type="button" aria-controls="settings-panel" hidden></button>
         <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
         <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
+        <button class="quiet-button" id="getting-started-open" type="button" aria-expanded="false" aria-controls="getting-started">Начать работу</button>
         <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
           <button data-language="ru" type="button">RU</button>
           <button data-language="en" type="button">EN</button>
@@ -71,6 +72,19 @@
           </div>
         </section>
       </div>
+    </section>
+    <section id="assistant-problem" class="startup-problem" hidden role="alert">
+      <span id="assistant-problem-text"></span>
+      <button type="button" class="quiet-button" id="assistant-problem-fix">Проверить ИИ</button>
+    </section>
+    <section id="getting-started" class="getting-started" hidden aria-labelledby="getting-started-heading">
+      <div class="repo-dialog-header"><h2 id="getting-started-heading">Начать работу с MeetOnTrack</h2><button class="quiet-button" id="getting-started-close" type="button">Закрыть</button></div>
+      <p id="getting-started-intro"></p>
+      <div class="startup-step"><h3 id="startup-audio-heading"></h3><p id="startup-audio-status" role="status"></p><button class="quiet-button" id="startup-recorder" type="button"></button> <button class="primary-button" id="startup-record" type="button"></button></div>
+      <div class="startup-step"><h3 id="startup-ai-heading"></h3><p id="startup-ai-help"></p><p id="startup-ai-status" role="status"></p><button class="quiet-button" id="startup-ai-check" type="button"></button> <a href="https://developers.openai.com/codex/cli/" target="_blank" rel="noopener noreferrer" id="startup-ai-install"></a><p id="startup-ai-login"></p></div>
+      <div class="startup-step"><h3 id="startup-context-heading"></h3><p id="startup-context-help"></p><button class="quiet-button" id="startup-context" type="button"></button> <button class="quiet-button" id="startup-google" type="button"></button></div>
+      <details class="startup-example"><summary id="startup-example-title"></summary><p id="startup-example-source"></p><p id="startup-example-question"></p><p id="startup-example-answer"></p></details>
+      <p id="startup-message" role="status"></p>
     </section>
     <main class="workspace">
       <section class="transcript-pane" aria-labelledby="transcript-heading">
@@ -207,11 +221,20 @@
         <div class="repo-dialog-header">
           <div>
             <h2 data-i18n="project.choose_title">Контекст этой встречи</h2>
-            <p data-i18n="project.choose_description">Выберите проект или репозиторий. Выбор действует только для этой встречи и меняет поиск Copilot.</p>
+            <p data-i18n="project.choose_description">Подключите папки и Google Drive для поиска. Выбор Git-проекта ниже действует только для этой встречи; подключённые источники сохраняются до отключения.</p>
           </div>
           <button class="icon-button" id="project-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
         </div>
         <p class="project-help" id="project-help" data-i18n="project.loading">Загружаю варианты…</p>
+        <section class="context-folders" aria-labelledby="context-folders-title">
+          <h3 id="context-folders-title"></h3><p id="context-folders-help"></p>
+          <button class="quiet-button" id="context-folder-choose" type="button"></button>
+          <label id="context-folder-path-label" for="context-folder-path"></label>
+          <input id="context-folder-path" type="text" maxlength="4096" autocomplete="off" spellcheck="false" />
+          <button class="quiet-button" id="context-folder-add" type="button"></button>
+          <ul id="context-folder-list"></ul><p id="context-folder-message" role="status"></p>
+          <button class="quiet-button" id="context-google-open" type="button"></button>
+        </section>
         <div class="project-options" id="project-options"></div>
         <details class="google-context-settings" id="google-context-settings">
           <summary data-i18n="google.heading">Google: поиск контекста</summary>
@@ -239,12 +262,12 @@
             <button class="quiet-button" id="google-search" type="submit" data-i18n="google.search">Найти для текущего звонка</button>
           </form>
           </details>
-          <p data-i18n="google.limits">Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 файлов, название, описание и ссылка, не полный текст. Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.</p>
+          <p data-i18n="google.limits">Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 результатов; для первых 2 — фрагменты Google Docs или A1:Z80 первого листа Google Sheets. Другие форматы и ошибки чтения помечаются как «только метаданные». Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.</p>
           <p id="google-message" role="status" aria-live="polite"></p>
           <div id="google-results"></div>
         </details>
         <div class="repo-dialog-footer">
-          <span data-i18n="project.local_note">Поиск идёт только по выбранным локальным репозиториям.</span>
+          <span data-i18n="project.local_note">Папки и Google — отдельные источники. Git-репозитории подключать необязательно.</span>
           <button class="quiet-button" id="project-edit-repos" type="button" data-i18n="project.edit_repos">Изменить набор репозиториев</button>
         </div>
       </div>
@@ -330,5 +353,6 @@
     </dialog>
     <script src="/updates.js" defer></script>
     <script src="/app.js" defer></script>
+    <script src="/getting-started.js" defer></script>
   </body>
 </html>

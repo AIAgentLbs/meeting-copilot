@@ -2068,3 +2068,21 @@ textarea::placeholder {
   #archive-dialog .archive-header { padding: 16px; align-items: flex-start; }
   #archive-dialog .archive-detail { padding: 16px; }
 }
+/* First-run guidance shares the app's existing surfaces and controls. */
+.getting-started { padding: 20px 28px; border-bottom: 1px solid var(--line, #ccc); max-height: 65vh; overflow: auto; font-size: 14px; }
+.getting-started p { max-width: 75ch; line-height: 1.5; }
+.startup-step { padding: 12px 0; border-top: 1px solid var(--line, #ccc); }
+.startup-step h3 { margin: 4px 0 8px; font-size: 16px; }
+.startup-step button, .startup-step a { margin-bottom: 6px; min-height: 44px; }
+.startup-step a { display: inline-flex; align-items: center; color: var(--accent-strong); text-underline-offset: 3px; }
+.startup-step .primary-button { background: var(--accent-strong); color: var(--surface-strong); padding: 10px 16px; border: 0; border-radius: 6px; cursor: pointer; }
+.startup-step button:disabled { opacity: 0.55; cursor: not-allowed; }
+.startup-problem { padding: 12px 24px; border-bottom: 1px solid currentColor; }
+.startup-problem button { margin-left: 12px; }
+.context-folders { padding: 12px 22px; }
+.context-folders p { max-width: 70ch; line-height: 1.5; }
+.context-folders li { margin: 8px 0; overflow-wrap: anywhere; }
+.context-folders label { display: block; margin-top: 12px; }
+.context-folders input { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 10px; }
+.context-folders button { min-height: 44px; }
+.startup-example { padding: 12px 0; }

@@ -9,7 +9,7 @@
 #
 #   make            build + sign MeetingCopilot.app
 #   make run-app    and launch it through LaunchServices
-#   make icon       redraw Resources/MeetingCopilot.icns from the feather
+#   make icon       redraw the MeetOnTrack waveform icon
 #   make identities list available signing identities
 #   make verify     show the built app's signature
 #   make release    build, notarize and publish a release
@@ -82,7 +82,7 @@ icon:
 	@swift Packaging/GenerateMeetingCopilotIcon.swift .build/MeetingCopilot.iconset
 	@iconutil -c icns .build/MeetingCopilot.iconset -o $(ICON)
 
-$(ICON):
+$(ICON): Packaging/GenerateMeetingCopilotIcon.swift
 	@swift Packaging/GenerateMeetingCopilotIcon.swift .build/MeetingCopilot.iconset
 	@iconutil -c icns .build/MeetingCopilot.iconset -o $(ICON)
 

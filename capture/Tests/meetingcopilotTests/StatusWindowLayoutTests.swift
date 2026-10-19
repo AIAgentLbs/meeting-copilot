@@ -18,6 +18,29 @@ import Testing
 /// which is only one of the ways it has gone wrong.
 @Suite(.serialized)
 struct StatusWindowLayoutTests {
+    @Test("A failed Start stays visible through polling and clears after a successful start")
+    @MainActor
+    func recordingFailureSurvivesPolling() throws {
+        _ = NSApplication.shared
+        let previousLanguage = InterfaceLanguage.current
+        InterfaceLanguage.current = .english
+        defer { InterfaceLanguage.current = previousLanguage }
+        let window = StatusWindow()
+        let detail = "Synthetic audio device unavailable"
+        window.showStartFailure(detail)
+        window.update(state: .idle, elapsed: nil)
+        window.updateTranscription(nil)
+        let failed = window.rowsView.views.map { describe($0) }.joined(separator: "\n")
+        #expect(failed.contains("Recording did not start"))
+        #expect(failed.contains(detail))
+        check(window, try #require(window.view?.window), "failed start")
+        window.update(state: .recording, elapsed: "0:01")
+        window.updateTranscription(nil)
+        let recovered = window.rowsView.views.map { describe($0) }.joined(separator: "\n")
+        #expect(!recovered.contains("Recording did not start"))
+        #expect(!recovered.contains(detail))
+    }
+
     @Test("Live speaker labels use the adaptive label colour")
     @MainActor
     func liveSpeakerLabelsFollowTheAppearance() throws {

@@ -283,9 +283,9 @@ struct SetupTests {
     @Test("Keep Audio is a switch, and its label still toggles it")
     @MainActor
     func keepAudioLabelTogglesItsSwitch() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let label = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Keep the audio after transcribing" })
@@ -444,9 +444,9 @@ struct SetupTests {
     @Test("Both transcription switches are wired to something")
     @MainActor
     func transcriptionSwitchesAreWired() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
 
         for title in ["In the cloud", "On this Mac"] {
             let label = try #require(panel.contentView?.allDescendants
@@ -466,9 +466,9 @@ struct SetupTests {
     @Test("Both cloud providers are offered, with their price and their key link")
     @MainActor
     func providerCardsCarryPriceAndLink() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let cards = panel.contentView?.allDescendants.compactMap { $0 as? ChoiceCard } ?? []
 
         let assembly = try #require(cards.first { $0.id == "assemblyai" })
@@ -501,9 +501,9 @@ struct SetupTests {
     @Test("Return commits a key field instead of pressing Done")
     @MainActor
     func returnInAKeyFieldIsSwallowed() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let keyFields = panel.contentView?.allDescendants
             .compactMap { $0 as? NSSecureTextField } ?? []
         // Both of them: the cloud key and the summary key sit under the same
@@ -528,9 +528,9 @@ struct SetupTests {
     @Test("The Summaries switch sits to the left of its heading")
     @MainActor
     func summariesSwitchIsFirst() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let heading = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Summaries" })
@@ -542,9 +542,9 @@ struct SetupTests {
     @Test("The Summaries switch is connected to something")
     @MainActor
     func summariesSwitchIsWired() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let heading = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Summaries" })
@@ -565,11 +565,11 @@ struct SetupTests {
     @Test("Setup offers the menu bar and the Dock as two switches")
     @MainActor
     func iconSwitchesAreOffered() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
 
-        for title in ["In the menu bar", "In the Dock"] {
+        for title in ["In the top menu bar on your Mac", "In the Dock"] {
             let label = try #require(
                 panel.contentView?.allDescendants
                     .compactMap { $0 as? NSTextField }
@@ -604,9 +604,9 @@ struct SetupTests {
     @Test("Setup explains automatic speech languages instead of offering a decoder pin")
     @MainActor
     func languageIsAMenuOfNames() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let label = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? NSTextField }
             .first { $0.stringValue == "Speech languages" })
@@ -620,9 +620,9 @@ struct SetupTests {
     @Test("Ollama is a full summary card with the official install link")
     @MainActor
     func ollamaIsInstallableChoiceCard() throws {
-        let setup = SetupWindow()
+        let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" })
+        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let ollama = try #require(panel.contentView?.allDescendants
             .compactMap { $0 as? ChoiceCard }
             .first { $0.id == "ollama" })
@@ -686,18 +686,14 @@ struct SetupTests {
     @Test("A config change redraws every open copy of the form")
     @MainActor
     func everyOpenFormRedrawsOnAChange() throws {
-        let setup = SetupWindow()
-        let settings = SettingsWindow()
-        defer { withExtendedLifetime((setup, settings)) {} }
-
-        let panels = [
-            try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) setup" }),
-            try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" }),
-        ]
+        let setup = SetupForm()
+        let settings = SetupForm()
+        defer { setup.stop(); settings.stop() }
+        let views = [setup.view, settings.view]
         // One switch, in two windows: the settings copy is on its Setup tab,
         // which is the tab a person lands on.
-        let switches = try panels.map { panel in
-            let label = try #require(panel.contentView?.allDescendants
+        let switches = try views.map { view in
+            let label = try #require(view.allDescendants
                 .compactMap { $0 as? NSTextField }
                 .first { $0.stringValue == "Keep the audio after transcribing" })
             let row = try #require(label.superview?.superview as? NSStackView)
@@ -711,9 +707,26 @@ struct SetupTests {
 
         NotificationCenter.default.post(name: Config.didChange, object: nil)
 
-        for (panel, toggle) in zip(panels, switches) {
-            #expect(toggle.state == stored, "\(panel.title) kept the stale answer")
+        for toggle in switches {
+            #expect(toggle.state == stored, "An open form kept the stale answer")
         }
+    }
+
+    @Test("First run hides advanced providers and exposes a working settings action")
+    @MainActor
+    func firstRunIsFocused() throws {
+        let form = SetupForm(firstRun: true)
+        defer { form.stop() }
+        let cards = form.view.allDescendants.compactMap { $0 as? ChoiceCard }
+        #expect(cards.isEmpty)
+        let buttons = form.view.allDescendants.compactMap { $0 as? NSButton }
+        let settings = try #require(buttons.first { $0.title == "Other options…" })
+        var opened = false
+        form.onShowSettings = { opened = true }
+        _ = settings.target?.perform(settings.action, with: settings)
+        #expect(opened)
+        let labels = form.view.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue }
+        #expect(labels.contains { $0.contains("Existing compatible files are reused") })
     }
 
     /// The rule these windows now live by: drawing is not deciding.

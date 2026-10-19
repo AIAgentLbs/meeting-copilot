@@ -26,6 +26,10 @@ import Foundation
 /// are installed *and answer when run*. Nothing here says "should work".
 @MainActor
 final class SetupForm: NSObject, NSTextFieldDelegate {
+    let firstRun: Bool
+    var onShowSettings: (() -> Void)?
+    private let quickStatus = NSTextField(wrappingLabelWithString: "")
+    private var quickDownloadError: String?
     /// Whether a recording is in progress. Registering at login and testing
     /// system audio both disturb a running recording, and nothing in this
     /// form is worth losing a meeting for.
@@ -177,7 +181,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private var summaryToolRuns: [String: Bool] = [:]
 
 
-    override init() {
+    init(firstRun: Bool = false) {
+        self.firstRun = firstRun
         super.init()
 
         let form = view
@@ -187,10 +192,27 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         form.edgeInsets = NSEdgeInsets(
             top: 22, left: SetupLayout.gutter, bottom: 22, right: SetupLayout.gutter)
 
+        if firstRun {
+            let welcome = SetupLayout.detail(localised(
+                "Record both sides of a call, read the live transcript and ask questions with your project context. Start here; optional services stay in Settings.",
+                "Записывайте обе стороны звонка, читайте стенограмму и задавайте вопросы с учетом своего проекта. Здесь только первый запуск; дополнительные сервисы доступны в настройках."), lines: 4, width: 580)
+            form.addArrangedSubview(welcome)
+        }
         form.addArrangedSubview(SetupLayout.section(
             localised("Access", "Доступ"),
-            content: SetupLayout.box([launchRow, micRow, audioRow, calendarRow])))
+            content: SetupLayout.box(firstRun ? [launchRow, micRow, audioRow] : [launchRow, micRow, audioRow, calendarRow])))
 
+        if firstRun {
+            quickStatus.font = SetupLayout.detailFont
+            quickStatus.maximumNumberOfLines = 0
+            form.addArrangedSubview(SetupLayout.section(
+                localised("Local speech recognition", "Локальная расшифровка"), content: quickStatus))
+            form.addArrangedSubview(SetupLayout.detail(localised(
+                "Speech languages are detected automatically, including changes during a call. Local recognition needs no paid API key. AI answers use Codex and its account limits; connect it in the assistant after setup.",
+                "Языки речи определяются автоматически, в том числе при переключении в звонке. Для локальной расшифровки платный ключ не нужен. Ответы ИИ используют Codex и лимиты его аккаунта; подключение доступно в помощнике после настройки."), lines: 5, width: 580))
+            let settings = SetupLayout.actionButton(localised("Other options…", "Другие настройки…"), target: self, action: #selector(showOtherSettings))
+            form.addArrangedSubview(settings)
+        } else {
         var transcription: [NSView] = [transcriptionRows(), languageRow()]
         // The live transcript is a local streaming model, so on an Intel Mac
         // there is nothing behind the switch. Left out rather than shown
@@ -221,7 +243,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         // at the end because it is the thing that makes all of the above run
         // without anyone opening this form again.
         form.addArrangedSubview(SetupLayout.box([autoRecordRow()]))
-
+        }
 
         for view in form.arrangedSubviews {
             view.widthAnchor.constraint(
@@ -231,6 +253,17 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         wireActions()
         refresh()
         configWatch = ConfigWatch.observe { [weak self] in self?.refresh() }
+    }
+
+    @objc private func showOtherSettings() { onShowSettings?() }
+
+    private func prepareLiveHelp() {
+        // This is an explicit setup action, not a download at recording start.
+        write(["live_transcription", "enabled"], true)
+        if !hasKey(for: transcriptionChoice.provider), Platform.supportsLocalModels {
+            write(["transcription", "engine"], "parakeet")
+        }
+        downloadLiveModel()
     }
 
     /// Re-read the machine and the config file. A host calls this when the
@@ -580,12 +613,11 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         menuBarIcon.action = #selector(iconsChanged)
         return SetupLayout.row(
             leading: menuBarIcon,
-            title: SetupLayout.title(localised("In the menu bar", "В строке меню")),
+            title: SetupLayout.title(localised("In the top menu bar on your Mac", "В верхнем меню Mac")),
             detail: SetupLayout.detail(
                 localised(
-                    "The feather, with the clock beside it while a meeting records — and the "
-                        + "menu with everything in it.",
-                    "Перо, во время встречи рядом с ним часы, и меню со всем остальным."),
+                    "The MeetOnTrack waveform icon shows the recording timer. Click it to open the assistant or recording controls.",
+                    "Значок звуковой волны MeetOnTrack показывает время записи. Нажмите, чтобы открыть помощник или управление записью."),
                 lines: 2, width: 520))
     }
 
@@ -789,6 +821,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             return
         }
         liveDownloading = true
+        quickDownloadError = nil
         liveStatus.stringValue = localised("preparing download…", "готовлюсь скачивать…")
         refresh()
         liveDownloadTask = Task { [weak self] in
@@ -807,6 +840,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
                     liveStatus.stringValue = localised(
                         "download incomplete — turn off and on to retry",
                         "скачалось не всё — выключите и включите, чтобы повторить")
+                    quickDownloadError = liveStatus.stringValue
                 }
             } catch is CancellationError {
                 liveStatus.stringValue = localised("download paused", "скачивание остановлено")
@@ -814,6 +848,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
                 liveStatus.stringValue =
                     localised("download failed: ", "не удалось скачать: ")
                         + error.localizedDescription
+                quickDownloadError = liveStatus.stringValue
             }
             liveDownloading = false
             liveDownloadTask = nil
@@ -921,6 +956,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private func downloadParakeetIfNeeded() {
         guard !parakeetIsHere() else { return }
         guard parakeetProgress == nil else { return }
+        quickDownloadError = nil
         watchParakeetSize()
         // So the footer button says what is happening from the first second,
         // rather than at the end of it.
@@ -931,6 +967,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             } catch {
                 parakeetStatus.stringValue =
                     localised("download failed: ", "не удалось скачать: ") + "\(error)"
+                quickDownloadError = parakeetStatus.stringValue
             }
             parakeetProgress?.invalidate()
             parakeetProgress = nil
@@ -1174,7 +1211,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             return localised(
                 "found but it doesn't run from here", "нашёлся, но отсюда не запускается")
         }
-        return localised("answers · ", "отвечает · ") + version
+        return localised("installed · ", "установлен · ") + version
     }
 
     /// Whether the local model is on this Mac. A Mac that cannot run it at
@@ -1314,6 +1351,16 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         autoRecord.state = autoRecordOn ? .on : .off
 
         highlightNextGrant()
+        if firstRun {
+            let finalReady = parakeetIsDownloaded
+            let liveReady = liveModelStore.isReady(language: livePrompt)
+            quickStatus.stringValue = localised(
+                "Final transcript: \(finalReady ? "compatible model already installed" : "one-time download, about \(Self.parakeetMegabytes) MB").\nLive transcript: \(liveReady ? "model already installed" : "a separate streaming model, about 600 MB"). Existing compatible files are reused.\n\(isDownloading ? "Download in progress. You can leave this window open or explore the assistant." : "The button below prepares only what is missing.")",
+                "Итоговая стенограмма: \(finalReady ? "совместимая модель уже установлена" : "разовая загрузка, примерно \(Self.parakeetMegabytes) МБ").\nРасшифровка во время звонка: \(liveReady ? "модель уже установлена" : "отдельная потоковая модель, примерно 600 МБ"). Совместимые файлы используются повторно.\n\(isDownloading ? "Идет загрузка. Можно оставить окно открытым или перейти в помощник." : "Кнопка внизу подготовит только то, чего не хватает.")")
+            if let error = quickDownloadError {
+                quickStatus.stringValue += "\n" + error + localised(". Press the download button to retry.", ". Нажмите кнопку загрузки для повтора.")
+            }
+        }
         onStateChange?()
     }
 
@@ -1335,7 +1382,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             let known = hasKey(for: card.id)
             card.report(
                 known
-                    ? localised("key works", "ключ работает")
+                    ? localised("key saved; checked when used", "ключ сохранен; проверяется при запросе")
                     : localised("no key yet", "ключа ещё нет"),
                 good: known)
             card.showLink(!known)
@@ -1417,7 +1464,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         if SetupPermissions.needsStartAtLogin {
             return { [weak self] in self?.startAtLogin() }
         }
-        if SetupPermissions.microphone() == .notAsked {
+        if SetupPermissions.microphone() != .granted {
             return { [weak self] in Task { await self?.askMicrophone() } }
         }
         if SetupPermissions.needsSystemAudioTest(systemAudio) {
@@ -1425,6 +1472,9 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         }
         if parakeetIsWantedAndMissing, parakeetProgress == nil {
             return { [weak self] in self?.downloadParakeetIfNeeded() }
+        }
+        if firstRun, Platform.supportsLocalModels, !Config.liveTranscriptionEnabled() {
+            return { [weak self] in self?.prepareLiveHelp() }
         }
         if Config.liveTranscriptionEnabled() {
             let prompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
@@ -1445,13 +1495,16 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         if SetupPermissions.microphone() != .granted { left.append(.microphone) }
         if systemAudio != .heard { left.append(.systemAudio) }
         if parakeetIsWantedAndMissing { left.append(.parakeet) }
+        if firstRun, Platform.supportsLocalModels, !Config.liveTranscriptionEnabled() {
+            left.append(.liveEnabled)
+        }
         if Config.liveTranscriptionEnabled() {
             let prompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
             if !liveModelStore.isReady(language: prompt) { left.append(.liveModel) }
         }
         // The window used to say everything was granted while the card it had
         // chosen to write the summaries said "not here" three inches above.
-        if chosenSummaryIsMissing { left.append(.summaryTool) }
+        if !firstRun, chosenSummaryIsMissing { left.append(.summaryTool) }
         return left
     }
 
@@ -1468,6 +1521,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         case systemAudio
         case parakeet
         case liveModel
+        case liveEnabled
         /// Summaries are on, and whatever was chosen to write them isn't here.
         case summaryTool
 
@@ -1480,6 +1534,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             case .parakeet: return "parakeet"
             case .liveModel:
                 return localised("live model", "модель для расшифровки на ходу")
+            case .liveEnabled:
+                return localised("enable live transcription", "включить расшифровку звонка")
             case .summaryTool:
                 return localised("something to summarise with", "чем писать саммари")
             }
@@ -1524,7 +1580,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
                 ? localised("Open Login Items", "Открыть объекты входа")
                 : localised("Start at login", "Запускать при входе")
         }
-        if SetupPermissions.microphone() == .notAsked {
+        if SetupPermissions.microphone() != .granted {
             return localised("Allow microphone", "Разрешить микрофон")
         }
         if SetupPermissions.needsSystemAudioTest(systemAudio) {
@@ -1546,6 +1602,10 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         if outstanding.contains(.liveModel) {
             return localised("Download live model", "Скачать модель")
         }
+        if firstRun, Platform.supportsLocalModels, !Config.liveTranscriptionEnabled() {
+            return localised("Enable live transcription", "Включить расшифровку звонка")
+        }
+        if firstRun { return localised("Open MeetOnTrack", "Открыть MeetOnTrack") }
         return localised("Done", "Готово")
     }
     private func report(_ row: AccessRow, _ message: String) {

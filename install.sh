@@ -18,13 +18,12 @@ fail() { printf 'MeetOnTrack · ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$(uname -m)" == "arm64" ]] || fail "this beta currently requires Apple Silicon"
 os_version="$(sw_vers -productVersion)"
 [[ "${os_version%%.*}" -ge 15 ]] || fail "macOS 15 or later is required"
-for tool in curl unzip shasum python3 swiftc pgrep; do
-  command -v "$tool" >/dev/null || fail "$tool is required; see https://aiagentlbs.github.io/meeting-copilot/ru/#install"
+for tool in curl unzip shasum python3 pgrep; do
+  command -v "$tool" >/dev/null || fail "$tool is required; see https://meetontrack.com/ru/#install"
 done
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || fail "Python 3.10 or later is required"
-swiftc --version >/dev/null 2>&1 || fail "Apple Command Line Tools are required; run xcode-select --install, then try again"
-command -v codex >/dev/null || fail "Codex CLI is required: https://developers.openai.com/codex/cli"
-codex --version >/dev/null 2>&1 || fail "Codex CLI or its runtime is unavailable"
+# Recording and local transcription do not require a paid AI subscription.
+# The assistant's optional connection is checked explicitly in first-run UI.
 
 require_capture_closed() {
   if pgrep -f '/MeetingCopilotCapture([[:space:]]|$)' >/dev/null 2>&1; then
@@ -55,9 +54,10 @@ done
 
 # Prepare everything before touching an existing installation.
 mkdir -p "$tmp/helpers"
-swiftc "$tmp/release/payload/bin/ZoomWindowFinder.swift" -o "$tmp/helpers/zoom-window-finder"
-swiftc "$tmp/release/payload/bin/ZoomFrameInspector.swift" -o "$tmp/helpers/zoom-frame-inspector"
-swiftc "$tmp/release/payload/bin/DetectSpeechLanguage.swift" -o "$tmp/helpers/detect-speech-language"
+for helper in zoom-window-finder zoom-frame-inspector detect-speech-language; do
+  [[ -x "$tmp/release/payload/bin/$helper" ]] || fail "Release helper is missing: $helper"
+  install -m 0755 "$tmp/release/payload/bin/$helper" "$tmp/helpers/$helper"
+done
 require_capture_closed
 backup_stamp="$(date +%Y%m%d-%H%M%S)-$$"
 
@@ -111,8 +111,8 @@ if [[ ! -f "$CONFIG/active-repos.json" ]]; then
 import json, pathlib, sys
 source, target = map(pathlib.Path, sys.argv[1:])
 data = json.loads(source.read_text())
-data["repositories"] = data.get("repositories", [])[:15]
-data["repository_count"] = len(data["repositories"])
+data["repositories"] = []
+data["repository_count"] = 0
 target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 PY
 fi

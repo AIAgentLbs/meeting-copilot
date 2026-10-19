@@ -19,6 +19,8 @@ final class StatusWindow {
     var onToggleLive: ((Bool) -> Void)?
     var onOpenFolder: (() -> Void)?
     var onShowRecordings: (() -> Void)?
+    var onOpenAssistant: (() -> Void)?
+    var onShowSetup: (() -> Void)?
 
     private let panel: NSWindow
     /// The rows, kept because the window's height is measured from them.
@@ -57,6 +59,7 @@ final class StatusWindow {
     private var liveTextVisible = false
     private var heightBeforeLive: CGFloat?
     private var liveRevealedAfterStop = false
+    private var startFailure: String?
 
     init() {
         panel = NSWindow(
@@ -77,6 +80,12 @@ final class StatusWindow {
         // Closing must hide, not destroy: the Dock icon reopens this window.
         panel.isReleasedWhenClosed = false
         panel.minSize = Self.compactSize
+
+        let assistant = NSButton(title: localised("Open MeetOnTrack assistant", "Открыть помощник MeetOnTrack"), target: self, action: #selector(openAssistantClicked))
+        assistant.bezelStyle = .rounded
+        assistant.identifier = NSUserInterfaceItemIdentifier("open-assistant")
+        let setup = NSButton(title: localised("Finish setup / check sound", "Настроить / проверить звук"), target: self, action: #selector(showSetupClicked))
+        setup.bezelStyle = .rounded
 
         stateLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium).tabularFigures
         transcriptionLabel.font = .systemFont(ofSize: 11)
@@ -185,7 +194,7 @@ final class StatusWindow {
         buttons.spacing = 8
 
         rows.setViews([
-            header, transcriptionLabel, buttons, autoRecordCheckbox, decisionLabel,
+            assistant, header, transcriptionLabel, buttons, autoRecordCheckbox, decisionLabel, setup,
             openFolder, manage, liveSection,
         ], in: .top)
         rows.orientation = .vertical
@@ -277,6 +286,7 @@ final class StatusWindow {
 
     func update(state: MenuBarController.State, elapsed: String?) {
         let recording = state != .idle
+        if recording { startFailure = nil }
         icon.image = BrandIcon.image(
             size: 18,
             color: BrandIcon.color(recording: recording, paused: state == .paused)
@@ -303,10 +313,20 @@ final class StatusWindow {
             pauseButton.title = localised("Resume", "Продолжить")
             pauseButton.isEnabled = true
         }
+        if startFailure != nil {
+            stateLabel.stringValue = localised("Recording did not start", "Запись не началась")
+            stateLabel.textColor = .systemRed
+        }
     }
 
     func updateTranscription(_ text: String?) {
+        if let detail = startFailure {
+            transcriptionLabel.stringValue = detail
+            transcriptionLabel.isHidden = false
+            return
+        }
         transcriptionLabel.stringValue = text ?? ""
+        transcriptionLabel.toolTip = nil
         transcriptionLabel.isHidden = text?.isEmpty != false
         growToFitContent()
     }
@@ -476,6 +496,17 @@ final class StatusWindow {
         liveCheckbox.state = enabled ? .on : .off
     }
 
+    func showStartFailure(_ detail: String) {
+        startFailure = detail
+        stateLabel.stringValue = localised("Recording did not start", "Запись не началась")
+        transcriptionLabel.stringValue = detail
+        transcriptionLabel.isHidden = false
+        transcriptionLabel.toolTip = detail
+        growToFitContent()
+    }
+
+    @objc private func openAssistantClicked() { onOpenAssistant?() }
+    @objc private func showSetupClicked() { onShowSetup?() }
     @objc private func toggleClicked() { onToggle?() }
     @objc private func pauseClicked() { onTogglePause?() }
     @objc private func autoRecordClicked() { onToggleAutoRecord?() }

@@ -11,6 +11,7 @@ BUILD="${MEETING_COPILOT_BUILD:-$(git -C "$ROOT" rev-list --count HEAD)}"
 SPARKLE="$(find "$BUILD_ROOT/artifacts/sparkle" -type d -name Sparkle.framework -path '*macos-arm64_x86_64*' | head -1)"
 [[ -x "$BIN" ]] || { echo "Run swift build -c release first" >&2; exit 1; }
 [[ -d "$DONOR" ]] || { echo "A LocalVQE runtime donor app is required" >&2; exit 1; }
+make -C "$CAPTURE" icon
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/Models" "$APP/Contents/Resources/Licenses" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/MeetingCopilotCapture"

@@ -39,6 +39,7 @@ final class MenuBarController {
     var onOpenFolder: (() -> Void)?
     var onShowRecordings: (() -> Void)?
     var onShowWindow: (() -> Void)?
+    var onOpenAssistant: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onShowSetup: (() -> Void)?
     var onCheckForUpdates: (() -> Void)?
@@ -54,6 +55,10 @@ final class MenuBarController {
         // an item drawn from an attributed title loses the grey the system
         // gives a disabled one, and the state line is disabled.
         menu.font = NSFont.menuFont(ofSize: 0).tabularFigures
+
+        let assistant = NSMenuItem(title: localised("Open MeetOnTrack assistant", "Открыть помощник MeetOnTrack"), action: #selector(openAssistantClicked), keyEquivalent: "o")
+        menu.addItem(assistant)
+        menu.addItem(.separator())
 
         stateLabel = NSMenuItem(
             title: localised("idle", "не записывает"), action: nil, keyEquivalent: "")
@@ -174,7 +179,7 @@ final class MenuBarController {
 
         for item in [
             toggleItem, pauseItem, autoRecordItem, showWindow, openFolder,
-            recordings, settings, setupItem, updatesItem, about, quit,
+            recordings, settings, setupItem, updatesItem, about, quit, assistant,
         ] {
             item.target = self
         }
@@ -308,6 +313,7 @@ final class MenuBarController {
         BrandIcon.image(size: 16, color: color)
     }
 
+    @objc private func openAssistantClicked() { onOpenAssistant?() }
     @objc private func toggleClicked() { onToggle?() }
     @objc private func pauseClicked() { onTogglePause?() }
     @objc private func autoRecordClicked() { onToggleAutoRecord?() }

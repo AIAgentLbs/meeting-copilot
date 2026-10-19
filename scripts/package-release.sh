@@ -10,6 +10,12 @@ cp -R "$APP" "$stage/Meeting Copilot Capture.app"
 mkdir -p "$stage/payload"
 cp -R "$ROOT/copilot/web" "$stage/payload/web"
 cp -R "$ROOT/copilot/bin" "$stage/payload/bin"
+swiftc "$ROOT/copilot/bin/ZoomWindowFinder.swift" -o "$stage/payload/bin/zoom-window-finder"
+swiftc "$ROOT/copilot/bin/ZoomFrameInspector.swift" -o "$stage/payload/bin/zoom-frame-inspector"
+swiftc "$ROOT/copilot/bin/DetectSpeechLanguage.swift" -o "$stage/payload/bin/detect-speech-language"
+for helper in zoom-window-finder zoom-frame-inspector detect-speech-language; do
+  codesign --force --sign - --timestamp=none "$stage/payload/bin/$helper"
+done
 cp -R "$ROOT/copilot/config" "$stage/payload/config"
 find "$stage" -name '__pycache__' -type d -prune -exec rm -rf {} +
 python3 - "$stage" "$(git -C "$ROOT" rev-parse HEAD)" <<'PY'

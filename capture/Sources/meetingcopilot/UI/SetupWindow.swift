@@ -18,9 +18,12 @@ final class SetupWindow: NSObject, NSWindowDelegate {
     }
     /// Called when the window has done everything it can and been dismissed.
     var onFinished: (() -> Void)?
+    var onShowSettings: (() -> Void)? {
+        didSet { form.onShowSettings = onShowSettings }
+    }
 
     private let panel: NSWindow
-    private let form = SetupForm()
+    private let form = SetupForm(firstRun: true)
     private let footerNote = NSTextField(labelWithString: "")
     private let primary = NSButton(
         title: localised("Done", "Готово"), target: nil, action: nil)
@@ -46,7 +49,7 @@ final class SetupWindow: NSObject, NSWindowDelegate {
         footerNote.lineBreakMode = .byTruncatingTail
 
         let later = NSButton(
-            title: localised("Later", "Позже"), target: self, action: #selector(laterClicked))
+            title: localised("Open assistant", "Перейти в помощник"), target: self, action: #selector(laterClicked))
         later.bezelStyle = .rounded
         primary.bezelStyle = .rounded
         primary.keyEquivalent = "\r"

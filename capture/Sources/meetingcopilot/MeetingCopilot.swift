@@ -424,9 +424,12 @@ final class AppController {
     private lazy var setupWindow: SetupWindow = {
         let setup = SetupWindow()
         setup.isRecording = { [weak self] in self?.isRecording == true }
+        setup.onShowSettings = { [weak self] in self?.showSettings() }
         setup.onFinished = { [weak self] in
             self?.startAutomaticFeatures(requestCalendarAccess: false)
             self?.offerSetup()
+            self?.showWindow()
+            AssistantLink.open()
         }
         return setup
     }()
@@ -492,6 +495,7 @@ final class AppController {
         menuBar.onOpenFolder = { [weak self] in self?.openFolder() }
         menuBar.onShowRecordings = { [weak self] in self?.showRecordings() }
         menuBar.onShowWindow = { [weak self] in self?.showWindow() }
+        menuBar.onOpenAssistant = { AssistantLink.open() }
         menuBar.onShowSettings = { [weak self] in self?.showSettings() }
         menuBar.onShowSetup = { [weak self] in self?.showSetup() }
         menuBar.onCheckForUpdates = { [weak self] in self?.updates.checkForUpdates() }
@@ -506,6 +510,8 @@ final class AppController {
         window.onToggleLive = { [weak self] enabled in self?.toggleLive(enabled) }
         window.onOpenFolder = { [weak self] in self?.openFolder() }
         window.onShowRecordings = { [weak self] in self?.showRecordings() }
+        window.onOpenAssistant = { AssistantLink.open() }
+        window.onShowSetup = { [weak self] in self?.showSetup() }
         window.updateLivePreference(enabled: Config.liveTranscriptionEnabled())
         if Config.showWindowAtLaunch(), !SetupState.isPending { window.show() }
 
@@ -733,6 +739,8 @@ final class AppController {
             }
         } catch {
             FileHandle.standardError.write(Data("recording start failed: \(error)\n".utf8))
+            window.showStartFailure(error.localizedDescription)
+            window.bringToFront()
             notifyUser(
                 title: localised(
                     "MeetOnTrack — recording failed",

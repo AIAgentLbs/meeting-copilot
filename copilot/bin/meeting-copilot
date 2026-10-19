@@ -83,8 +83,7 @@ if [[ ! -f "$session_file" || ! -f "$web_server" ]]; then
 fi
 if ! /usr/bin/env PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin" \
   codex --version >/dev/null 2>&1; then
-  print -u2 "Codex CLI or its Node runtime is unavailable"
-  exit 1
+  print "AI assistant is not connected yet; configure it in MeetOnTrack. Recording remains available."
 fi
 
 "$refresh_script" --status-only --manifest "$active_manifest"

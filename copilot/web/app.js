@@ -270,7 +270,7 @@ const translations = {
     "project.manual_hint": "Вы выбрали контекст только для этой встречи.",
     "project.auto_hint": "Проект определён по названию или репликам. Вы можете изменить выбор.",
     "project.choose_title": "Контекст этой встречи",
-    "project.choose_description": "Выберите проект или репозиторий. Выбор действует только для этой встречи и меняет поиск Copilot.",
+    "project.choose_description": "Подключите папки и Google Drive для поиска. Выбор Git-проекта ниже действует только для этой встречи; подключённые источники сохраняются до отключения.",
     "project.loading": "Загружаю варианты…",
     "project.choose_help": "Сейчас поиск идёт по {count}. Можно оставить как есть или сузить контекст.",
     "project.no_meeting": "Начните запись, чтобы выбрать контекст встречи.",
@@ -283,7 +283,7 @@ const translations = {
     "project.all_detail": "Искать по {count} без привязки к проекту.",
     "project.only_repo": "Только {name}",
     "project.selected": "Выбрано",
-    "project.local_note": "Поиск идёт только по выбранным локальным репозиториям.",
+    "project.local_note": "Папки и Google — отдельные источники. Git-репозитории подключать необязательно.",
     "project.edit_repos": "Изменить набор репозиториев",
     "project.saving": "Сохраняю выбор…",
     "ui.disconnected": "UI отключён",
@@ -497,7 +497,7 @@ const translations = {
     "project.manual_hint": "You selected this context for this meeting only.",
     "project.auto_hint": "The project was inferred from the meeting title or transcript. You can change it.",
     "project.choose_title": "Context for this meeting",
-    "project.choose_description": "Choose a project or repository. This affects Copilot search for this meeting only.",
+    "project.choose_description": "Connect folders and Google Drive for search. The Git project selection below applies to this meeting; connected sources remain active until disconnected.",
     "project.loading": "Loading choices…",
     "project.choose_help": "Copilot currently searches {count}. Keep this scope or narrow it.",
     "project.no_meeting": "Start a recording to choose meeting context.",
@@ -510,7 +510,7 @@ const translations = {
     "project.all_detail": "Search {count} without choosing a project.",
     "project.only_repo": "Only {name}",
     "project.selected": "Selected",
-    "project.local_note": "Search is limited to selected local repositories.",
+    "project.local_note": "Folders and Google are separate sources. Git repositories are optional.",
     "project.edit_repos": "Change repository set",
     "project.saving": "Saving selection…",
     "ui.disconnected": "UI disconnected",
@@ -2569,20 +2569,14 @@ async function state() {
     }
     const project = data.project || {};
     window.renderReleaseUpdates(data.updates || {});
+    window.renderGettingStartedStatus?.(data);
     renderDeliveryHealth(data.delivery || {});
     const scopedRepositories = project.repositories || [];
     const count = repositoryCountLabel(scopedRepositories.length || data.repositories || 0);
     const projectKind = project.kind || "all";
     const hint = projectKind === "all" ? "project.all_hint"
       : project.confidence === "manual" ? "project.manual_hint" : "project.auto_hint";
-    elements.repoStatus.textContent = projectKind === "all"
-      ? t("project.all_scope", { count })
-      : projectKind === "repository"
-        ? t("project.repository_scope", { project: project.name })
-        : t(project.confidence === "manual" ? "project.manual_scope" : "project.auto_scope", {
-            project: project.name,
-            count,
-          });
+    elements.repoStatus.textContent = document.documentElement.lang === "en" ? "Context sources" : "Источники контекста";
     const repositoryList = scopedRepositories
       .map((repo) => `${repo.name}: ${repo.path}`)
       .join("\n");
@@ -2926,7 +2920,7 @@ Object.assign(translations.ru, {
   "google.save": "Сохранить источники", "google.query": "Участник, компания или тема встречи",
   "google.search": "Найти для текущего звонка", "google.loading": "Подключаю источники…",
   "google.searching": "Ищу контекст…", "google.saved": "Источники сохранены; предыдущие результаты очищены.",
-  "google.limits": "Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 файлов, название, описание и ссылка, не полный текст. Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.",
+  "google.limits": "Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 результатов; для первых 2 — фрагменты Google Docs или A1:Z80 первого листа Google Sheets. Другие форматы и ошибки чтения помечаются как «только метаданные». Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.",
   "google.account": "Подключён Google: {account}", "google.auth": "Google не подключён к Copilot. Нажмите «Подключить Google»; если gws ещё не настроен, потребуется локальная настройка OAuth-клиента.",
   "google.empty": "Ничего не найдено", "google.partial": "Показана часть результатов",
   "google.failed": "Источник недоступен: {source} ({state}). Проверьте gws и разрешения доступа.",
@@ -2945,7 +2939,7 @@ Object.assign(translations.en, {
   "google.save": "Save sources", "google.query": "Participant, company or meeting topic",
   "google.search": "Search for this call", "google.loading": "Loading connections…",
   "google.searching": "Searching context…", "google.saved": "Sources saved; previous results cleared.",
-  "google.limits": "Calendar: past 90 / next 30 days. Gmail: up to 3 messages from the past year, headers and snippets. Drive: up to 5 file titles, descriptions and links, not full contents. Results expire in 10 minutes; source changes clear them. Report delivery is configured separately.",
+  "google.limits": "Calendar: past 90 / next 30 days. Gmail: up to 3 messages from the past year, headers and snippets. Drive: up to 5 results; first 2 can include Google Docs excerpts or first-sheet A1:Z80 from Google Sheets. Other formats and content-read failures are labelled metadata-only. Results expire in 10 minutes; source changes clear them. Report delivery is configured separately.",
   "google.account": "Connected Google: {account}", "google.auth": "Google is not connected to Copilot. Choose Connect Google; an unconfigured gws requires local OAuth client setup.",
   "google.empty": "No results", "google.partial": "Some results are omitted",
   "google.failed": "Source unavailable: {source} ({state}). Check gws and access permissions.",
@@ -3046,6 +3040,13 @@ document.querySelector("#google-search-form").addEventListener("submit", async e
           }
         }
         row.append(link, textNode("small", "", item.date || ""), textNode("p", "", item.excerpt || ""));
+        if (item.content_state) row.append(textNode("small", "", {
+          document_excerpt: document.documentElement.lang === "en" ? "Document excerpt" : "Фрагмент документа",
+          first_sheet_A1_Z80: document.documentElement.lang === "en" ? "First sheet · A1:Z80" : "Первый лист · A1:Z80",
+          metadata_only: document.documentElement.lang === "en" ? "Metadata only" : "Только метаданные",
+          metadata_only_unsupported_format: document.documentElement.lang === "en" ? "Metadata only · format not supported" : "Только метаданные · формат не поддерживается",
+          metadata_only_content_unavailable: document.documentElement.lang === "en" ? "Metadata only · content access failed" : "Только метаданные · не удалось прочитать содержимое"
+        }[item.content_state] || item.content_state));
         section.append(row);
       }
       googleResults.append(section);
