@@ -105,7 +105,14 @@ install -m 0755 "$tmp/helpers/zoom-window-finder" "$SHARE/bin/zoom-window-finder
 install -m 0755 "$tmp/helpers/zoom-frame-inspector" "$SHARE/bin/zoom-frame-inspector"
 install -m 0755 "$tmp/helpers/detect-speech-language" "$SHARE/bin/detect-speech-language"
 
-python3 "$CONFIG/refresh-repos.py"
+# Discovery is explicit (meeting-copilot --refresh). A first install must not
+# scan unrelated project directories or write to a different user's config.
+if [[ ! -f "$CONFIG/repos.json" ]]; then
+  python3 - "$CONFIG/repos.json" <<'PY'
+import json, pathlib, sys
+pathlib.Path(sys.argv[1]).write_text(json.dumps({"repositories": [], "repository_count": 0, "search_roots": []}) + "\n")
+PY
+fi
 if [[ ! -f "$CONFIG/active-repos.json" ]]; then
   python3 - "$CONFIG/repos.json" "$CONFIG/active-repos.json" <<'PY'
 import json, pathlib, sys

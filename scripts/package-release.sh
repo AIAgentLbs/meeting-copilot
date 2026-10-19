@@ -19,11 +19,16 @@ done
 cp -R "$ROOT/copilot/config" "$stage/payload/config"
 find "$stage" -name '__pycache__' -type d -prune -exec rm -rf {} +
 python3 - "$stage" "$(git -C "$ROOT" rev-parse HEAD)" <<'PY'
-import hashlib, json, pathlib, plistlib, sys
+import hashlib, json, os, pathlib, plistlib, sys
 root = pathlib.Path(sys.argv[1])
 info = plistlib.loads((root / "Meeting Copilot Capture.app/Contents/Info.plist").read_bytes())
 files = {}
 for path in sorted(root.rglob("*")):
+    if path.is_symlink():
+        # zip -y stores the link itself, not the bytes it points to. Include
+        # framework directory links as well as links to regular files.
+        files[str(path.relative_to(root))] = hashlib.sha256(os.readlink(path).encode()).hexdigest()
+        continue
     if path.is_file():
         relative = str(path.relative_to(root))
         if path.suffix in {".caf", ".wav", ".log"} or path.name in {"meeting.json", "report.json", "delivery.json", "frames.json", "repos.json", "active-repos.json"}:
