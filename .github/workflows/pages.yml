@@ -35,7 +35,13 @@ jobs:
           cp install.sh _site/install.sh
           cp docs/install.ps1 _site/install.ps1
           cp docs/analytics.js docs/analytics-config.json docs/robots.txt docs/sitemap.xml docs/llms.txt docs/favicon.svg docs/privacy.html _site/
-          cp -R docs/compare _site/compare
+          mkdir -p _site/compare
+          cp docs/compare/index.html _site/compare/
+          for page in docs/compare/*/index.html; do
+            directory="$(basename "$(dirname "$page")")"
+            mkdir -p "_site/compare/$directory"
+            cp "$page" "_site/compare/$directory/index.html"
+          done
       - name: Stage verified screenshots without adding media to Git
         run: node scripts/stage-site-screenshots.cjs _site/media
       - name: Stage verified product logos without adding media to Git
