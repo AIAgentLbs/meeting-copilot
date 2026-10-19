@@ -4,10 +4,26 @@ const fs=require('node:fs');
 const path=require('node:path');
 const root=path.resolve(__dirname,'../docs');
 const content=require('../docs/compare/content.json');
+const presentation=require('../docs/compare/presentation.json');
+const logoAssets=require('../docs/comparison-logo-assets.json').assets;
+const noComparisonLinks=html=>assert(!/<a\b[^>]*href=["'][^"']*\/compare\//i.test(html),'Comparison links must not appear in visible navigation');
 const ids=new Set(content.criteria.map(item=>item.id));
 assert.equal(ids.size,12);
 assert.equal(content.criteria[0].id,'open-source');
 assert.deepEqual(content.competitors.map(item=>item.slug),['meetscribe','granola','fireflies','bluedot','tldv']);
+assert.deepEqual(new Set(Object.keys(presentation.products)),new Set(['meetontrack',...content.competitors.map(v=>v.slug)]));
+for(const product of Object.values(presentation.products)){
+ assert.deepEqual(new Set(Object.keys(product)),ids);
+ for(const [status,summary] of Object.values(product)){
+  assert(Object.hasOwn(presentation.labels,status));
+  assert(summary.length>0&&summary.length<=100);
+ }
+}
+for(const asset of logoAssets){
+ assert.equal(asset.file,`${asset.id}.png`);
+ assert.match(asset.sha256,/^[a-f0-9]{64}$/);
+ assert(asset.url.startsWith('https://')&&asset.sourcePage.startsWith('https://'));
+}
 for(const vendor of content.competitors){
   assert.deepEqual(new Set(Object.keys(vendor.rows)),ids);
   for(const item of [...content.criteria,...Object.values(vendor.rows)]){
@@ -31,19 +47,33 @@ for(const vendor of content.competitors){
   assert(html.includes('/#install-windows')&&html.includes('/#install'));
   assert(!/\b(?:src|href)="http:\/\//.test(html));
   for(const ref of html.matchAll(/href="#([^"]+)"/g))assert(html.includes(`id="${ref[1]}"`),`Broken anchor ${ref[1]}`);
-  for(const other of content.competitors.filter(item=>item.slug!==vendor.slug))assert(html.includes(`/compare/${other.slug}/`));
+  noComparisonLinks(html);
+  assert(!html.includes('MeetOnTrack public beta'));
+  assert.match(html,/href="\/styles\.css\?v=[a-f0-9]{12}"/,'Changed styles must invalidate the browser cache');
+  assert(html.includes('Not verified does not mean unavailable'));
+  assert.equal((html.match(/class="comparison-detail"/g)||[]).length,24);
+  assert.equal((html.match(/<summary aria-label="Details and sources for /g)||[]).length,24);
+  assert(html.includes(`/media/logos/${vendor.slug}.png`));
+  assert(html.includes('src="/favicon.svg"'));
+  assert(html.includes('stroke="currentColor"')&&html.includes('aria-hidden="true"'));
+  assert(logoAssets.some(a=>a.id===vendor.slug));
 }
 const hub=fs.readFileSync(path.join(root,'compare/index.html'),'utf8');
 const sitemap=fs.readFileSync(path.join(root,'sitemap.xml'),'utf8');
 for(const vendor of content.competitors){
- assert(hub.includes(`/compare/${vendor.slug}/`));
+ assert(hub.includes(vendor.name));
  assert(sitemap.includes(`https://meetontrack.com/compare/${vendor.slug}/`));
 }
-for(const file of ['index.html','ru/index.html'])assert(fs.readFileSync(path.join(root,file),'utf8').includes('href="/compare/"'));
+noComparisonLinks(hub);
+for(const file of ['index.html','ru/index.html'])noComparisonLinks(fs.readFileSync(path.join(root,file),'utf8'));
 const meetscribe=content.competitors.find(v=>v.slug==='meetscribe');
 assert(meetscribe.rows['open-source'].refs.includes('meetily-license'));
 assert(meetscribe.rows['open-source'].refs.includes('meetscribe-terms'));
 assert(meetscribe.rows.processing.refs.includes('meetscribe-privacy'));
 assert(meetscribe.tradeoff.includes('separate codebase'));
 assert(!hub.includes('Sources checked <time datetime="2026-10-16"'));
-console.log(`PASS: ${content.competitors.length+1} comparison routes, 12 consistent criteria, evidence, per-vendor dates, upstream/product distinction, SEO and links.`);
+assert.equal(presentation.products.granola.recordings[0],'no');
+assert.equal(presentation.products.fireflies.recordings[0],'partial');
+assert.equal(presentation.products.meetontrack.readiness[0],'partial');
+for(const vendor of content.competitors)assert.equal(presentation.products[vendor.slug]['open-source'][0],'unknown','Unverified source rights must not become a cross');
+console.log(`PASS: ${content.competitors.length+1} routes, 12 criteria, explicit marks, qualifiers, accessible disclosures, logos, neutral branding and no visible comparison links.`);

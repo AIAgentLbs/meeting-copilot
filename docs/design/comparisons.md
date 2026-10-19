@@ -34,10 +34,40 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 ## Verification
 
-Static source coverage, generated-file consistency, all internal links, titles,
+Static source coverage, generated-file consistency, direct routes, titles,
 canonical URLs, sitemap, JSON-LD, accessible table labels, keyboard navigation,
 desktop/mobile layout, unchanged install commands and successful Pages deployment.
 Screenshots are review artifacts only and remain outside Git.
+
+## 2026-10-19 owner refinement
+
+All matrix cells now have an explicit mark, a text label and a short visible
+qualifier. Five states: supported, unavailable, limited/conditional, not verified,
+and different approach. Neutral differences and missing evidence are not losses.
+Unknown source rights must never become a red cross. MeetOnTrack's beta/setup
+limitations stay visible, but the product name in headings is simply MeetOnTrack.
+The original evidence is retained inside native keyboard-accessible details.
+
+Official product identity icons are pinned by URL and checksum and staged into
+the site artifact, not committed as binary media or fetched by visitors from
+competitor servers. Our existing SVG identity is reused. Icons are decorative
+beside visible product names. Marks use consistent inline SVG plus text, not color
+alone. The visual system and responsive matrix remain unchanged.
+
+Comparisons are direct-link pages: no navigation, homepage teaser, footer or
+related-article links lead to them. Sitemap discovery is retained; this is not
+a request to make the pages private or noindex. The hub retains a non-clickable
+product directory. Regression tests enforce the absence of visible comparison links.
+
+Verification: 72 explicit verdicts reviewed against the unchanged evidence text
+by `claude-opus-5-5`; no material contradiction found. Five official logo URLs
+matched identity links in vendor HTML, returned 200 and passed PNG/checksum checks.
+Chrome inspection covered the wide matrix and a real 390px iframe viewport.
+Native details retain visible qualifiers and keyboard-operable summaries. Status
+text contrast was calculated on paper and mint: all combinations exceed 4.5:1.
+The review caught stale CSS caching (fixed with a content-hash URL) and the mobile
+caption's intrinsic width (explicit block width). Mechanical detector warnings
+were inherited shared styles / existing italic typography, not newly added effects.
 
 ## Design-system inheritance and verification
 
