@@ -1,110 +1,99 @@
-# Install Meeting Copilot for Mac
+# Install MeetOnTrack
 
-## One command
+Download and installation: https://meetontrack.com/.
+Russian page: https://meetontrack.com/ru/.
+
+## Mac
+
+Apple Silicon, macOS 15 or later. Capture, Python and helper executables are
+included in the package. No compiler, SDK or separate Python is required.
 
 ```sh
-curl -fsSL https://aiagentlbs.github.io/meeting-copilot/install.sh | bash
+curl -fsSL https://meetontrack.com/install.sh | bash
 ```
 
-[Русская инструкция](https://aiagentlbs.github.io/meeting-copilot/ru/#install).
-The page and installer are deployed together through GitHub Pages. You can
-read [install.sh](install.sh) before running it. This is a technical public
-beta, not a standalone notarized installation or a commercial release.
+The command installs the checksum-pinned v0.1.10 archive. Read
+[install.sh](install.sh) before running it if desired. An existing installation
+must finish its call and quit Capture first. The installer checks again before
+replacement and retains timestamped app/web backups.
 
-## Prepare your Mac
+1. Choose English or Russian on first launch.
+2. Approve Microphone and Screen & System Audio Recording for MeetOnTrack in
+   macOS settings. Existing installation paths keep the legacy Capture filename.
+3. Complete local speech-model setup. Recording and transcription need no paid
+   AI key or Codex account.
+4. Open the assistant from the app or run `~/.local/bin/meeting-copilot`.
+   Its address is `http://127.0.0.1:43121`.
+5. Make a short test call and check both sides in the transcript before relying
+   on a long meeting. Speaker names can need correction.
 
-- Apple Silicon, macOS 15 or later. Intel and Windows are not supported by this package.
-- Python 3.10 or later, available as `python3`.
-- Apple Command Line Tools. If absent, run `xcode-select --install` and finish
-  the system dialog before running the installation command.
-- Codex CLI, installed and authenticated. See the
-  [official setup guide](https://developers.openai.com/codex/cli).
-- Google Chrome for HTML-to-PDF export; without it, PDF generation is unavailable.
-- Internet access for the download, initial model setup and configured cloud AI.
+The package is a technical beta, ad-hoc signed and not Apple-notarized. If macOS
+blocks it, review the exact app in Privacy & Security. Keep Gatekeeper enabled.
+Google Chrome is needed for PDF export.
 
-The installer checks the platform, Python, compiler and Codex executable.
-Codex account access, model readiness, Chrome and macOS audio permissions still
-need first-run checks. It does not install Homebrew or sign into providers.
+## Windows
 
-## What the command installs
+Windows 11 24H2 or later, x64. Use PowerShell:
 
-Currently **v0.1.8**, from the explicit GitHub Release URL. Its ZIP is verified
-against SHA-256:
-
-```text
-2575dbe3cae77a0afdddceda1ddb321541ce58b89b9f914dac4a8f6e098fac19
+```powershell
+irm https://meetontrack.com/install.ps1 | iex
 ```
 
-This digest was compared with the downloaded ZIP and GitHub asset metadata.
-The script stages and compiles three Swift helpers before replacing existing
-files. Capture must be closed: installation refuses to stop or replace a
-running `MeetingCopilotCapture` process. It checks again after staging.
+The ready-to-run archive includes Capture, .NET, Python and the web assistant.
+No compiler or SDK is required. The first setup downloads checksum-verified
+local speech models (approximately 1.5 GB). Keep SmartScreen and antivirus
+enabled. Finish the call and close Capture before reinstalling.
 
-- App: `/Applications/Meeting Copilot Capture.app`, or `~/Applications` when
-  the system Applications directory is not writable.
-- Launcher: `~/.local/bin/meeting-copilot`.
-- Web UI and helper binaries: `~/.local/share/meeting-copilot`.
-- Private settings: `~/.config/meeting-copilot`.
-- Web LaunchAgent: `~/Library/LaunchAgents/com.aiagentlbs.meeting-copilot.plist`.
+## Optional AI and context
 
-An existing app and web directory are preserved as timestamped backups.
-Existing private settings, repository selection and recordings are retained.
-The published script and the package are versioned separately: `main` includes
-newer work that is not necessarily inside the v0.1.8 download.
+AI answers use your own authenticated Codex CLI with GPT-6.1 Sol. First-run help
+offers installation/login instructions and a short functional check. Relevant
+conversation and connected-source excerpts are sent to that AI service. Capture
+and local transcription work independently of the AI account.
 
-## First run
+Connect local folders in Context sources; Git is optional. Current local formats
+are UTF-8 text, Markdown, CSV and source code. Google context is optional and
+configured separately in Settings. General local PDF/Office retrieval is not
+included in this release.
 
-1. Choose English / Русский when the application opens for the first time.
-   Interface language is separate from speech and summary language.
-2. Approve **Microphone** and **Screen & System Audio Recording** for the exact
-   installed Meeting Copilot Capture app in System Settings.
-3. Complete model setup in the Capture app and check Codex authentication.
-4. Run `~/.local/bin/meeting-copilot`; the UI opens at `http://127.0.0.1:43121`.
-   If `~/.local/bin` is already in your PATH, `meeting-copilot` also works.
-5. Select the relevant local repositories. Run a short test call, inspect both
-   microphone and system audio, and check the saved transcript/report before
-   relying on a long recording. Speaker labels can need correction.
+## Optional report delivery
 
-Recording and transcription are local. AI analysis may send relevant dialogue
-and repository excerpts to the service used by your Codex CLI. Drive, email
-and Telegram delivery are optional, require separate configuration and are not
-activated by the installer. Fully offline AI and a general model/provider
-selector are planned, not promised for this package.
+Settings lets you enable email reports, Google Drive and each delivery channel
+separately. Leave them off to keep reports locally.
 
-Google context search is optional in Settings and requires a separately
-configured `gws` CLI and Google authorization. Calendar, Gmail and Drive are
-opt-in, with one account. Drive search currently returns metadata and links.
-Native usage statistics are inherited as opt-out, with a visible setup switch;
-read [the exact disclosure](capture/docs/analytics.md) before enabling them.
-The ZIP includes `release.json` with the runtime source revision and file hashes.
+- SMTP: enter your provider's host, TLS mode, username and app password. Check
+  the connection, choose the recipient, enable email and save.
+- Google: create your own Desktop OAuth client in your Google Cloud project,
+  enable the APIs you need and import its downloaded JSON in Settings. Follow
+  the in-app instructions, then sign in to your account. MeetOnTrack does not
+  provide a shared Google OAuth application. Connecting does not enable delivery.
 
-## Updating
+Secrets are kept in macOS Keychain or Windows DPAPI. Native usage statistics
+have been removed. Delivery errors and manual retry actions are shown in the
+assistant. See [delivery setup](docs/DELIVERY.md) for detailed instructions.
 
-Automatic in-app updates are not enabled in this beta. The one-line command
-installs the version pinned in `install.sh`; repeating it today reinstalls
-v0.1.8. After a new tested release is published, maintainers must update the
-script's version and SHA-256 together and deploy the page and script. Then
-finish your call, quit Capture and rerun the same command.
+## Update
 
-Do not use this command to replace a newer development installation with the
-older public package. A failed download/checksum/helper compilation leaves the
-existing app untouched. Installation is not a full transactional updater:
-an unexpected disk/permission failure during file replacement may require
-restoring the preserved app/web backups.
+A newer published version produces an in-app indicator with release notes.
+Settings also contains the platform-specific update command and a copy button.
+Checks run at startup and every 15 minutes while online; they can be disabled.
 
-## Troubleshooting
+Finish the call, quit Capture and repeat the installation command. The installer
+preserves recordings, settings and model data. Automatic installation is deferred.
+An unexpected filesystem/permission failure during replacement may require the
+preserved backup. See [updates](docs/UPDATES.md).
 
-- **Capture is running:** finish the meeting and quit Capture using its menu.
-  The installer never kills it. Merely closing a web tab is not sufficient.
-- **Missing dependency:** follow the exact preflight message and retry; do not
-  run the script with `sudo` to work around an unrelated dependency failure.
-- **Command not found:** run `~/.local/bin/meeting-copilot` directly.
-- **macOS blocks launch:** review the exact downloaded app in Privacy &
-  Security. The beta has not completed Developer ID notarization; never
-  disable Gatekeeper globally as an installation step.
-- **No audio:** check both permission categories for the installed app, then
-  quit and reopen Capture. An old backup entry is not the current app.
-- **No PDF:** confirm `/Applications/Google Chrome.app` is installed.
-- **Need help:** [open an issue](https://github.com/AIAgentLbs/meeting-copilot/issues)
-  with OS, app version and a redacted error. Do not upload client recordings,
-  transcripts, OAuth credentials or private delivery settings.
+## Local files and support
+
+Mac settings: `~/.config/meeting-copilot`. Recordings, reports and the embedded
+runtime: `~/.local/share/meeting-copilot`. The installer retains compatibility
+paths and never modifies connected repositories.
+
+Windows application versions: `%LOCALAPPDATA%/MeetingCopilot/versions`.
+User settings and recordings are outside that application version directory.
+
+For no-audio failures, check permissions on the actual installed application
+and selected devices, then reopen Capture. For no PDF, check Chrome. If you
+report a problem, include OS, version and a redacted error at
+https://github.com/AIAgentLbs/meeting-copilot/issues. Do not upload private
+recordings, transcripts, OAuth JSON or delivery credentials.
