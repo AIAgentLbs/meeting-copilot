@@ -148,7 +148,22 @@ if [[ "${MEETING_COPILOT_SKIP_LAUNCH:-0}" != "1" ]]; then
   launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "$AGENTS/$LABEL.plist"
   open "$app"
+  # A successful bootstrap is not yet an HTTP-ready assistant. Do not open a
+  # broken browser tab or require a second terminal command from a new user.
+  ready=false
+  for attempt in {1..40}; do
+    if curl --fail --silent --connect-timeout 1 --max-time 1 \
+      "http://127.0.0.1:43121/api/health" \
+      | "$python" -I -c 'import json,sys; value=json.load(sys.stdin); sys.exit(0 if value.get("ok") is True and value.get("service")=="meeting-copilot" else 1)' \
+        >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
+    sleep 0.25
+  done
+  [[ "$ready" == true ]] || fail "Files installed, but the local assistant did not become ready. Reopen MeetOnTrack or rerun the installer. Log: $SHARE/web/server.log"
+  open "http://127.0.0.1:43121/" || fail "The assistant is running, but macOS could not open the browser. Use Open MeetOnTrack assistant in the app."
+  say "the assistant is open in your browser; finish first-run permissions and model setup in MeetOnTrack"
 fi
 say "$VERSION installed; existing recordings and private settings were preserved"
-say "run: meeting-copilot"
-say "if the command is not found, add $BIN to PATH or run $BIN/meeting-copilot"
+say "reopen anytime with Open MeetOnTrack assistant in the app window or menu bar"

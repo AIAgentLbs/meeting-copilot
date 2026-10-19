@@ -1,6 +1,6 @@
-# Meeting Copilot by AI Agent Labs
+# MeetOnTrack by AI Agent Labs
 
-Private, bot-free live meeting intelligence for macOS. Meeting Copilot captures
+Private, bot-free live meeting intelligence for macOS. MeetOnTrack captures
 your microphone and system audio, keeps a live transcript on your Mac, and lets
 Codex check what is being said against the Git repositories and documents you
 already have locally.
@@ -24,14 +24,12 @@ source/hash manifest. It is ad-hoc signed, not notarized; automatic installation
 curl -fsSL https://meetontrack.com/install.sh | bash
 ```
 
-Then approve **Microphone** and **Screen & System Audio Recording** when macOS
-asks, and run:
-
-```sh
-~/.local/bin/meeting-copilot
-```
-
-The local interface opens at `http://127.0.0.1:43121`.
+The installer starts MeetOnTrack and opens the assistant in your browser
+automatically, after checking that the local service is ready. Approve
+**Microphone** and **Screen & System Audio Recording** and finish model setup
+in the native setup window. No second terminal command is needed. Reopen the
+page anytime with **Open MeetOnTrack assistant** at the top of the recorder
+window or in its menu-bar menu.
 See [INSTALL.md](INSTALL.md) for dependencies, first-run permissions, manual
 updates and troubleshooting. Automatic in-app updates are not enabled in this
 beta. Audio/transcription run locally; AI analysis can send relevant transcript

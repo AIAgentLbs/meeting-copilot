@@ -18,6 +18,10 @@ hashes, Pages removed, and the Windows installer relocated to
 
 ## Friendly-user release gate — 2026-10-19
 
+- [x] Corrected first-install entry: installer waits for the local assistant's
+  health response and opens the browser automatically; no second terminal command.
+  13 installer tests and 370 Swift tests passed. Native assistant action remains
+  available idle/recording/paused; clicked successfully in the installed Mac UI.
 - [x] Public 0.1.10 Mac/Windows packages passed exact archive and fresh/repeat
   installation checks. Both public archives were downloaded without credentials
   and match the pinned SHA-256 values. See the distribution acceptance above.

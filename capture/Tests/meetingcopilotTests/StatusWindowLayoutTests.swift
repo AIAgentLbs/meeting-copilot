@@ -18,6 +18,24 @@ import Testing
 /// which is only one of the ways it has gone wrong.
 @Suite(.serialized)
 struct StatusWindowLayoutTests {
+    @Test("The assistant action remains available while idle, recording and paused")
+    @MainActor
+    func assistantIsAlwaysReachable() throws {
+        _ = NSApplication.shared
+        let window = StatusWindow()
+        var opened = 0
+        window.onOpenAssistant = { opened += 1 }
+        let assistant = try #require(window.rowsView.views.compactMap { $0 as? NSButton }
+            .first { $0.identifier?.rawValue == "open-assistant" })
+        for state in [MenuBarController.State.idle, .recording, .paused] {
+            window.update(state: state, elapsed: "0:30")
+            #expect(assistant.isEnabled)
+            #expect(!assistant.isHiddenOrHasHiddenAncestor)
+            assistant.performClick(nil)
+        }
+        #expect(opened == 3)
+    }
+
     @Test("A failed Start stays visible through polling and clears after a successful start")
     @MainActor
     func recordingFailureSurvivesPolling() throws {

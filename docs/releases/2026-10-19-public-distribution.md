@@ -44,6 +44,21 @@ Git binaries. Upstream notices and compatibility storage identifiers remain.
   beta channels. The owner's running Mac 0.1.9 service returned `notify: true`,
   latest 0.1.10, release notes and no checker error without restarting Capture.
 
+## Installer entry-point correction
+
+The initial website guide incorrectly requested a second terminal command. The
+distribution installer now waits for a successful, correctly identified local
+health endpoint before opening the browser itself. A bounded readiness failure
+reports the log/recovery path rather than opening an unrelated or broken page.
+This installer-only correction keeps the immutable 0.1.10 archives unchanged.
+Both startup success-after-delay and wrong-service/timeout paths were reproduced
+as failing tests before the correction, then passed with the full installer suite.
+The shipped native app already exposes Open MeetOnTrack assistant at the top of
+the recorder window and in its menu, and setup completion opens the assistant.
+The installed Mac button was clicked and opened the local assistant in Mike's
+Chrome without a terminal command or Capture restart. Browser screenshots stay
+outside Git. No native production-code change/replacement was needed.
+
 ## Explicit limits
 
 Physical Windows host unavailable at final verification: no real microphone,
