@@ -107,26 +107,25 @@ try {
     }
     [IO.File]::WriteAllText("$InstallRoot\current.json",(@{version=$version;directory=$destination}|ConvertTo-Json),$utf8)
     if(-not $NoShortcuts){
-        # Separate tools installation leaves a parallel user's Codex session untouched.
-        $tools=Join-Path $InstallRoot 'tools'
-        $native=Get-ChildItem "$tools\node_modules" -Filter codex.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if(-not $native){
-            $npm=Get-Command npm.cmd -ErrorAction SilentlyContinue
-            if($npm){
-                & $npm.Source install --prefix $tools @openai/codex@0.160.1 --no-audit --no-fund
-                if($LASTEXITCODE -ne 0){throw 'Could not install the compatible private Codex CLI'}
-            }
-        }
+        # AI is optional; never pin/install an obsolete CLI or change an existing
+        # user's auth. The first-run assistant offers installation and a live check.
         $shell=New-Object -ComObject WScript.Shell
-        $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'Meeting Copilot.lnk'))
+        $shortcut=$shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'MeetOnTrack.lnk'))
         $shortcut.TargetPath="$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
         $shortcut.Arguments="-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$destination\meeting-copilot.ps1`""
         $shortcut.WorkingDirectory=$destination
         $shortcut.IconLocation="$destination\capture\MeetingCopilotCapture.exe"
         $shortcut.Save()
-        $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'Meeting Copilot.lnk'
-        Copy-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'Meeting Copilot.lnk') $startup -Force
+        $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'MeetOnTrack.lnk'
+        Copy-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'MeetOnTrack.lnk') $startup -Force
+        foreach($folder in @([Environment]::GetFolderPath('Programs'),[Environment]::GetFolderPath('Startup'))){
+            $legacy=Join-Path $folder 'Meeting Copilot.lnk'
+            if(Test-Path $legacy){
+                $old=$shell.CreateShortcut($legacy)
+                if($old.Arguments.Contains($InstallRoot) -and $old.Arguments.Contains('meeting-copilot.ps1')){Remove-Item -LiteralPath $legacy}
+            }
+        }
     }
-    Write-Host "Installed Meeting Copilot $version. Recordings/settings are outside the installation directory."
+    Write-Host "Installed MeetOnTrack $version. Recordings/settings are outside the installation directory."
     if(-not $NoLaunch){& "$destination\meeting-copilot.ps1"}
 } finally {Remove-Item -LiteralPath $temporary -Recurse -Force}
