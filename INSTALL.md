@@ -22,8 +22,10 @@ replacement and retains timestamped app/web backups.
    macOS settings. Existing installation paths keep the legacy Capture filename.
 3. Complete local speech-model setup. Recording and transcription need no paid
    AI key or Codex account.
-4. Open the assistant from the app or run `~/.local/bin/meeting-copilot`.
-   Its address is `http://127.0.0.1:43121`.
+4. The installer starts the local service and opens the assistant in your browser
+   automatically. Completing setup also opens it. Reopen it anytime with
+   **Open MeetOnTrack assistant** at the top of the recorder window or in the
+   MeetOnTrack menu-bar menu. No second terminal command is required.
 5. Make a short test call and check both sides in the transcript before relying
    on a long meeting. Speaker names can need correction.
 

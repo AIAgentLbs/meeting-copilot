@@ -51,6 +51,10 @@ downloads on the website is website work. Do not duplicate either backlog.
 
 ## Website usability and promotion
 
+- [x] Removed the incorrect second terminal-command step from EN/RU guides.
+  The distribution installer starts the service and browser; the native recorder
+  window/menu offers Open MeetOnTrack assistant. Installer readiness regression
+  tests passed before publishing the updated snapshot, with 0.1.10 archives intact.
 - [ ] Verify prominent Mac and Windows download/installation entry points,
   accurate prerequisites and update guidance against the exact tested packages.
   Do not advertise unshipped updater functionality or technical archives as

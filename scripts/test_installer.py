@@ -88,6 +88,58 @@ class InstallerTests(unittest.TestCase):
         (config / "active-repos.json").write_text('{"repositories": ["keep-selection"]}')
         return app, share, config
 
+    def prepare_launch(self):
+        # Only the OS/browser boundary is replaced; execute the real installer.
+        self.script("launchctl", 'printf "%s\\n" "$*" >> "$FIXTURE_ROOT/launches"')
+        self.script("open", '''
+if [ "$1" = "http://127.0.0.1:43121/" ]; then
+  [ -f "$FIXTURE_ROOT/healthy" ] || exit 77
+fi
+printf "%s\\n" "$*" >> "$FIXTURE_ROOT/opened"
+''')
+        self.script("sleep", 'exit 0')
+        self.script("curl", '''
+case "$*" in
+  *http://127.0.0.1:43121/api/health*)
+    count=0
+    [ ! -f "$FIXTURE_ROOT/health-count" ] || count=$(<"$FIXTURE_ROOT/health-count")
+    count=$((count+1))
+    printf "%s" "$count" > "$FIXTURE_ROOT/health-count"
+    [ "$count" -ge "${MOCK_HEALTH_READY_AFTER:-2}" ] || exit 7
+    if [ "${MOCK_WRONG_SERVICE:-0}" = 1 ]; then
+      printf '{"ok":true,"service":"different-app"}'
+    else
+      touch "$FIXTURE_ROOT/healthy"
+      printf '{"ok":true,"service":"meeting-copilot"}'
+    fi
+    exit 0;;
+esac
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = -o ]; then cp "$FIXTURE_PACKAGE" "$2"; exit 0; fi
+  shift
+done
+exit 2
+''')
+
+    def test_install_opens_browser_only_after_its_service_is_ready(self):
+        self.prepare_launch()
+        result = self.run_install(MEETING_COPILOT_SKIP_LAUNCH="0")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        opened = (self.root / "opened").read_text().splitlines()
+        self.assertEqual(opened, [str(self.root / "Applications/Meeting Copilot Capture.app"),
+                                  "http://127.0.0.1:43121/"])
+        self.assertEqual((self.root / "health-count").read_text(), "2")
+        self.assertNotIn("run: meeting-copilot", result.stdout)
+
+    def test_unready_or_unrelated_service_never_opens_a_broken_page(self):
+        self.prepare_launch()
+        result = self.run_install(MEETING_COPILOT_SKIP_LAUNCH="0", MOCK_WRONG_SERVICE="1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not become ready", result.stderr)
+        self.assertEqual((self.root / "opened").read_text().splitlines(),
+                         [str(self.root / "Applications/Meeting Copilot Capture.app")])
+        self.assertLessEqual(int((self.root / "health-count").read_text()), 40)
+
     def test_fresh_install_and_escaped_launchagent(self):
         result = self.run_install()
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)

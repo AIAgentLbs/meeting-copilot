@@ -25,6 +25,14 @@ Date: 2026-10-19. This is website/distribution evidence, not hardware acceptance
 - Claude Opus 5.5 independently fetched all three public pages (site + releases)
   and confirmed the install instructions and public technical-beta availability.
   It did not download archives; the separate anonymous SHA checks above did.
+- Gemini 3.8 Flash High verification was attempted but returned no verdict within
+  the bounded run and was stopped. Only the actual Claude-family web check counts
+  as an independent model check from this Codex host; do not claim three-family
+  agreement. Mechanical anonymous URLs and hashes provide the availability proof.
+- Follow-up corrected EN/RU instructions: no second launch command. The installer
+  opens the browser after the actual local health response. 13 installer tests
+  and 370 Swift tests passed; installed native Open MeetOnTrack assistant was
+  clicked and opened the local page in Mike's Chrome. Immutable archives retained.
 
 Downloadable beta does not mean real-device audio acceptance: the physical
 Windows host was offline; clean-machine Mac/audio/reconnect gates remain in the
