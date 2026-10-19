@@ -3,11 +3,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/capture/.build/MeetingCopilotCapture.app}"
 OUT="${2:-$ROOT/dist/meeting-copilot-macos.zip}"
+PYTHON_RUNTIME="${MEETING_COPILOT_PYTHON_RUNTIME:-}"
 [[ -d "$APP" ]] || { echo "Missing app: $APP" >&2; exit 1; }
+[[ -x "$PYTHON_RUNTIME/bin/python3" ]] || { echo 'Set MEETING_COPILOT_PYTHON_RUNTIME to a clean relocatable arm64 Python distribution' >&2; exit 1; }
+"$PYTHON_RUNTIME/bin/python3" -I -c 'import platform, sys; assert platform.machine() == "arm64" and sys.version_info >= (3, 10)'
 stage="$(mktemp -d "${TMPDIR:-/tmp}/meeting-copilot-release.XXXXXX")"
 trap 'rm -rf "$stage"' EXIT
 cp -R "$APP" "$stage/Meeting Copilot Capture.app"
 mkdir -p "$stage/payload"
+cp -R "$PYTHON_RUNTIME" "$stage/payload/python"
 cp -R "$ROOT/copilot/web" "$stage/payload/web"
 cp -R "$ROOT/copilot/bin" "$stage/payload/bin"
 swiftc "$ROOT/copilot/bin/ZoomWindowFinder.swift" -o "$stage/payload/bin/zoom-window-finder"

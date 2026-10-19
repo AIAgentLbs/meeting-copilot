@@ -30,6 +30,7 @@ class InstallerTests(unittest.TestCase):
             "payload/config/SESSION.md": "synthetic-session\n",
             "payload/config/delivery.json.example": "{}\n",
             "payload/config/refresh-repos.py": "from pathlib import Path\np=Path(__file__).parent/'repos.json'\np.write_text('{\"repositories\": []}')\n",
+            "payload/python/bin/python3": '#!/bin/sh\nexec "$TEST_PYTHON" "$@"\n',
         }
         helpers = ("zoom-window-finder", "zoom-frame-inspector", "detect-speech-language")
         for name in helpers:
@@ -37,7 +38,7 @@ class InstallerTests(unittest.TestCase):
         with zipfile.ZipFile(self.package, "w") as handle:
             for name, body in files.items():
                 entry = zipfile.ZipInfo(name)
-                entry.external_attr = (0o100755 if name.split("/")[-1] in helpers else 0o100644) << 16
+                entry.external_attr = (0o100755 if name.split("/")[-1] in (*helpers, 'python3') else 0o100644) << 16
                 handle.writestr(entry, body)
         self.env = os.environ | {
             "PATH": f"{self.mock}:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -50,9 +51,10 @@ class InstallerTests(unittest.TestCase):
             "MEETING_COPILOT_AGENTS_ROOT": str(self.root / "agents"),
             "MEETING_COPILOT_SKIP_LAUNCH": "1",
             "FIXTURE_PACKAGE": str(self.package), "FIXTURE_ROOT": str(self.root),
+            "TEST_PYTHON": sys.executable,
         }
         Path(self.env["MEETING_COPILOT_APP_ROOT"]).mkdir()
-        (self.mock / "python3").symlink_to(sys.executable)
+        self.script("python3", 'touch "$FIXTURE_ROOT/system-python"\nexit 99')
         self.script("uname", 'if [ "$1" = -s ]; then echo "${MOCK_OS:-Darwin}"; else echo "${MOCK_ARCH:-arm64}"; fi')
         self.script("sw_vers", 'echo "${MOCK_VERSION:-15.0}"')
         self.script("codex", 'exit "${MOCK_CODEX_EXIT:-0}"')
@@ -99,6 +101,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn(self.env["MEETING_COPILOT_BIN_ROOT"], config["EnvironmentVariables"]["PATH"])
         self.assertFalse((self.root / "unexpected-launch").exists())
         self.assertFalse((self.root / "compiled").exists())
+        self.assertFalse((self.root / "system-python").exists())
         preferences = Path(self.env["MEETING_COPILOT_CONFIG_ROOT"]) / "active-repos.json"
         self.assertEqual(json.loads(preferences.read_text())["repositories"], [])
 

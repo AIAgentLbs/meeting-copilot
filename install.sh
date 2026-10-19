@@ -18,10 +18,9 @@ fail() { printf 'MeetOnTrack · ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$(uname -m)" == "arm64" ]] || fail "this beta currently requires Apple Silicon"
 os_version="$(sw_vers -productVersion)"
 [[ "${os_version%%.*}" -ge 15 ]] || fail "macOS 15 or later is required"
-for tool in curl unzip shasum python3 pgrep; do
+for tool in curl unzip shasum pgrep; do
   command -v "$tool" >/dev/null || fail "$tool is required; see https://meetontrack.com/ru/#install"
 done
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || fail "Python 3.10 or later is required"
 # Recording and local transcription do not require a paid AI subscription.
 # The assistant's optional connection is checked explicitly in first-run UI.
 
@@ -51,6 +50,9 @@ unzip -q "$tmp/$ASSET" -d "$tmp/release"
 for file in release.json payload/web/server.py payload/bin/meeting-copilot payload/config/refresh-repos.py payload/config/SESSION.md payload/config/delivery.json.example; do
   [[ -f "$tmp/release/$file" ]] || fail "Release file is missing: $file"
 done
+python="$tmp/release/payload/python/bin/python3"
+[[ -x "$python" ]] || fail "Release Python runtime is missing"
+"$python" -I -c 'import ssl, sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' || fail "Packaged Python runtime cannot start"
 
 # Prepare everything before touching an existing installation.
 mkdir -p "$tmp/helpers"
@@ -75,6 +77,9 @@ fi
 cp -R "$tmp/release/Meeting Copilot Capture.app" "$app"
 
 mkdir -p "$SHARE" "$CONFIG" "$BIN" "$AGENTS" "$SHARE/bin"
+[[ ! -e "$SHARE/python" ]] || mv "$SHARE/python" "$SHARE/python.backup-$backup_stamp"
+cp -R "$tmp/release/payload/python" "$SHARE/python"
+python="$SHARE/python/bin/python3"
 for dir in web; do
   [[ ! -e "$SHARE/$dir" ]] || mv "$SHARE/$dir" "$SHARE/$dir.backup-$backup_stamp"
   cp -R "$tmp/release/payload/$dir" "$SHARE/$dir"
@@ -83,7 +88,7 @@ install -m 0644 "$tmp/release/release.json" "$SHARE/release.json"
 install -m 0755 "$tmp/release/payload/bin/meeting-copilot" "$BIN/meeting-copilot"
 install -m 0755 "$tmp/release/payload/config/refresh-repos.py" "$CONFIG/refresh-repos.py"
 # One-time removal of retired usage-reporting state; preserve all other settings.
-python3 - "$CONFIG" <<'PY'
+"$python" - "$CONFIG" <<'PY'
 import json, pathlib, sys
 root = pathlib.Path(sys.argv[1])
 config = root / "config.json"
@@ -108,13 +113,13 @@ install -m 0755 "$tmp/helpers/detect-speech-language" "$SHARE/bin/detect-speech-
 # Discovery is explicit (meeting-copilot --refresh). A first install must not
 # scan unrelated project directories or write to a different user's config.
 if [[ ! -f "$CONFIG/repos.json" ]]; then
-  python3 - "$CONFIG/repos.json" <<'PY'
+  "$python" - "$CONFIG/repos.json" <<'PY'
 import json, pathlib, sys
 pathlib.Path(sys.argv[1]).write_text(json.dumps({"repositories": [], "repository_count": 0, "search_roots": []}) + "\n")
 PY
 fi
 if [[ ! -f "$CONFIG/active-repos.json" ]]; then
-  python3 - "$CONFIG/repos.json" "$CONFIG/active-repos.json" <<'PY'
+  "$python" - "$CONFIG/repos.json" "$CONFIG/active-repos.json" <<'PY'
 import json, pathlib, sys
 source, target = map(pathlib.Path, sys.argv[1:])
 data = json.loads(source.read_text())
@@ -124,7 +129,7 @@ target.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 PY
 fi
 
-python3 - "$AGENTS/$LABEL.plist" "$SHARE" "$BIN" "$LABEL" <<'PY'
+"$python" - "$AGENTS/$LABEL.plist" "$SHARE" "$BIN" "$LABEL" <<'PY'
 import pathlib, plistlib, sys
 target, share, bin_root, label = sys.argv[1:]
 value = {

@@ -51,6 +51,12 @@ def main():
         app = Path(fixture.env['MEETING_COPILOT_APP_ROOT']) / 'Meeting Copilot Capture.app'
         assert json.loads((config / 'active-repos.json').read_text())['repositories'] == []
         subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
+        runtime = share / 'python/bin/python3'
+        subprocess.run([str(runtime), '-I', '-c',
+            'import pathlib, sys; from unittest.mock import patch; '
+            'sys.path.insert(0, sys.argv[1]); '
+            '\nwith patch("pathlib.Path.home", return_value=pathlib.Path(sys.argv[2])):\n import server\n'
+            'assert server.HOST == "127.0.0.1"', str(share / 'web'), str(fixture.root / 'empty-home')], check=True)
         for helper in ('zoom-window-finder', 'zoom-frame-inspector', 'detect-speech-language'):
             subprocess.run(['codesign', '--verify', '--strict', str(share / 'bin' / helper)], check=True)
         recording = share / 'recordings' / 'synthetic-keep.txt'
@@ -67,7 +73,8 @@ def main():
         print(json.dumps({'version': manifest['version'], 'source_revision': manifest['source_revision'],
                           'sha256': digest, 'manifest_files': len(manifest['sha256']),
                           'fresh_install': 'passed', 'reinstall_preserves_data': 'passed',
-                          'signatures': 'ad-hoc valid', 'hardware_test': 'not performed'}, indent=2))
+                          'signatures': 'ad-hoc valid', 'embedded_server_import': 'passed',
+                          'hardware_test': 'not performed'}, indent=2))
     finally:
         fixture.doCleanups()
 
