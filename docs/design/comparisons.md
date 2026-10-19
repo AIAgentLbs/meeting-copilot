@@ -9,11 +9,11 @@ The owner delegated criteria selection and explicitly requires open-source statu
 ## Direction contract
 
 THESIS: a sourced decision aid, not a winner scoreboard. Start with the practical
-trade-off, compare the same criteria, and expose the evidence beside each claim.
+trade-off, compare the same criteria, and keep detailed qualifications beside each claim.
 OWN-WORLD: inherit the existing Geologica/Newsreader typography, forest-green
 links, tinted paper background, hairline separators and plain rectangular CTAs.
 STORY: choose the relevant competitor, read who each tool fits, inspect the
-matrix, check primary sources, then choose an installation or vendor page.
+matrix, read qualifications, then choose an installation or vendor homepage.
 FIRST VIEWPORT: breadcrumb, left-aligned product-pair title, short verdict,
 dated publisher disclosure, two equal installation links and a matrix jump.
 FORM: tightly specified comparison article inside the existing site, not a new
@@ -23,13 +23,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 ## Content rules
 
 - MeetScribe, Granola, Fireflies.ai, Bluedot and tl;dv each get a distinct recommendation,
-  trade-off explanation, evidence links and test scenario.
+  trade-off explanation, repository evidence and test scenario.
 - Open source means a licence for the application, not a free plan, SDK, API or MCP.
 - Distinguish audio retention, local capture, local ASR, cloud AI and offline use.
 - No invented quality scores, security certifications or missing-feature claims.
 - Source omissions are labelled unverified, not translated into a categorical No.
 - Compare the pinned public Mac v0.1.9 / Windows v0.1.4 packages, not future code.
-- Use current pricing links rather than mixing annual and monthly quote amounts.
+- Refer readers to product homepages for current pricing; do not mix annual and monthly quote amounts.
 - Do not publish private meeting data or reuse competitor screenshots as ours.
 
 ## Verification
@@ -46,7 +46,12 @@ qualifier. Five states: supported, unavailable, limited/conditional, not verifie
 and different approach. Neutral differences and missing evidence are not losses.
 Unknown source rights must never become a red cross. MeetOnTrack's beta/setup
 limitations stay visible, but the product name in headings is simply MeetOnTrack.
-The original evidence is retained inside native keyboard-accessible details.
+Detailed explanations are retained inside native keyboard-accessible details.
+Owner clarification: no source/deep links in published comparisons. Only official
+product homepages may be linked from comparison content. Source URLs remain in
+the repository evidence dataset, not HTML or JSON-LD. Pages stages only generated
+comparison HTML, excluding the evidence JSON. Summaries are labelled “Details”,
+not “Details & sources”. Tests enforce this policy across all comparison pages.
 
 Official product identity icons are pinned by URL and checksum and staged into
 the site artifact, not committed as binary media or fetched by visitors from

@@ -7,6 +7,13 @@ const content=require('../docs/compare/content.json');
 const presentation=require('../docs/compare/presentation.json');
 const logoAssets=require('../docs/comparison-logo-assets.json').assets;
 const noComparisonLinks=html=>assert(!/<a\b[^>]*href=["'][^"']*\/compare\//i.test(html),'Comparison links must not appear in visible navigation');
+const homepageLinksOnly=html=>{
+ const allowed=new Set(['https://meetontrack.com/','https://aiagentlbs.com',...logoAssets.map(a=>a.sourcePage)]);
+ for(const [,url] of html.matchAll(/<a\b[^>]*href="(https?:[^"]+)"/g)){
+  assert(allowed.has(url),`Only official homepages may be linked: ${url}`);
+ }
+ assert(!/source-ref|cell-sources|id="sources"|Details &amp; sources|"citation":/.test(html),'Source links and citations belong in repository evidence, not published pages');
+};
 const ids=new Set(content.criteria.map(item=>item.id));
 assert.equal(ids.size,12);
 assert.equal(content.criteria[0].id,'open-source');
@@ -52,7 +59,9 @@ for(const vendor of content.competitors){
   assert.match(html,/href="\/styles\.css\?v=[a-f0-9]{12}"/,'Changed styles must invalidate the browser cache');
   assert(html.includes('Not verified does not mean unavailable'));
   assert.equal((html.match(/class="comparison-detail"/g)||[]).length,24);
-  assert.equal((html.match(/<summary aria-label="Details and sources for /g)||[]).length,24);
+  assert.equal((html.match(/<summary aria-label="Details for /g)||[]).length,24);
+  homepageLinksOnly(html);
+  assert(html.includes(`href="${logoAssets.find(a=>a.id===vendor.slug).sourcePage}"`));
   assert(html.includes(`/media/logos/${vendor.slug}.png`));
   assert(html.includes('src="/favicon.svg"'));
   assert(html.includes('stroke="currentColor"')&&html.includes('aria-hidden="true"'));
@@ -65,6 +74,10 @@ for(const vendor of content.competitors){
  assert(sitemap.includes(`https://meetontrack.com/compare/${vendor.slug}/`));
 }
 noComparisonLinks(hub);
+homepageLinksOnly(hub);
+const workflow=fs.readFileSync(path.resolve(root,'../.github/workflows/pages.yml'),'utf8');
+assert(!workflow.includes('cp -R docs/compare'),'Do not publish comparison evidence JSON');
+assert(workflow.includes('for page in docs/compare/*/index.html'));
 for(const file of ['index.html','ru/index.html'])noComparisonLinks(fs.readFileSync(path.join(root,file),'utf8'));
 const meetscribe=content.competitors.find(v=>v.slug==='meetscribe');
 assert(meetscribe.rows['open-source'].refs.includes('meetily-license'));
