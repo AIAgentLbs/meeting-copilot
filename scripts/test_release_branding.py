@@ -32,6 +32,8 @@ class ReleaseBrandingTests(unittest.TestCase):
         self.assertIn('https://aiagentlbs.com/', html)
         assembly = (ROOT / 'scripts/assemble-arm64-app.sh').read_text()
         self.assertIn('make -C "$CAPTURE" icon', assembly)
+        self.assertIn('app: build icon', (ROOT / 'capture/Makefile').read_text(),
+                      'A fresh clone must regenerate the brand, regardless of tracked icon timestamps')
         self.assertTrue((ROOT / 'capture/THIRD-PARTY-NOTICES.md').is_file())
 
 

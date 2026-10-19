@@ -86,7 +86,7 @@ $(ICON): Packaging/GenerateMeetingCopilotIcon.swift
 	@swift Packaging/GenerateMeetingCopilotIcon.swift .build/MeetingCopilot.iconset
 	@iconutil -c icns .build/MeetingCopilot.iconset -o $(ICON)
 
-app: build $(ICON)
+app: build icon
 	@rm -rf $(APP)
 	@mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources/Models $(APP)/Contents/Frameworks
 	@cp $(BUILT) $(APP)/Contents/MacOS/$(APP_NAME)
