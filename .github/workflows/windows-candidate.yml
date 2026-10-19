@@ -26,4 +26,4 @@ jobs:
       - name: Exact packaged installation and regressions
         shell: pwsh
         run: |
-          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meetontrack-windows-0.1.5-rc1.zip -ExpectedSha256 004e1fd6ed04c1948e628f84db6162b363d547af39af5d4708ab111ca2436e3a -Installer ./docs/install.ps1
+          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meetontrack-windows-0.1.5-rc1.zip -ExpectedSha256 004e1fd6ed04c1948e628f84db6162b363d547af39af5d4708ab111ca2436e3a -Installer ./scripts/windows/install.ps1

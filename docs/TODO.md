@@ -1,5 +1,11 @@
 # Meeting Copilot delivery follow-up
 
+Repository scope, 2026-10-19: application work only. Website/domain, analytics,
+SEO, competitor comparisons, keywords, trademark research and promotion belong
+to AIAgentLbs/meeting-copilot, root SITE_TODO.md. The 37-file migration and
+hashes are recorded there in planning/2026-10-19-repository-separation.json.
+Windows installer source is scripts/windows/install.ps1.
+
 ## Multilingual recognition acceptance
 
 - Validate multilingual switching on real, consented test audio with accents,

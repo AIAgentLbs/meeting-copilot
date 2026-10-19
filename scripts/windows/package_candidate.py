@@ -91,7 +91,7 @@ def main():
                 if path.is_file():
                     archive.write(path, path.relative_to(stage).as_posix())
     checksum = digest(args.output)
-    content = (ROOT / 'docs/install.ps1').read_text()
+    content = (ROOT / 'scripts/windows/install.ps1').read_text()
     content, count = re.subn(r"\[string\]\$ExpectedSha256 = '[0-9a-f]+'", f"[string]$ExpectedSha256 = '{checksum}'", content, count=1)
     assert count == 1
     content = re.sub(r"(?m)^\$version='[^']+'$", f"$version='{manifest['version']}'", content)
