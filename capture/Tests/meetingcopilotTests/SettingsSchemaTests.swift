@@ -232,6 +232,18 @@ struct SettingsSchemaTests {
         #expect(SettingsSchema.strayKeys(in: ["summary": ["backend": "codex-cli", "model": "m"]]).isEmpty)
     }
 
+    @Test("The ai subtree is known, has no control here, and is never reported as unread")
+    func aiSubtreeIsKnown() {
+        let config: [String: Any] = ["ai": ["purposes": [
+            "summary": ["provider": "p", "model": "m", "effort": "", "speed": ""],
+            "live_analysis": ["provider": "q"],
+        ]]]
+        #expect(SettingsSchema.strayKeys(in: config).isEmpty)
+        let offered = SettingsSchema.sections.flatMap(\.entries).map { $0.path.joined(separator: ".") }
+        #expect(!offered.contains { $0 == "ai" || $0.hasPrefix("ai.") }, "no second chooser")
+        #expect(SettingsSchema.strayKeys(in: ["aix": 1]) == ["aix"])
+    }
+
     /// The list that tells someone a setting is being ignored has to be right
     /// in one direction above all: a key meetingcopilot *does* read must never appear
     /// in it. It did — `transcription.assemblyai.*` and the two summary key

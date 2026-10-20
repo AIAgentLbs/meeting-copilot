@@ -1046,11 +1046,11 @@ struct SetupTests {
         return resolved
     }
 
-    @Test("A legacy backend of none still turns summaries off")
-    func legacyNoneTurnsSummariesOff() {
+    @Test("The summary switch alone decides whether summaries are written")
+    func summarySwitchDecides() {
         var settings = Config.SummarySettings()
         #expect(settings.writesSummaries)
-        settings.legacyBackend = "none"
+        settings.enabled = false
         #expect(!settings.writesSummaries)
     }
 }

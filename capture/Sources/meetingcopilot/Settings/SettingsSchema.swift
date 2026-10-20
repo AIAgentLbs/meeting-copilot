@@ -502,6 +502,11 @@ enum SettingsSchema {
     /// reported as one it ignores.
     static let unrenderedKeys = ["transcription.assemblyai.api_key"]
 
+    /// Whole subtrees another screen owns. `ai` is the AI choice per purpose,
+    /// written by Getting started (docs/config.schema.json) and read here for
+    /// summaries and naming: known, so never "not read", and not a control.
+    static let ownedSubtrees = ["ai"]
+
     /// Older releases exposed these choices. Retained audio now always becomes
     /// one compact stereo M4A, but accepting the keys keeps an old config from
     /// being reported as misspelled until its owner next edits the file.
@@ -509,8 +514,8 @@ enum SettingsSchema {
 
     /// The summary and naming settings from before `ai.purposes`. Not offered
     /// anywhere: the AI is chosen in one place, Getting started. Still known,
-    /// because `AIChoice.migrateLegacy` reads them once (and `summary.backend`
-    /// "none" still turns summaries off).
+    /// because `AIChoice.migrateLegacy` reads them once (a `summary.backend`
+    /// "none" becomes `summary.enabled: false`).
     static let legacyAIKeys = [
         "summary.backend", "summary.model", "summary.openai_model", "summary.ollama_model",
         "summary.api_key_path", "summary.openai_api_key_path",
@@ -535,6 +540,7 @@ enum SettingsSchema {
             + unrenderedLocalModelKeys
             + unrenderedKeys
             + deprecatedKeys
+            + ownedSubtrees
     }
 
     /// Keys present in a config file that nothing reads.

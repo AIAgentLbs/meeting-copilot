@@ -178,6 +178,18 @@ class CodexCallTests(unittest.TestCase):
         self.assertIn('default_permissions="meetontrack"', args)
         self.assertLess(args.index('default_permissions="meetontrack"'), args.index("exec"))
 
+    def test_isolation_on_first_and_resumed_turns_without_roots(self):
+        choice = {"provider": "codex", "model": "fixture-a", "effort": "e1", "speed": "standard"}
+        for options in ({"keep_session": True}, {"resume": "t0", "keep_session": True}):
+            _, args = codex_call(choice, **options)
+            tail = args[args.index("exec"):]
+            for flag in ai_providers.CODEX_ISOLATION:
+                self.assertIn(flag, tail, options)
+            self.assertIn('web_search="disabled"', tail)
+            self.assertIn("project_doc_max_bytes=0", tail)
+        _, args = codex_call(choice, roots=["/repos/one"], resume="t0")
+        self.assertNotIn("shell_tool", args)  # reading repositories needs its tools, inside the profile
+
 
 class ClaudeTests(unittest.TestCase):
     def test_initialize_discovery(self):
@@ -237,6 +249,32 @@ class ClaudeTests(unittest.TestCase):
         self.assertNotEqual(seen["cwd"], tmp)
         self.assertEqual(seen["argv"][seen["argv"].index("--tools") + 1], "Read")
         self.assertNotIn(tmp, seen["prompt"])
+
+    def test_isolation_on_first_and_resumed_turns(self):
+        choice = {"provider": "claude", "model": "plain", "effort": "", "speed": ""}
+        for options in ({"keep_session": True}, {"resume": "s0", "keep_session": True}):
+            _, seen = self.run_call(choice, **options)
+            args = seen["argv"]
+            for flag in ("--restricted", "--strict-mcp-config", "--setting-sources"):
+                self.assertIn(flag, args, options)
+            self.assertEqual(args[args.index("--setting-sources") + 1], "")
+            self.assertEqual(args[args.index("--tools") + 1], "", options)
+            self.assertFalse(any(a.startswith("--add-dir") for a in args))
+        self.assertEqual(args[args.index("--resume") + 1], "s0")
+
+    def test_switching_account_changes_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            adapter, config = ClaudeAdapter(lambda: "/fake/claude"), Path(tmp) / ".claude.json"
+            env = {"CLAUDE_CONFIG_DIR": tmp}
+            config.write_text(json.dumps({"oauthAccount": {"accountUuid": "acct-1", "organizationUuid": "org-1"}}))
+            first = adapter.identity(env)
+            config.write_text(json.dumps({"oauthAccount": {"accountUuid": "acct-2", "organizationUuid": "org-1"},
+                                          "padding": "x"}))
+            second = adapter.identity(env)
+            keyed = adapter.identity({**env, "ANTHROPIC_API_KEY": "secret-value"})
+        self.assertNotEqual(first, second)
+        self.assertNotEqual(second, keyed)
+        self.assertNotIn("secret-value", keyed)
 
 
 class AntigravityTests(unittest.TestCase):
@@ -344,17 +382,32 @@ class OllamaTests(unittest.TestCase):
         small = {"model_info": {"general.architecture": "a1", "a1.context_length": 4096 + 100}}
         choice = {"provider": "ollama", "model": "local-a", "effort": "", "speed": ""}
         with self.server({"local-a": small, "local-b": {"capabilities": ["completion"]}}) as (adapter, chats):
-            first = adapter.call(choice, "x" * 60, timeout=5, keep_session=True)
-            adapter.call(choice, "y" * 60, timeout=5, resume=first.session, keep_session=True)
+            first = adapter.call(choice, "x" * 30, timeout=5, keep_session=True)
+            second = adapter.call(choice, "y" * 30, timeout=5, resume=first.session, keep_session=True)
+            adapter.call(choice, "z" * 30, timeout=5, resume=second.session, keep_session=True)
             with self.assertRaises(RuntimeError):
-                adapter.call(choice, "z" * 101, timeout=5)
+                adapter.call(choice, "w" * 101, timeout=5)
+            with self.assertRaises(RuntimeError):  # the rules plus the prompt cannot fit: rejected, not cut
+                adapter.call(choice, "v" * 80, timeout=5, resume=second.session, keep_session=True)
             with self.assertRaises(AIChoiceError):
                 adapter.call({**choice, "model": "local-b"}, "p", timeout=5)
-        self.assertEqual(chats[0]["options"]["num_ctx"], 60 + 4096)
-        # the earlier turn no longer fits next to the new prompt: dropped whole, not truncated
-        self.assertEqual([m["content"] for m in chats[1]["messages"]], ["y" * 60])
-        self.assertLessEqual(chats[1]["options"]["num_ctx"], 4096 + 100)
-        self.assertEqual(len(chats), 2)
+        self.assertEqual(chats[0]["options"]["num_ctx"], 30 + 4096)
+        # the oldest turn no longer fits: dropped whole; the session rules stay as the system message
+        self.assertEqual([(m["role"], m["content"]) for m in chats[2]["messages"]],
+                         [("system", "x" * 30), ("user", "y" * 30), ("assistant", "OK None 3"), ("user", "z" * 30)])
+        self.assertLessEqual(chats[2]["options"]["num_ctx"], 4096 + 100)
+        self.assertEqual(len(chats), 3)
+
+    def test_history_cap_keeps_the_session_rules(self):
+        choice = {"provider": "ollama", "model": "local-a", "effort": "", "speed": ""}
+        with self.server({"local-a": CTX}) as (adapter, chats), patch.object(OllamaAdapter, "HISTORY", 4):
+            session = adapter.call(choice, "RULES", timeout=5, keep_session=True).session
+            for turn in range(5):
+                adapter.call(choice, f"q{turn}", timeout=5, resume=session, keep_session=True)
+        sent = chats[-1]["messages"]
+        self.assertEqual(sent[0], {"role": "system", "content": "RULES"})
+        self.assertEqual([m["content"] for m in sent[1:]][-1], "q4")
+        self.assertEqual(len(sent), 1 + 4 + 1)  # rules + capped turns + the new prompt
 
     def test_one_budget_for_all_model_probes(self):
         show = {name: {"capabilities": ["completion"]} for name in ("local-a", "local-b", "local-c")}

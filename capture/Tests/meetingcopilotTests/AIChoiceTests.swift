@@ -363,6 +363,32 @@ struct AIChoiceTests {
         ]))
     }
 
+    @Test("A legacy backend of none becomes summaries off, once, and can be turned back on")
+    func legacyNoneMigratesToDisabled() throws {
+        var json: [String: Any] = ["summary": ["backend": "none", "language": "ru"]]
+        AIChoice.migrateLegacy(&json)
+        let summary = try #require(json["summary"] as? [String: Any])
+        #expect(summary["backend"] == nil)
+        #expect(summary["enabled"] as? Bool == false)
+        #expect(summary["language"] as? String == "ru")
+        #expect(json["ai"] == nil)
+
+        // Turned on in the UI afterwards: the next migration leaves it on.
+        var on = json
+        on["summary"] = summary.merging(["enabled": true]) { $1 }
+        AIChoice.migrateLegacy(&on)
+        #expect((on["summary"] as? [String: Any])?["enabled"] as? Bool == true)
+
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("config.json")
+        try JSONSerialization.data(withJSONObject: ["summary": ["backend": "none"]]).write(to: url)
+        Config.migrateLegacyAIChoices(file: url)
+        let written = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        #expect(sameJSON(written["summary"], ["enabled": false]))
+    }
+
     @Test("Speaker naming migrates from its own backend")
     func namingMigration() {
         var json: [String: Any] = [

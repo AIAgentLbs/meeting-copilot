@@ -59,10 +59,19 @@ struct AIChoice: Equatable {
     /// this app runs (`claude-cli`, `codex-cli`, `ollama`). The model comes
     /// along when the file names one for that backend. Effort and speed are
     /// left out on purpose, so the person is asked for them.
+    ///
+    /// A legacy `summary.backend: "none"` meant "no summaries": it becomes
+    /// `summary.enabled: false` and the backend key is dropped, so turning
+    /// summaries on later works.
     static func migrateLegacy(_ json: inout [String: Any]) {
         var ai = json["ai"] as? [String: Any] ?? [:]
         var purposes = ai["purposes"] as? [String: Any] ?? [:]
-        let summary = json["summary"] as? [String: Any] ?? [:]
+        var summary = json["summary"] as? [String: Any] ?? [:]
+        if (summary["backend"] as? String)?.trimmed == "none" {
+            summary["backend"] = nil
+            summary["enabled"] = false
+            json["summary"] = summary
+        }
         let naming = json["speaker_names"] as? [String: Any] ?? [:]
 
         func text(_ section: [String: Any], _ key: String) -> String? {
@@ -112,7 +121,7 @@ extension Config {
         guard case .object(let json) = ConfigFile.read(file) else { return }
         var probe = json
         AIChoice.migrateLegacy(&probe)
-        guard probe["ai"] != nil, !NSDictionary(dictionary: probe).isEqual(to: json) else { return }
+        guard !NSDictionary(dictionary: probe).isEqual(to: json) else { return }
         do {
             let written = try ConfigFile.update(file) { AIChoice.migrateLegacy(&$0) }
             if written { NotificationCenter.default.post(name: didChange, object: nil) }

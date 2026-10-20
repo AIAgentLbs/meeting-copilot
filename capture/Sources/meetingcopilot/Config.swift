@@ -445,22 +445,18 @@ enum Config {
         /// whatever was spoken. nil means "same language as the meeting".
         var language: String?
         var apiKeyPath: URL?
-        /// `summary.backend` as written in the file, if it still is. Nothing
-        /// runs on it: the one-time migration reads it, and the setup cards
-        /// still show it.
-        var legacyBackend: String?
 
-        /// Whether summaries are written at all. A legacy `backend: none`
-        /// still means no.
-        var writesSummaries: Bool { enabled && legacyBackend != "none" }
+        /// Whether summaries are written at all. A legacy `backend: none` was
+        /// migrated once to `enabled: false`, so the switch alone decides.
+        var writesSummaries: Bool { enabled }
     }
 
     static func summary() -> SummarySettings {
+        migrateLegacyAIChoices()  // a legacy `backend: none` becomes `enabled: false` before it is read
         var settings = SummarySettings()
         guard let json = load()?["summary"] as? [String: Any] else { return settings }
 
         if let v = json["enabled"] as? Bool { settings.enabled = v }
-        if let v = json["backend"] as? String, !v.isEmpty { settings.legacyBackend = v }
         if let v = json["language"] as? String, !v.isEmpty { settings.language = v }
         if let v = json["api_key_path"] as? String, !v.isEmpty {
             settings.apiKeyPath = URL(fileURLWithPath: (v as NSString).expandingTildeInPath)

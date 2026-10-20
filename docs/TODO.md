@@ -84,6 +84,14 @@ hashes, Pages removed, and the Windows installer relocated to
   `completion` or without a reported context length are unavailable. Summary
   merges are reduced in batches until they fit. Saving one purpose keeps the
   other purposes' drafts.
+- [x] Review round 5 (2026-10-20): Codex isolation flags go on every call
+  without repositories, resumed turns included. Claude identity (discovery,
+  readiness and session keys) includes the signed-in account from
+  `.claude.json` and a hash of env credentials. Ollama keeps a session's first
+  prompt (the session rules) as a system message that trimming and the
+  40-message cap never drop. A legacy `summary.backend: "none"` is migrated
+  once to `summary.enabled: false`. The `ai` subtree is known to the Settings
+  window, so it is not reported as unread.
 - [ ] Bring back the Anthropic and OpenAI API-key summary backends as discovered
   providers (owner decision 2026-10-20: left out of phase 2). They need an adapter
   in `copilot/web/ai_providers.py` and `capture/.../Summary/LLMBackend.swift` that

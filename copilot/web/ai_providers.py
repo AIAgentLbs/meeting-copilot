@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
 import base64
+import hashlib
 import itertools
 import json
 import os
@@ -325,12 +326,13 @@ class CodexAdapter:
         argv += ["-c", f"model_reasoning_effort={_toml(choice['effort'])}"] if choice["effort"] else []
         argv += ["-c", f"service_tier={_toml(choice['speed'])}"] if choice["speed"] not in ("", STANDARD) else []
         argv += ["-c", 'default_permissions="meetontrack"', "-c", "permissions.meetontrack.filesystem=" + profile]
+        argv += ["exec", "resume"] if resume else ["exec"]
+        argv += ["--ignore-user-config", "--skip-git-repo-check"]
+        argv += [] if roots else CODEX_ISOLATION  # every turn, first or resumed
         if resume:
-            argv += ["exec", "resume", "--ignore-user-config", "--skip-git-repo-check", "--json", resume, "-"]
+            argv += ["--json", resume, "-"]
         else:
-            argv += ["exec", "--ignore-user-config", "--skip-git-repo-check"]
             argv += [] if keep_session else ["--ephemeral"]
-            argv += [] if roots else CODEX_ISOLATION
             argv += ["--image", str(image)] if image else []
             argv += ["-C", workdir, "--json", "-"]
         result = _invoke(argv, prompt, env, timeout, workdir)
@@ -357,7 +359,21 @@ class ClaudeAdapter:
         self.binary = binary or CLAUDE
 
     def identity(self, env=None):
-        return _stamp(self.binary())
+        """Executable plus the signed-in account: switching accounts re-runs discovery and
+        invalidates readiness and sessions. Env credentials count by hash, never by value."""
+        env = env or os.environ
+        home = env.get("CLAUDE_CONFIG_DIR")
+        path = Path(home) / ".claude.json" if home else Path(env.get("HOME") or Path.home()) / ".claude.json"
+        stamp = _stamp(path)
+        if getattr(self, "_account", (None,))[0] != stamp:
+            try:
+                account = json.loads(path.read_text(encoding="utf-8")).get("oauthAccount") or {}
+            except (OSError, ValueError, AttributeError):
+                account = {}
+            self._account = (stamp, f"{account.get('accountUuid', '')}/{account.get('organizationUuid', '')}")
+        secrets = "".join(env.get(name, "") for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"))
+        secret = hashlib.sha256(secrets.encode()).hexdigest()[:16] if secrets else ""
+        return f"{_stamp(self.binary())}|{self._account[1]}|{secret}"
 
     def discover(self, env=None):
         def body(binary):
@@ -465,7 +481,7 @@ class AntigravityAdapter:
 
 class OllamaAdapter:
     name, label, reads_files = "ollama", "Ollama", False
-    SESSIONS, HISTORY = 8, 40  # conversations kept in memory, messages kept per conversation
+    SESSIONS, HISTORY = 8, 40  # conversations kept in memory, turn messages kept per conversation (plus its rules)
     REPLY_TOKENS = 4096  # context kept free for the answer (same as Swift LLMBackend.ollamaReplyTokens)
 
     @staticmethod
@@ -476,19 +492,22 @@ class OllamaAdapter:
         return length if isinstance(length, int) and not isinstance(length, bool) and length > 0 else None
 
     @classmethod
-    def fit(cls, history, prompt, context):
-        """(history to send, num_ctx): oldest turns dropped until the request fits, never cut mid-message.
+    def fit(cls, pinned, turns, prompt, context):
+        """(messages to send before the prompt, num_ctx). `pinned` is the session's system message
+        (its first prompt: the session rules) and is never dropped; only the oldest conversation
+        turns are, whole, never cut mid-message. A request that cannot fit is rejected.
         ponytail: one character counts as at least one token (true for Latin/Cyrillic); images not
         counted; use the tokenizer if CJK or image-heavy requests get cut."""
-        budget = context - cls.REPLY_TOKENS
-        if len(prompt) > budget:
+        size = lambda messages: sum(len(str(m.get("content", ""))) for m in messages)
+        budget, pinned = context - cls.REPLY_TOKENS, [pinned] if pinned else []
+        if len(prompt) + size(pinned) > budget:
             raise RuntimeError(f"The text is longer than this Ollama model's context of {context} tokens. "
                                "Choose a model with a longer context in Getting started.")
-        history = list(history)
-        while history and len(prompt) + sum(len(str(m.get("content", ""))) for m in history) > budget:
-            history = history[2:]  # one user/assistant turn at a time, oldest first
-        used = len(prompt) + sum(len(str(m.get("content", ""))) for m in history)
-        return history, min(context, used + cls.REPLY_TOKENS)
+        turns = list(turns)
+        while turns and len(prompt) + size(pinned + turns) > budget:
+            turns = turns[1:]  # oldest message first
+        used = len(prompt) + size(pinned + turns)
+        return pinned + turns, min(context, used + cls.REPLY_TOKENS)
 
     def __init__(self, host=None):
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434").rstrip("/")
@@ -553,7 +572,7 @@ class OllamaAdapter:
             raise AIChoiceError("unavailable", "Ollama cannot read the selected repositories. Choose Codex or "
                                                "Claude Code for live analysis, or disconnect the repositories.")
         with self.lock:
-            history = list(self.sessions.get(resume, ())) if resume else []
+            pinned, turns = self.sessions.get(resume, (None, ())) if resume else (None, ())
         try:
             context = self.context_length(self._request("/api/show", {"model": choice["model"]}, timeout=10))
         except (OSError, ValueError) as error:
@@ -561,7 +580,7 @@ class OllamaAdapter:
         if context is None:
             raise AIChoiceError("unavailable", f"Ollama does not report the context length of {choice['model']}. "
                                                "Choose another model in Getting started.")
-        history, num_ctx = self.fit(history, prompt, context)
+        history, num_ctx = self.fit(pinned, turns, prompt, context)
         message = {"role": "user", "content": prompt}
         sent = {**message, "images": [base64.b64encode(Path(image).read_bytes()).decode("ascii")]} if image else message
         payload = {"model": choice["model"], "messages": history + [sent], "stream": False,
@@ -581,7 +600,10 @@ class OllamaAdapter:
         if keep_session or resume:  # Ollama is stateless: the conversation is kept here
             with self.lock:
                 session = resume if resume in self.sessions else uuid.uuid4().hex
-                self.sessions[session] = (history + [message, {"role": "assistant", "content": text}])[-self.HISTORY:]
+                # the first prompt carries the session rules: kept as the system message, never trimmed
+                kept = (pinned, [*history[1 if pinned else 0:], message]) if pinned else \
+                    ({"role": "system", "content": prompt}, [])
+                self.sessions[session] = (kept[0], (kept[1] + [{"role": "assistant", "content": text}])[-self.HISTORY:])
                 self.sessions.move_to_end(session)
                 while len(self.sessions) > self.SESSIONS:
                     self.sessions.popitem(last=False)
