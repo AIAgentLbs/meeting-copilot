@@ -2,9 +2,9 @@
 set -euo pipefail
 
 REPO="AIAgentLbs/meeting-copilot"
-VERSION="v0.1.10"
+VERSION="v0.1.11"
 ASSET="meeting-copilot-macos.zip"
-SHA256="2df0822063ccbfd2ba14d8463664a3d5f2ae83ebfd31877cff47d89558c32593"
+SHA256="59b5b1c843fc6da5075deb6fe8c7891e5aa826bfaba167a8888e5fe9f62b80db"
 SHARE="${MEETING_COPILOT_SHARE_ROOT:-$HOME/.local/share/meeting-copilot}"
 CONFIG="${MEETING_COPILOT_CONFIG_ROOT:-$HOME/.config/meeting-copilot}"
 BIN="${MEETING_COPILOT_BIN_ROOT:-$HOME/.local/bin}"

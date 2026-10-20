@@ -30,6 +30,7 @@ const fetch = async (url,options) => {
     assert.equal(data.path,'/synthetic/project');
     folders=[{id:'one',name:'project',path:data.path}]; result.folders=folders;
   } else if(url==='/api/context-folders/remove') {folders=[];result.folders=folders;}
+  else if(url==='/api/ai') result={...result,providers:[],purposes:{}};
   else if(url==='/api/getting-started/check-ai') result.ai={state:'error',message:'AI_LIMIT: quota'};
   return {ok:true,json:async()=>result};
 };
@@ -60,7 +61,7 @@ vm.runInNewContext(fs.readFileSync(path.join(web,'getting-started.js'),'utf8'),{
   document.documentElement.lang='ru';
   await el('startup-ai-check').click();
   assert.equal(el('context-folder-add').textContent,'Подключить папку (только чтение)');
-  assert(el('startup-ai-status').textContent.includes('Лимит Codex'));
+  assert(el('startup-ai-status').textContent.includes('Лимит аккаунта ИИ'));
   assert(!calls.some(([url])=>url.includes('context-documents')));
   console.log('PASS: real HTML controls, choose/confirm, connect/disconnect, Google settings, RU labels, AI error, no upload API');
 })().catch(error=>{console.error(error);process.exitCode=1;});

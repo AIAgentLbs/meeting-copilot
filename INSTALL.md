@@ -12,7 +12,7 @@ included in the package. No compiler, SDK or separate Python is required.
 curl -fsSL https://meetontrack.com/install.sh | bash
 ```
 
-The command installs the checksum-pinned v0.1.10 archive. Read
+The command installs the checksum-pinned v0.1.11 archive. Read
 [install.sh](install.sh) before running it if desired. An existing installation
 must finish its call and quit Capture first. The installer checks again before
 replacement and retains timestamped app/web backups.
@@ -48,9 +48,11 @@ enabled. Finish the call and close Capture before reinstalling.
 
 ## Optional AI and context
 
-AI answers use your own authenticated Codex CLI with GPT-6.1 Sol. First-run help
-offers installation/login instructions and a short functional check. Relevant
-conversation and connected-source excerpts are sent to that AI service. Capture
+AI answers use an AI tool you already have: Codex, Claude Code, Antigravity or a
+local Ollama. In Getting started, choose the tool, model, effort and speed for
+each task; the options are read from the installed tool and your plan, and
+nothing is preselected. A short functional check confirms each choice. Relevant
+conversation and connected-source excerpts are sent to the chosen AI service. Capture
 and local transcription work independently of the AI account.
 
 Connect local folders in Context sources; Git is optional. Current local formats

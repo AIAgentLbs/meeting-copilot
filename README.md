@@ -13,12 +13,12 @@ already have locally.
 
 Project page: [English](https://meetontrack.com/) ·
 [Русский](https://meetontrack.com/ru/).
-The command currently installs the checked, pinned **v0.1.10** package, not
-unreleased features from `main`. It requires Apple Silicon, macOS 15+, no separate Python or Apple SDK. Codex is optional for AI answers. Google Chrome
+The command currently installs the checked, pinned **v0.1.11** package, not
+unreleased features from `main`. It requires Apple Silicon, macOS 15+, no separate Python or Apple SDK. AI is optional; you choose the tool and model for each task. Google Chrome
 is required for PDF reports. Quit Capture before reinstalling.
 
-v0.1.10 includes the freshly compiled Swift app, the matched web payload and a
-source/hash manifest. It is ad-hoc signed, not notarized; automatic installation is deferred; update notifications are included. See [release notes](docs/releases/v0.1.10.md) for scope and gates.
+v0.1.11 includes the freshly compiled Swift app, the matched web payload and a
+source/hash manifest. It is ad-hoc signed, not notarized; automatic installation is deferred; update notifications are included. See [release notes](docs/releases/v0.1.11.md) for scope and gates.
 
 ```sh
 curl -fsSL https://meetontrack.com/install.sh | bash
