@@ -16,7 +16,7 @@ The 2026-10-19 file migration is complete: 37 website files moved with verified
 hashes, Pages removed, and the Windows installer relocated to
 `scripts/windows/install.ps1` with packaging/CI references updated.
 
-## AI provider, model, effort and fast-mode selection (owner request 2026-10-20)
+## No hardcoded providers, models or modes: AI and speech-to-text (owner rule 2026-10-20)
 
 - [ ] Replace the hardcoded `gpt-6.1-sol` (`copilot/web/first_run.py:84`,
   `server.py:2024`, `live_translation.py:62`, `summary_rewrite.py:9`) with a user
@@ -30,6 +30,9 @@ hashes, Pages removed, and the Windows installer relocated to
   it knows; today the app fails with any CLI that does not know `gpt-6.1-sol`.
   Before building, verify each CLI's model/effort/fast flags and plan
   availability from current vendor docs (do not rely on memory).
+- [ ] Same rule for speech-to-text in `capture/` (Parakeet, AssemblyAI, OpenAI
+  engines and their models): engine and model are user choices, extensible to
+  future engines (for example Ollama-hosted), no fixed model in code.
 
 ## Friendly-user release gate — 2026-10-19
 

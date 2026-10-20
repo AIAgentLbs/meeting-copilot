@@ -15,6 +15,13 @@ Owner scope decision: 2026-10-19.
 - This repository is the public `AIAgentLbs/meeting-copilot`. It also hosts the
   GitHub Releases that the website download links point to. Never commit
   secrets, private client data or meeting recordings.
+- No hardcoded AI or speech providers, models or model modes anywhere (owner
+  rule 2026-10-20). Provider (Codex, Claude Code, Gemini, local runtimes such as
+  Ollama), model, reasoning effort, fast/speed mode, and speech-to-text engine and
+  model (Parakeet, AssemblyAI, OpenAI, future engines) are user choices. Options
+  come from what is installed, signed in and supported by the user's plan, read
+  from the provider itself, never from a fixed list in code. Code may hold engine
+  adapters, not chosen models; a missing choice is asked for, not defaulted.
 - Do not add website/marketing acceptance to the application's release gate.
   The app owns a functioning installer and update artifacts; the website owns
   how their download links, instructions and claims are presented.
