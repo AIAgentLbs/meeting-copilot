@@ -10,13 +10,14 @@ from local_context import LocalContext
 
 class LocalContextLLMTests(unittest.TestCase):
     def test_failed_cli_must_not_be_reported_as_success_after_partial_text(self):
-        with tempfile.TemporaryDirectory() as directory:
+        from test_ai_providers import chosen_codex
+        with tempfile.TemporaryDirectory() as directory, chosen_codex(directory, server):
             session = server.CodexSession(Path(directory) / 'session.json')
             result = SimpleNamespace(returncode=1, stderr='usage limit reached',
                 stdout='{"type":"item.completed","item":{"type":"agent_message","text":"partial"}}\n')
             with patch.object(server.subprocess, 'run', return_value=result):
                 with self.assertRaisesRegex(RuntimeError, 'AI_LIMIT'):
-                    session._run_codex('synthetic')
+                    session._run_ai('synthetic')
 
     def test_folder_search_without_git_and_disconnect_resets_ai_context(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -34,7 +35,7 @@ class LocalContextLLMTests(unittest.TestCase):
                 seen.append((prompt, session.thread_id))
                 session.thread_id = 'synthetic-thread'
                 return 'CSV'
-            with patch.object(server, 'LOCAL_CONTEXT', provider), patch.object(server.GOOGLE_CONTEXT, 'augment', return_value=''), patch.object(session, '_run_codex', side_effect=model):
+            with patch.object(server, 'LOCAL_CONTEXT', provider), patch.object(server.GOOGLE_CONTEXT, 'augment', return_value=''), patch.object(session, '_run_ai', side_effect=model):
                 session.ask('What can Acme export?', '', 'test', 'one', {'repositories': []})
                 self.assertIn('Acme supports CSV', seen[-1][0])
                 self.assertIn('notes.md', seen[-1][0])

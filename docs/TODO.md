@@ -29,18 +29,30 @@ hashes, Pages removed, and the Windows installer relocated to
 
 ## No hardcoded providers, models or modes: AI and speech-to-text (owner rule 2026-10-20)
 
-- [ ] Replace the hardcoded `gpt-6.1-sol` (`copilot/web/first_run.py:84`,
-  `server.py:2024`, `live_translation.py:62`, `summary_rewrite.py:9`) with a user
-  choice: provider (Codex, Claude Code, Gemini via `agy`) shown only when its CLI
-  is installed and signed in; model list read from that CLI, not hardcoded;
-  effort levels the chosen model supports; fast-mode toggle only where the model
-  and the user's plan support it. Separate settings for live in-call analysis
-  (fast mode useful) and post-call summaries. Check AI tests the exact chosen
-  combination and names the reason on refusal (old CLI does not know the model,
-  plan excludes the model, not signed in). Why: an older Codex works with models
-  it knows; today the app fails with any CLI that does not know `gpt-6.1-sol`.
-  Before building, verify each CLI's model/effort/fast flags and plan
-  availability from current vendor docs (do not rely on memory).
+- [x] Phase 1 (2026-10-20): Python provider layer `copilot/web/ai_providers.py`
+  (Codex app-server, Claude Code initialize, Antigravity `agy models`, Ollama
+  HTTP), per-purpose choice in the shared `config.json` `ai` section
+  (`docs/config.schema.json`), settings panel and per-choice Check AI in Getting
+  started, all five Codex call sites routed through the layer, model ids removed
+  from Python/JS/HTML and the Windows launcher message. Spec:
+  `docs/specs/2026-10-20-no-hardcoded-models.md`.
+- [ ] Release 0.1.11 with phase 1 (packaging, both platforms).
+- [ ] Antigravity read-only is not enforceable: `agy` print mode reports
+  `permission_mode: always-proceed` even with `--mode plan --sandbox`, and the
+  prompt can only go through argv (Windows 32K command-line cap). Find a
+  read-only/no-tools mode or stdin input in agy docs; until then consider not
+  offering it for `live_analysis` (`ai_providers.AntigravityAdapter.call`).
+- [ ] Shared config writers: Swift `Config.update` takes no
+  `config.json.lock`, resets the file mode on atomic write and turns a malformed
+  file into `{}` on the next save (`capture/Sources/meetingcopilot/Config.swift:508-526,
+  550-566, 617`). Add the lock, keep the mode, refuse to save over an unparsable
+  file. Verify the C# `AppSettingsStore` against `docs/config.schema.json` (not in
+  this repository).
+- [ ] Phase 2: Swift summary/speaker naming read `ai.purposes.summary` and
+  `ai.purposes.speaker_names`; remove code defaults and the fixed fallback order
+  in `Summary/LLMBackend.swift`; pass the model to Claude CLI.
+- [ ] Phase 4: Windows launcher still looks only for Codex
+  (`scripts/windows/meeting-copilot.ps1:16-26`); installer pins speech models.
 - [ ] Same rule for speech-to-text in `capture/` (Parakeet, AssemblyAI, OpenAI
   engines and their models): engine and model are user choices, extensible to
   future engines (for example Ollama-hosted), no fixed model in code.

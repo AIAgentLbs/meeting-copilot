@@ -27,7 +27,7 @@ class GoogleLLMTests(unittest.TestCase):
                 self.assertIn("/synthetic/repo", prompt)
                 self.assertIn("Preserve exact Google source links", prompt)
                 return "FACT — Source decision"
-            with patch.object(provider, "status", return_value={"auth": "connected", "account": "synthetic@example.com"}), patch.object(server, "GOOGLE_CONTEXT", provider), patch.object(session, "_run_codex", side_effect=model), patch.object(provider, "_search_source", return_value={"state": "ok", "items": [provider._item("drive", "Decision", "https://docs.google.com/document/d/synthetic", "Source decision")], "limited": False}) as search:
+            with patch.object(provider, "status", return_value={"auth": "connected", "account": "synthetic@example.com"}), patch.object(server, "GOOGLE_CONTEXT", provider), patch.object(session, "_run_ai", side_effect=model), patch.object(provider, "_search_source", return_value={"state": "ok", "items": [provider._item("drive", "Decision", "https://docs.google.com/document/d/synthetic", "Source decision")], "limited": False}) as search:
                 scope = {"kind": "all", "repositories": [{"name": "Example", "path": "/synthetic/repo"}]}
                 self.assertIn("FACT", session.ask("What did Acme agree?", "Acme call", "Test", "one", scope))
                 self.assertEqual(search.call_count, 3)

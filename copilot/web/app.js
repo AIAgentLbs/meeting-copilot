@@ -153,7 +153,7 @@ const translations = {
     "frames.ok": "Последний кадр: {time}.",
     "frames.error": "Ошибка съёмки: {error}",
     "copilot.heading": "Карта звонка и помощник",
-    "copilot.meta": "Codex читает стенограмму и локальные Git-репозитории",
+    "copilot.meta": "ИИ читает стенограмму и локальные Git-репозитории",
     "view.chat": "Чат",
     "plan.tab": "Подготовка",
     "plan.links": "Материалы",
@@ -238,8 +238,8 @@ const translations = {
     "speaker.voice": "Собеседник {value}",
     "speaker.voice_hint": "Голос различён локально по аудио; имя появится, когда Zoom покажет активного участника",
     "copilot.error": "Ошибка: {error}",
-    "copilot.active": "Контекст Codex активен, репозитории доступны только для чтения",
-    "copilot.disconnected": "Codex подключится после первого вопроса",
+    "copilot.active": "Контекст ИИ активен, репозитории доступны только для чтения",
+    "copilot.disconnected": "ИИ подключится после первого вопроса",
     "analysis.no_signal": "Проверено{when}: новых значимых сигналов нет",
     "analysis.signal": "Проверено{when}: новые сигналы добавлены в Журнал",
     "analysis.error": "Автоанализ не выполнен{when}: {error}",
@@ -287,7 +287,7 @@ const translations = {
     "project.edit_repos": "Изменить набор репозиториев",
     "project.saving": "Сохраняю выбор…",
     "ui.disconnected": "UI отключён",
-    "help.codex": "Codex проверяет стенограмму и локальные источники",
+    "help.ai": "ИИ проверяет стенограмму и локальные источники",
     "note.saving": "Сохраняю заметку локально",
     "note.current": "текущий момент",
     "note.saved": "Заметка сохранена @ {time}",
@@ -380,7 +380,7 @@ const translations = {
     "frames.ok": "Last frame: {time}.",
     "frames.error": "Capture error: {error}",
     "copilot.heading": "Call map & assistant",
-    "copilot.meta": "Codex reads the transcript and local Git repositories",
+    "copilot.meta": "AI reads the transcript and local Git repositories",
     "view.chat": "Chat",
     "plan.tab": "Preparation",
     "plan.links": "Materials",
@@ -465,8 +465,8 @@ const translations = {
     "speaker.voice": "Participant {value}",
     "speaker.voice_hint": "The voice was separated locally from audio; a name appears when Zoom shows the active participant",
     "copilot.error": "Error: {error}",
-    "copilot.active": "Codex context is active; repositories are read-only",
-    "copilot.disconnected": "Codex will connect after the first question",
+    "copilot.active": "AI context is active; repositories are read-only",
+    "copilot.disconnected": "AI will connect after the first question",
     "analysis.no_signal": "Checked{when}: no new significant signals",
     "analysis.signal": "Checked{when}: new signals added to the Journal",
     "analysis.error": "Auto-analysis failed{when}: {error}",
@@ -514,7 +514,7 @@ const translations = {
     "project.edit_repos": "Change repository set",
     "project.saving": "Saving selection…",
     "ui.disconnected": "UI disconnected",
-    "help.codex": "Codex is checking the transcript and local sources",
+    "help.ai": "AI is checking the transcript and local sources",
     "note.saving": "Saving the note locally",
     "note.current": "current moment",
     "note.saved": "Note saved @ {time}",
@@ -646,8 +646,8 @@ Object.assign(translations.en, {
   "library.copy": "Copy summary", "library.no_questions": "No open questions recorded.",
   "library.feedback": "What should change in this summary?", "library.rewrite": "Update summary",
   "library.open_audio": "Open recording", "library.open_folder": "Open meeting folder",
-  "library.rewrite_help": "Processes the selected meeting with GPT-6.1 Sol in a separate session of your Codex account, using its general instructions. Updates the summary here, not the live assistant, PDFs or delivered reports.",
-  "library.rewriting": "Updating this meeting's summary…", "library.rewrite_failed": "Could not update the summary. Check your Codex sign-in and try again. The previous result is unchanged.",
+  "library.rewrite_help": "Processes the selected meeting in a separate session of the AI chosen for summary rewrites in Getting started. Updates the summary here, not the live assistant, PDFs or delivered reports.",
+  "library.rewriting": "Updating this meeting's summary…", "library.rewrite_failed": "Could not update the summary. Check AI access in Getting started and try again. The previous result is unchanged.",
   "library.browsing": "You are viewing a past meeting. Current recording and assistant context are unchanged."
 });
 Object.assign(translations.ru, {
@@ -663,8 +663,8 @@ Object.assign(translations.ru, {
   "library.copy": "Скопировать итог", "library.no_questions": "Открытые вопросы не зафиксированы.",
   "library.feedback": "Что изменить в кратком итоге?", "library.rewrite": "Обновить итог",
   "library.open_audio": "Открыть запись", "library.open_folder": "Открыть папку встречи",
-  "library.rewrite_help": "Обрабатывает выбранную встречу через GPT-6.1 Sol в отдельной сессии вашего Codex с его общими инструкциями. Меняет итог здесь, не затрагивает живого помощника, PDF и отправленные отчеты.",
-  "library.rewriting": "Обновляю итог этой встречи…", "library.rewrite_failed": "Не удалось обновить итог. Проверьте вход в Codex и повторите. Предыдущий результат сохранен.",
+  "library.rewrite_help": "Обрабатывает выбранную встречу в отдельной сессии ИИ, выбранного для переписывания итога в разделе «Начать работу». Меняет итог здесь, не затрагивает живого помощника, PDF и отправленные отчеты.",
+  "library.rewriting": "Обновляю итог этой встречи…", "library.rewrite_failed": "Не удалось обновить итог. Проверьте доступ к ИИ в разделе «Начать работу» и повторите. Предыдущий результат сохранен.",
   "library.browsing": "Вы просматриваете прошлую встречу. Текущая запись и контекст помощника не изменились."
 });
 let archiveMeetings = [];
@@ -2600,7 +2600,7 @@ async function state() {
     elements.send.disabled = requestBusy || data.copilot.busy;
     elements.analyze.disabled = requestBusy || data.copilot.busy;
     if (stateConnectionFailed && !requestBusy) {
-      elements.help.textContent = t("help.codex");
+      elements.help.textContent = t("help.ai");
       elements.help.classList.remove("error");
     }
     stateConnectionFailed = false;
@@ -2656,7 +2656,7 @@ async function ask(question) {
   if (!clean || requestBusy) return;
   requestBusy = true;
   elements.question.value = "";
-  elements.help.textContent = t("help.codex");
+  elements.help.textContent = t("help.ai");
   elements.help.classList.remove("error");
   const pending = document.createElement("article");
   pending.className = "message user";

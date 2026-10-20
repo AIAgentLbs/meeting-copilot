@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/AIAgentLbs/meeting-copilot/docs/config.schema.json",
+  "title": "MeetOnTrack shared settings (~/.config/meeting-copilot/config.json)",
+  "description": "One settings file for every component: the Swift Mac app (Config.swift), the Windows installer and C# recorder (AppSettingsStore, same path under the user profile) and the Python web server. Each component owns some top-level sections and writes only those, with read-modify-write that preserves every key it does not own. Writers serialize on the advisory lock file config.json.lock next to this file, write a temporary file in the same folder and replace atomically, keeping the existing file mode (0600 for a new file).",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "ai": {
+      "description": "Owner: Python web server (copilot/web/ai_providers.py). AI provider choice per task. Values are user choices read from the installed provider's own discovery; no component may hold or fill in a default model, effort or speed.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "purposes": {
+          "type": "object",
+          "description": "A missing purpose means the user has not chosen; the purpose then reports needs_choice and does not run.",
+          "propertyNames": {
+            "description": "Phase 1 purposes. Phase 2 adds summary and speaker_names, read by Swift.",
+            "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names"]
+          },
+          "additionalProperties": { "$ref": "#/$defs/choice" }
+        }
+      }
+    },
+    "recordings_dir": { "description": "Owner: Swift Mac app / C# recorder." },
+    "transcription": { "description": "Owner: Swift Mac app / C# recorder. Speech-to-text; the engine registry is phase 3." },
+    "live_transcription": { "description": "Owner: Swift Mac app / C# recorder." },
+    "summary": { "description": "Owner: Swift Mac app. Moves to ai.purposes.summary in phase 2." },
+    "speaker_names": { "description": "Owner: Swift Mac app. Moves to ai.purposes.speaker_names in phase 2." },
+    "auto_record": { "description": "Owner: Swift Mac app / C# recorder. Also read by the Python web server." },
+    "interface_language": { "description": "Owner: Swift Mac app. Also read by the Python web server." },
+    "calendar": { "description": "Owner: Swift Mac app." },
+    "calendar_provider": { "description": "Owner: Swift Mac app." },
+    "mic_voice_processing": { "description": "Owner: Swift Mac app." },
+    "offline_echo_cancellation": { "description": "Owner: Swift Mac app." },
+    "transcript_echo_filter": { "description": "Owner: Swift Mac app." },
+    "system_audio": { "description": "Owner: Swift Mac app." },
+    "keep_audio": { "description": "Owner: Swift Mac app." },
+    "on_stop": { "description": "Owner: Swift Mac app." },
+    "user_name": { "description": "Owner: Swift Mac app." },
+    "dock_icon": { "description": "Owner: Swift Mac app." },
+    "menu_bar_icon": { "description": "Owner: Swift Mac app." },
+    "window": { "description": "Owner: Swift Mac app." }
+  },
+  "$defs": {
+    "choice": {
+      "type": "object",
+      "required": ["provider", "model", "effort", "speed"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "minLength": 1, "description": "Adapter name, e.g. codex, claude, antigravity, ollama." },
+        "model": { "type": "string", "minLength": 1, "description": "Model id exactly as the provider lists it." },
+        "effort": { "type": "string", "description": "One of the effort levels the provider lists for the model; empty only when it lists none." },
+        "speed": { "type": "string", "description": "A speed tier id the provider offers for the model and plan; empty means standard speed." }
+      }
+    }
+  }
+}
