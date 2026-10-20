@@ -7,6 +7,14 @@ Latest installed delivery/OAuth evidence:
 [2026-10-19 acceptance](releases/2026-10-19-delivery-acceptance.md).
 Public Mac/Windows 0.1.10 packages and remaining hardware gates:
 [distribution acceptance](releases/2026-10-19-public-distribution.md).
+2026-10-20: public 0.1.11 Mac/Windows pre-releases (per-task AI choice):
+[0.1.11 distribution acceptance](releases/2026-10-20-0.1.11-distribution.md).
+
+- [ ] `scripts/check-note-ui.cjs` fails at 0.1.11 and identically at the 0.1.10
+  source (`ae27f2b`): `#note-help` shows `--:--` where the test expects the
+  fixture's elapsed time `02:44`. Decide whether the hint must render the call
+  time before the first state poll (product fix) or the test must wait for it
+  (test fix); then run it in release checks. Not run in CI today.
 
 Scope: end-user software only. Website/domain, analytics, SEO, comparisons,
 keyword/trademark research and promotion are tracked exclusively in
