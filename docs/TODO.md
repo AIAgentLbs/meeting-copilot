@@ -16,6 +16,21 @@ The 2026-10-19 file migration is complete: 37 website files moved with verified
 hashes, Pages removed, and the Windows installer relocated to
 `scripts/windows/install.ps1` with packaging/CI references updated.
 
+## AI provider, model, effort and fast-mode selection (owner request 2026-10-20)
+
+- [ ] Replace the hardcoded `gpt-6.1-sol` (`copilot/web/first_run.py:84`,
+  `server.py:2024`, `live_translation.py:62`, `summary_rewrite.py:9`) with a user
+  choice: provider (Codex, Claude Code, Gemini via `agy`) shown only when its CLI
+  is installed and signed in; model list read from that CLI, not hardcoded;
+  effort levels the chosen model supports; fast-mode toggle only where the model
+  and the user's plan support it. Separate settings for live in-call analysis
+  (fast mode useful) and post-call summaries. Check AI tests the exact chosen
+  combination and names the reason on refusal (old CLI does not know the model,
+  plan excludes the model, not signed in). Why: an older Codex works with models
+  it knows; today the app fails with any CLI that does not know `gpt-6.1-sol`.
+  Before building, verify each CLI's model/effort/fast flags and plan
+  availability from current vendor docs (do not rely on memory).
+
 ## Friendly-user release gate — 2026-10-19
 
 - [x] Corrected first-install entry: installer waits for the local assistant's
