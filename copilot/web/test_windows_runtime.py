@@ -12,16 +12,16 @@ class WindowsRuntimeTests(unittest.TestCase):
     def test_codex_analysis_uses_the_chosen_model_and_stays_read_only(self):
         import server
         from test_ai_providers import chosen_codex
-        from types import SimpleNamespace
         with tempfile.TemporaryDirectory() as tmp, chosen_codex(tmp, server):
             session = server.CodexSession(Path(tmp) / "copilot.json")
-            result = SimpleNamespace(stdout='{"type":"item.completed","item":{"type":"agent_message","text":"FACT: Synthetic"}}', stderr='', returncode=0)
-            with patch.object(server.subprocess, "run", return_value=result) as run:
+            import ai_providers
+            result = ai_providers.Result(0, '{"type":"item.completed","item":{"type":"agent_message","text":"FACT: Synthetic"}}', '')
+            with patch.object(ai_providers, "_run", return_value=result) as run:
                 self.assertEqual(session._run_ai("Synthetic input"), "FACT: Synthetic")
             args = run.call_args.args[0]
             self.assertEqual(args[args.index("-m") + 1], "fixture-model")
-            self.assertIn("--sandbox", args)
-            self.assertEqual(args[args.index("--sandbox") + 1], "read-only")
+            self.assertIn('default_permissions="meetontrack"', args)
+            self.assertNotIn('"write"', " ".join(args))
             self.assertIn("--ask-for-approval", args)
             self.assertEqual(args[args.index("--ask-for-approval") + 1], "never")
 

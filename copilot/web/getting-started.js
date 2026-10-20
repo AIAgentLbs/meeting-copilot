@@ -90,14 +90,17 @@
     live_analysis: ["Live analysis and chat", "Анализ и чат во время звонка"],
     live_translation: ["Live translation", "Перевод во время звонка"],
     frame_relevance: ["Screenshot relevance", "Отбор снимков экрана"],
-    summary_rewrite: ["Summary rewrite", "Переписывание итога"]
+    summary_rewrite: ["Summary rewrite", "Переписывание итога"],
+    summary: ["Meeting summary", "Итог встречи"],
+    speaker_names: ["Speaker names", "Имена спикеров"]
   };
+  const needsImage = new Set(["frame_relevance"]);
   let aiState = {providers: [], purposes: {}}, drafts = {};
   const options = {};
   const node = (tag, text) => {const item = document.createElement(tag); if (text) item.textContent = text; return item;};
   function picker(label, choices, value, change) {
     const wrap = node("label", label), list = node("select");
-    for (const [id, name] of choices) {const option = node("option", name); option.value = id; list.append(option);}
+    for (const [id, name, disabled] of choices) {const option = node("option", name); option.value = id; option.disabled = Boolean(disabled); list.append(option);}
     list.value = value; list.addEventListener("change", () => change(list.value)); wrap.append(list); return wrap;
   }
   async function providerOptions(provider, refresh = false) {
@@ -121,17 +124,20 @@
     if (found?.state === "loading" || (draft.provider && !found)) box.append(node("p", word("Reading what this tool offers…", "Читаю, что предлагает инструмент…")));
     else if (found?.state === "unavailable") box.append(node("p", word("Unavailable: ", "Недоступно: ") + found.reason));
     else if (found) {
-      const model = found.models.find(item => item.id === draft.model);
-      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...found.models.map(item => [item.id, item.label])],
-        draft.model, value => {Object.assign(draft, {model: value, effort: "", speed: ""}); redraw();}));
+      // A model is offered only when discovery says it can do this task; otherwise it shows why not.
+      const why = item => item.problem || (needsImage.has(purpose) && item.image !== true
+        ? (item.image === false ? word("does not accept images", "не принимает изображения") : word("image input not reported", "прием изображений не указан")) : "");
+      const model = found.models.find(item => item.id === draft.model && !why(item));
+      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...found.models.map(item => [item.id, why(item) ? `${item.label} (${why(item)})` : item.label, why(item)])],
+        model ? draft.model : "", value => {Object.assign(draft, {model: value, effort: "", speed: ""}); redraw();}));
       if (model?.efforts.length) box.append(picker(word("Effort", "Уровень рассуждений"), [["", word("Choose…", "Выберите…")], ...model.efforts.map(item => [item, item])],
         draft.effort, value => {draft.effort = value; redraw();}));
-      if (model?.speeds.length) box.append(picker(word("Speed", "Скорость"), [["", word("Standard", "Обычная")], ...model.speeds.map(item => [item.id, item.label])],
+      if (model?.speeds.length) box.append(picker(word("Speed", "Скорость"), [["", word("Choose…", "Выберите…")], ["standard", word("Standard", "Обычная")], ...model.speeds.map(item => [item.id, item.label])],
         draft.speed, value => {draft.speed = value; redraw();}));
       if (model && !model.efforts.length) box.append(node("p", word("This model has no effort levels.", "У этой модели нет уровней рассуждений.")));
       if (model && !model.speeds.length) box.append(node("p", word("Speed: ", "Скорость: ") + model.speed_reason));
       if (found.plan) box.append(node("p", word("Plan: ", "Тариф: ") + found.plan));
-      ready = Boolean(model) && (!model.efforts.length || draft.effort);
+      ready = Boolean(model) && (!model.efforts.length || draft.effort) && (!model.speeds.length || draft.speed);
     }
     const save = node("button", word("Save", "Сохранить")); save.type = "button"; save.className = "quiet-button"; save.disabled = !ready;
     save.addEventListener("click", async () => {
@@ -141,11 +147,14 @@
       redraw();
     });
     box.append(save);
-    const state = status.state === "ready" ? word("Ready to use: ", "Готово к работе: ") + [status.choice.model, status.choice.effort, status.choice.speed].filter(Boolean).join(", ")
+    const speedName = speed => speed === "standard" ? word("standard speed", "обычная скорость") : speed;
+    const state = status.state === "ready" ? word("Ready to use: ", "Готово к работе: ") + [status.choice.model, status.choice.effort, speedName(status.choice.speed)].filter(Boolean).join(", ")
       : status.state === "unavailable" ? word("Saved choice is unavailable: ", "Сохраненный выбор недоступен: ") + status.reason
+      : status.choice ? word("Choice is not complete: ", "Выбор не закончен: ") + status.reason
       : word("Not chosen yet. AI does not run for this task until you choose.", "Еще не выбрано. ИИ не работает для этой задачи, пока вы не выберете.");
     const line = node("p", state); line.setAttribute("role", "status"); box.append(line);
-    if (checked) box.append(node("p", checked.state === "ready" ? word("Check passed, model reported: ", "Проверка пройдена, модель: ") + checked.model : errorText(checked.message)));
+    if (checked && status.state === "ready") box.append(node("p", checked.state === "ready" ? word("Check passed, model reported: ", "Проверка пройдена, модель: ") + checked.model
+      : checked.state === "unchecked" ? word("Not checked with this choice yet.", "С этим выбором проверки еще не было.") : errorText(checked.message)));
     return box;
   }
   function renderAI() {$("ai-purposes").replaceChildren(...Object.keys(purposes).map(purposeRow));}

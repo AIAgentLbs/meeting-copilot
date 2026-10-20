@@ -27,6 +27,7 @@ class LiveTranslation:
         self.retry_after: dict[tuple[str, str, str], float] = {}
         self.revision = 0
         self.error = ""
+        self.error_state = ""
         self.meeting_id = ""
         self.futures = {}
 
@@ -73,12 +74,14 @@ class LiveTranslation:
                     "translation_en": translation, "at": time.monotonic(),
                 }
                 self.revision += 1
-                self.error = ""
+                self.error = self.error_state = ""
                 self.retry_after.pop(key, None)
         except (OSError, subprocess.TimeoutExpired, RuntimeError) as exc:
             with self.lock:
                 if key[0] == self.meeting_id:
-                    self.error = type(exc).__name__
+                    # A missing or unusable AI choice is shown as such (AI_CHOICE / AI_UNAVAILABLE).
+                    self.error = str(exc) if getattr(exc, "state", "") else type(exc).__name__
+                    self.error_state = getattr(exc, "state", "") or "error"
                     self.retry_after[key] = time.monotonic() + 60
         finally:
             with self.lock:
@@ -95,7 +98,7 @@ class LiveTranslation:
                 self.meeting_id = meeting_id
                 self.results = {key: value for key, value in self.results.items() if key[0] == meeting_id}
                 self.retry_after = {key: value for key, value in self.retry_after.items() if key[0] == meeting_id}
-                self.error = ""
+                self.error = self.error_state = ""
                 self.revision += 1
                 for key, future in list(self.futures.items()):
                     if future.cancel():
@@ -130,6 +133,6 @@ class LiveTranslation:
                     continue
                 self.pending.add(key)
                 self.futures[key] = self.pool.submit(self._work, key, text)
-            revision, error = self.revision, self.error
-        return {**transcript, "segments": segments,
-                "translation_revision": revision, "translation_error": error}
+            revision, error, state = self.revision, self.error, self.error_state
+        return {**transcript, "segments": segments, "translation_revision": revision,
+                "translation_error": error, "translation_state": state}

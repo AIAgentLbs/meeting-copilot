@@ -122,6 +122,7 @@ const translations = {
     "transcript.copy_failed": "Не удалось скопировать",
     "transcript.translation_jump": "EN: {count} · к последнему",
     "transcript.translation_hint": "Последний перевод: {time}. Новые реплики на английском не переводятся.",
+    "transcript.translation_needs_ai": "EN: выберите ИИ для перевода в разделе «Начать работу»",
     "frames.tab": "Кадры",
     "speaker.all": "Все",
     "speakers.open": "Имена",
@@ -349,6 +350,7 @@ const translations = {
     "transcript.copy_failed": "Could not copy",
     "transcript.translation_jump": "EN: {count} · show latest",
     "transcript.translation_hint": "Latest translation: {time}. New English utterances are not translated.",
+    "transcript.translation_needs_ai": "EN: choose AI for translation in Getting started",
     "frames.tab": "Frames",
     "speaker.all": "All",
     "speakers.open": "Names",
@@ -1212,6 +1214,12 @@ function renderTranscript(transcript) {
   if (latestTranslation) {
     elements.translationJump.textContent = t("transcript.translation_jump", { count: translated.length });
     elements.translationJump.title = t("transcript.translation_hint", { time: localTime(latestTranslation.timestamp) });
+  }
+  if (["needs_choice", "unavailable"].includes(transcript.translation_state)) {
+    // Translation waits for an AI choice; say so instead of silently not translating.
+    elements.translationJump.hidden = false;
+    elements.translationJump.textContent = t("transcript.translation_needs_ai");
+    elements.translationJump.title = transcript.translation_error || "";
   }
   elements.note.textContent = t("note.button", { time: timecodeLabel(transcript) });
   document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(transcript) });
@@ -2831,6 +2839,7 @@ elements.deliveryNoticeDismiss.addEventListener("click", () => void acknowledgeD
 elements.translationJump.addEventListener("click", () => {
   const latest = activeTranscript?.segments.filter((segment) => segment.translation_en).at(-1);
   if (latest) jumpToTranscript(latest.timestamp);
+  else document.querySelector("#getting-started-open")?.click();
 });
 
 elements.refresh.addEventListener("click", async () => {

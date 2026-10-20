@@ -1,14 +1,14 @@
 """Explicit first-run AI access checks."""
 from __future__ import annotations
 
-from functools import lru_cache
-import json
-import os
 from pathlib import Path
 import re
-import shutil
+import struct
 import subprocess
+import tempfile
 import threading
+import uuid
+import zlib
 
 
 def pick_codex(candidates, runner=None):
@@ -30,16 +30,6 @@ def pick_codex(candidates, runner=None):
     return best
 
 
-@lru_cache(maxsize=1)
-def resolve_codex():
-    """One Codex binary for every caller: env override, else the newest installed CLI."""
-    if os.environ.get('MEETING_COPILOT_CODEX'):
-        return Path(os.environ['MEETING_COPILOT_CODEX'])
-    home = Path.home()
-    return pick_codex([home / '.codex/packages/standalone/current/bin/codex', home / '.local/bin/codex',
-                       shutil.which('codex'), '/opt/homebrew/bin/codex', '/usr/local/bin/codex']) or Path('/usr/local/bin/codex')
-
-
 def ai_failure(detail: str) -> str:
     text = detail.lower()
     if any(word in text for word in ('quota', 'usage limit', 'rate limit', '429', 'out of credit', 'limit reached')):
@@ -58,45 +48,80 @@ def ai_failure(detail: str) -> str:
 
 
 PROBE = 'Reply with exactly READY. Do not inspect files or use tools.'
+UNCHECKED = 'Installed tools do not prove account access. Check AI to send a short test request without meeting data.'
+
+
+def probe_png(path, rgb=(220, 30, 30), size=16):
+    """A solid-colour PNG for the image probe, written with the standard library."""
+    row = b'\x00' + bytes(rgb) * size
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    Path(path).write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 2, 0, 0, 0))
+                           + chunk(b'IDAT', zlib.compress(row * size)) + chunk(b'IEND', b''))
 
 
 class AIReadiness:
-    """Check AI: one tiny request per distinct configured choice, never meeting data."""
+    """Check AI: one purpose-appropriate test request per task, never meeting data.
+    A result belongs to the exact choice and executable it tested (the ticket key)."""
     def __init__(self, service):
         self.service = service
         self.lock = threading.Lock()
-        self.result = {'state': 'unchecked', 'purposes': {},
-                       'message': 'Installed tools do not prove account access. Check AI to send a short test request without meeting data.'}
+        self.results = {}  # purpose -> (ticket key, result)
 
     def snapshot(self):
-        return dict(self.result)
+        purposes = {}
+        for purpose, ticket in self.service.tickets().items():
+            done = self.results.get(purpose)
+            if ticket.state != 'ready':
+                purposes[purpose] = {'state': ticket.state, 'message': ticket.reason, 'model': ''}
+            elif done and done[0] == ticket.key:
+                purposes[purpose] = dict(done[1])
+            else:
+                purposes[purpose] = {'state': 'unchecked', 'model': '',
+                                     'message': 'Not checked with this choice yet. Run Check AI.'}
+        if self.lock.locked():
+            return {'state': 'checking', 'purposes': purposes, 'message': 'Checking AI access for each task...'}
+        states = {item['state'] for item in purposes.values()}
+        state = ('ready' if states == {'ready'} else 'error' if states & {'error', 'unavailable'}
+                 else 'needs_choice' if 'needs_choice' in states else 'unchecked')
+        bad = {'error', 'unavailable'} if state == 'error' else {state}
+        message = ('AI answered successfully for every task. Account limits still apply.' if state == 'ready'
+                   else UNCHECKED if state == 'unchecked'
+                   else next(item['message'] for item in purposes.values() if item['state'] in bad))
+        return {'state': state, 'purposes': purposes, 'message': message}
 
     def check(self):
         if not self.lock.acquire(blocking=False):
-            return {'state': 'checking', 'message': 'A check is already running.', 'purposes': {}}
+            return self.snapshot()
         try:
-            self.result = {'state': 'checking', 'message': 'Checking AI access for each task…', 'purposes': {}}
-            tested, purposes = {}, {}
-            for purpose, status in self.service.status_all().items():
-                if status['state'] != 'ready':
-                    purposes[purpose] = {'state': status['state'], 'message': status['reason'], 'model': ''}
-                    continue
-                key = json.dumps(status['choice'], sort_keys=True)
-                if key not in tested:
-                    try:
-                        reply = self.service.run(purpose, PROBE, timeout=60)
-                        ok = reply.text.strip().strip('.') == 'READY'
-                        tested[key] = {'state': 'ready' if ok else 'error', 'model': reply.model,
-                                       'message': 'AI answered successfully. Account limits still apply.' if ok
-                                       else 'AI_FAILED: The model answered, but not as asked. Try another model.'}
-                    except RuntimeError as error:
-                        tested[key] = {'state': 'error', 'message': str(error), 'model': ''}
-                purposes[purpose] = dict(tested[key])
-            states = {item['state'] for item in purposes.values()}
-            state = 'ready' if states == {'ready'} else 'error' if 'error' in states or 'unavailable' in states else 'needs_choice'
-            first_problem = next((item['message'] for item in purposes.values() if item['state'] != 'ready'), '')
-            self.result = {'state': state, 'purposes': purposes,
-                           'message': 'AI answered successfully for every task. Account limits still apply.' if state == 'ready' else first_problem}
+            for purpose, ticket in self.service.tickets().items():
+                if ticket.state == 'ready':
+                    self.results[purpose] = (ticket.key, self._probe(purpose, ticket))
         finally:
             self.lock.release()
         return self.snapshot()
+
+    def _probe(self, purpose, ticket):
+        """Text probe, an image probe for screenshots, a file probe for repository reading."""
+        adapter = self.service.adapters[ticket.choice['provider']]
+        with tempfile.TemporaryDirectory(prefix='meetontrack-check-') as directory:
+            prompt, expect, options = PROBE, 'READY', {}
+            if purpose == 'frame_relevance':
+                options['image'] = Path(directory) / 'probe.png'
+                probe_png(options['image'])
+                prompt, expect = 'What single colour fills this image? Reply with one lowercase English word.', 'red'
+            elif purpose == 'live_analysis' and getattr(adapter, 'reads_files', False):
+                expect = 'probe' + uuid.uuid4().hex[:8]
+                (Path(directory) / 'probe.txt').write_text(expect, encoding='utf-8')
+                options['roots'] = [directory]
+                prompt = (f'Read the file {Path(directory) / "probe.txt"} and reply with exactly the one word it '
+                          'contains. Do not read anything else.')
+            try:
+                reply = self.service.run(purpose, prompt, ticket=ticket, timeout=90, **options)
+            except RuntimeError as error:
+                return {'state': 'error', 'message': str(error), 'model': ''}
+        if expect.lower() not in reply.text.lower():
+            return {'state': 'error', 'model': reply.model,
+                    'message': 'AI_FAILED: The model answered, but not as asked. Try another model.'}
+        return {'state': 'ready', 'model': reply.model,
+                'message': 'AI answered successfully. Account limits still apply.'}

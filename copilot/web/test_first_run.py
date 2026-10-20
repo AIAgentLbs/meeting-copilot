@@ -49,30 +49,40 @@ class PickCodexTests(unittest.TestCase):
 
 
 class CheckAITests(unittest.TestCase):
-    def test_each_distinct_choice_is_tested_once_and_missing_ones_are_reported(self):
-        from test_ai_providers import FakeAdapter
+    def test_every_purpose_gets_its_own_purpose_appropriate_probe(self):
+        from test_ai_providers import FakeAdapter, M1, M2
         with tempfile.TemporaryDirectory() as root:
             adapter = FakeAdapter()
             service = AIService(Path(root) / "config.json", {}, adapters=[adapter])
-            same = {"provider": "fake", "model": "m2", "effort": "", "speed": ""}
-            service.save("live_analysis", same)
-            service.save("summary_rewrite", same)
-            service.save("live_translation", {"provider": "fake", "model": "m1", "effort": "x", "speed": "quick"})
-            result = AIReadiness(service).check()
-        self.assertEqual(len(adapter.calls), 2)
-        self.assertEqual(result["state"], "needs_choice")
-        self.assertEqual(result["purposes"]["live_analysis"]["model"], "m2-reported")
-        self.assertEqual(result["purposes"]["frame_relevance"]["state"], "needs_choice")
+            for purpose, choice in (("live_analysis", M2), ("summary_rewrite", M2), ("frame_relevance", M1)):
+                service.save(purpose, choice)
+            readiness = AIReadiness(service)
+            self.assertEqual(readiness.snapshot()["purposes"]["live_analysis"]["state"], "unchecked")
+            result = readiness.check()
+            options = {call[1][:20]: call[2] for call in adapter.calls}
+            self.assertEqual(len(adapter.calls), 3)  # same choice for two tasks is still tested twice
+            self.assertIn("roots", next(o for p, o in options.items() if p.startswith("Read the file")))
+            self.assertTrue(next(o for p, o in options.items() if p.startswith("What single")).get("image"))
+            self.assertEqual(result["purposes"]["summary_rewrite"]["state"], "ready")
+            self.assertEqual(result["purposes"]["live_analysis"]["state"], "error")  # the fake cannot read files
+            self.assertEqual(result["purposes"]["live_translation"]["state"], "needs_choice")
+            service.save("summary_rewrite", {**M1, "speed": "standard"})
+            self.assertEqual(readiness.snapshot()["purposes"]["summary_rewrite"]["state"], "unchecked")
 
 
 class LazyResolutionTests(unittest.TestCase):
     def test_importing_server_runs_no_subprocess(self):
         import sys
-        for name in ("server", "live_translation", "first_run", "ai_providers"):
-            sys.modules.pop(name, None)
-        with patch("subprocess.run", side_effect=AssertionError("subprocess at import")), \
-             patch("subprocess.Popen", side_effect=AssertionError("subprocess at import")):
-            import server  # noqa: F401
+        names = ("server", "live_translation", "frame_relevance", "first_run", "ai_providers")
+        saved = {name: sys.modules.pop(name) for name in names if name in sys.modules}
+        try:
+            with patch("subprocess.run", side_effect=AssertionError("subprocess at import")), \
+                 patch("subprocess.Popen", side_effect=AssertionError("subprocess at import")):
+                import server  # noqa: F401
+        finally:  # other tests patch the modules they imported; give those back
+            for name in names:
+                sys.modules.pop(name, None)
+            sys.modules.update(saved)
 
 
 if __name__ == "__main__":

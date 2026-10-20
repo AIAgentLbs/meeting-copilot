@@ -15,7 +15,7 @@
           "type": "object",
           "description": "A missing purpose means the user has not chosen; the purpose then reports needs_choice and does not run.",
           "propertyNames": {
-            "description": "Phase 1 purposes. Phase 2 adds summary and speaker_names, read by Swift.",
+            "description": "Python runs the first four; Swift runs summary and speaker_names. Python lists, saves and checks all six.",
             "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names"]
           },
           "additionalProperties": { "$ref": "#/$defs/choice" }
@@ -50,8 +50,8 @@
       "properties": {
         "provider": { "type": "string", "minLength": 1, "description": "Adapter name, e.g. codex, claude, antigravity, ollama." },
         "model": { "type": "string", "minLength": 1, "description": "Model id exactly as the provider lists it." },
-        "effort": { "type": "string", "description": "One of the effort levels the provider lists for the model; empty only when it lists none." },
-        "speed": { "type": "string", "description": "A speed tier id the provider offers for the model and plan; empty means standard speed." }
+        "effort": { "type": "string", "description": "One of the effort levels the provider lists for the model; empty only when it lists none. A missing key means not chosen." },
+        "speed": { "type": "string", "description": "\"standard\" (default tier, chosen explicitly) or a speed tier id the provider offers for the model and plan; empty only when no tier is offered. A missing key means not chosen." }
       }
     }
   }

@@ -2,7 +2,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from types import SimpleNamespace
 
 import server
 from local_context import LocalContext
@@ -13,9 +12,10 @@ class LocalContextLLMTests(unittest.TestCase):
         from test_ai_providers import chosen_codex
         with tempfile.TemporaryDirectory() as directory, chosen_codex(directory, server):
             session = server.CodexSession(Path(directory) / 'session.json')
-            result = SimpleNamespace(returncode=1, stderr='usage limit reached',
-                stdout='{"type":"item.completed","item":{"type":"agent_message","text":"partial"}}\n')
-            with patch.object(server.subprocess, 'run', return_value=result):
+            import ai_providers
+            result = ai_providers.Result(1, '{"type":"item.completed","item":{"type":"agent_message","text":"partial"}}\n',
+                                         'usage limit reached')
+            with patch.object(ai_providers, '_run', return_value=result):
                 with self.assertRaisesRegex(RuntimeError, 'AI_LIMIT'):
                     session._run_ai('synthetic')
 

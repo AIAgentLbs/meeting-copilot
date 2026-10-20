@@ -36,7 +36,7 @@ class AISettingsAPITests(unittest.TestCase):
                     self.assertEqual(body["providers"], [{"provider": "fake", "label": "Fake"}])
                     self.assertEqual(body["purposes"]["live_analysis"]["state"], "needs_choice")
                     status, body = call("GET", "/api/ai/options?provider=fake")
-                    self.assertEqual([m["id"] for m in body["options"]["models"]], ["m1", "m2"])
+                    self.assertEqual([m["id"] for m in body["options"]["models"]], ["m1", "m2", "m3"])
                     choice = {"provider": "fake", "model": "m1", "effort": "y", "speed": "quick"}
                     self.assertEqual(call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": choice}, "https://example.test")[0], 403)
                     status, body = call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": choice})

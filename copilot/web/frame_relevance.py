@@ -2,6 +2,8 @@
 import json
 import subprocess
 
+from ai_providers import AIChoiceError
+
 
 def frame_relevance(path, item, transcript, previous, run):
     """`run(prompt)` asks the frame_relevance provider about the screenshot at `path`."""
@@ -32,6 +34,8 @@ def frame_relevance(path, item, transcript, previous, run):
         if type(decision.get("keep")) is not bool:
             return False, "invalid-relevance-result"
         return decision["keep"], str(decision.get("reason", ""))[:160]
+    except AIChoiceError:
+        raise  # no usable AI choice is not a verdict on the screenshot
     except RuntimeError:
         return False, "relevance-check-failed"
     except (subprocess.TimeoutExpired, OSError, ValueError, IndexError, TypeError, AttributeError):

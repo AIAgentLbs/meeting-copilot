@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import server
+from ai_providers import Ticket
 from frame_relevance import frame_relevance
 
 
@@ -42,7 +43,8 @@ class FrameRelevanceTests(unittest.TestCase):
                  patch.object(frames, '_speaker_from_frame', return_value=('', '')), \
                  patch.object(server, 'WINDOW_FINDER', helper), patch.object(server, 'FRAME_INSPECTOR', helper), \
                  patch.object(server.subprocess, 'run', side_effect=run), \
-                 patch.object(server, 'frame_relevance', return_value=(False, 'unrelated')):
+                 patch.object(server, 'frame_relevance', return_value=(False, 'unrelated')), \
+                 patch.object(server.AI, 'resolve', return_value=Ticket('frame_relevance', 'ready', '', {}, 'k', '/x')):
                 self.assertTrue(frames.capture({'meeting_id': 'fixture'})['discarded'])
             self.assertEqual(frames.items, [])
             self.assertEqual(list((root / 'screenshots').iterdir()), [])
