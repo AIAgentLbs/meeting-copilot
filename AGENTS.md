@@ -8,9 +8,13 @@ Owner scope decision: 2026-10-19.
 - Keep `docs/TODO.md` limited to that software scope.
 - Website, domain/DNS, GA4, GSC, Umami, SEO, marketing email-domain setup,
   competitor comparisons, keyword/trademark research and promotional demos belong
-  to `AIAgentLbs/meeting-copilot`, the existing Pages website repository. Its
-  single website backlog is root `SITE_TODO.md` (local sibling checkout
-  `../meeting-copilot/SITE_TODO.md`). Keep only a cross-reference here.
+  to the private `AIAgentLbs/meetontrack-website` repository, deployed by
+  Coolify on 5.78.46.146 (owner decision 2026-10-20). Its single website backlog
+  is root `SITE_TODO.md` (local sibling checkout
+  `../meetontrack-website/SITE_TODO.md`). Keep only a cross-reference here.
+- This repository is the public `AIAgentLbs/meeting-copilot`. It also hosts the
+  GitHub Releases that the website download links point to. Never commit
+  secrets, private client data or meeting recordings.
 - Do not add website/marketing acceptance to the application's release gate.
   The app owns a functioning installer and update artifacts; the website owns
   how their download links, instructions and claims are presented.

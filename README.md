@@ -62,11 +62,10 @@ fragments through your authenticated Codex CLI, not raw audio.
 
 ## Repository layout
 
-Repository scope (owner decision, 2026-10-19): end-user application software,
-installers/updates, tests and user documentation. Website, domain, analytics,
-SEO, comparisons and marketing are owned by
-[AIAgentLbs/meeting-copilot](https://github.com/AIAgentLbs/meeting-copilot), with
-one website backlog in root `SITE_TODO.md`. See `AGENTS.md` for the boundary.
+Repository scope: end-user application software, installers/updates, tests and
+user documentation. The website [meetontrack.com](https://meetontrack.com/),
+analytics, SEO, comparisons and marketing are maintained in a separate website
+repository. See `AGENTS.md` for the boundary.
 
 - `capture/` — native macOS audio capture and transcription application.
 - `copilot/` — loopback-only UI, repository search and meeting archive.
@@ -74,10 +73,9 @@ one website backlog in root `SITE_TODO.md`. See `AGENTS.md` for the boundary.
 - `install.sh` — idempotent macOS installer.
 - `scripts/windows/install.ps1` — Windows installer used by packaging and CI.
 
-Website pages, comparison/SEO research, analytics and Pages publication live
-only in the website repository. Its `planning/2026-10-19-repository-separation.json`
-records the verified file transfer. The website keeps its published installer
-snapshot; application installer development stays here.
+Website pages, comparison/SEO research and analytics live only in the website
+repository. The website keeps its published installer snapshot; application
+installer development stays here.
 
 ## Development
 
