@@ -1,9 +1,53 @@
 """Explicit first-run AI access checks."""
 from __future__ import annotations
 
+from functools import lru_cache
 import json
+import os
+from pathlib import Path
+import re
+import shutil
 import subprocess
 import threading
+
+
+def pick_codex(candidates, runner=None):
+    """Return the existing candidate reporting the highest `codex --version` (first existing if none answer)."""
+    existing = []
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file() and Path(candidate).resolve() not in {p.resolve() for p in existing}:
+            existing.append(Path(candidate))
+    best, best_version = (existing or [None])[0], ()
+    for candidate in existing:
+        try:
+            run = (runner or subprocess.run)([str(candidate), '--version'], text=True, capture_output=True, timeout=5, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        match = re.search(r'\d+(?:\.\d+)+', run.stdout or '')
+        version = tuple(map(int, match.group().split('.'))) if run.returncode == 0 and match else ()
+        if version > best_version:
+            best, best_version = candidate, version
+    return best
+
+
+@lru_cache(maxsize=1)
+def resolve_codex():
+    """One Codex binary for every caller: env override, else the newest installed CLI."""
+    if os.environ.get('MEETING_COPILOT_CODEX'):
+        return Path(os.environ['MEETING_COPILOT_CODEX'])
+    home = Path.home()
+    return pick_codex([home / '.codex/packages/standalone/current/bin/codex', home / '.local/bin/codex',
+                       shutil.which('codex'), '/opt/homebrew/bin/codex', '/usr/local/bin/codex']) or Path('/usr/local/bin/codex')
+
+
+class LazyCodex:
+    """Resolves the Codex binary on first str()/fspath use, so imports never probe `--version`."""
+    def __str__(self):
+        return str(resolve_codex())
+    __fspath__ = __str__
+
+
+CODEX = LazyCodex()
 
 
 def ai_failure(detail: str) -> str:
@@ -12,7 +56,11 @@ def ai_failure(detail: str) -> str:
         return 'AI_LIMIT: Codex account limit reached. Check your plan or wait for the limit to reset, then retry. Audio recording is independent.'
     if any(word in text for word in ('unauthorized', '401', 'login', 'log in', 'authentication', 'sign in', 'token expired')):
         return 'AI_LOGIN: Sign in to Codex, then run Check AI again. Audio recording is independent.'
-    if any(word in text for word in ('not found', 'no such file', 'not recognized')):
+    if 'model metadata' in text:
+        return 'AI_UPDATE: Codex is installed but too old for the required model. Update Codex, then run Check AI again. Audio recording is independent.'
+    if any(word in text for word in ('model is not supported', 'not supported when using codex', 'unsupported model')):
+        return 'AI_MODEL: Codex rejected the required model. Update Codex; if it is already up to date, your Codex account plan may not include this model. Audio recording is independent.'
+    if any(word in text for word in ('no such file', 'command not found', 'not recognized', 'cannot find')):
         return 'AI_MISSING: Install Codex and sign in, then run Check AI again. Local recording and transcription do not need Codex.'
     if any(word in text for word in ('timeout', 'timed out', 'network', 'connection', 'dns')):
         return 'AI_NETWORK: The AI service did not respond. Check your connection and retry. Audio recording is independent.'

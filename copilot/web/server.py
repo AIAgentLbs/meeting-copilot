@@ -11,7 +11,6 @@ import json
 import mimetypes
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 import threading
@@ -41,7 +40,7 @@ from question_quality import register_question, useful_question
 from recording_health import default_guard
 from meet_participants import meet_active_speaker, meet_participant_labels
 from teams_participants import teams_one_to_one_name, teams_participant_labels
-from first_run import AIReadiness, ai_failure
+from first_run import AIReadiness, ai_failure, CODEX
 from local_context import LocalContext
 
 
@@ -81,7 +80,6 @@ ZOOM_WINDOW_FILE = HOME / ".config/meeting-copilot/zoom-window.json"
 FRAME_TRIGGER_FILE = HOME / ".config/meeting-copilot/capture-frame.trigger"
 RECOGNITION_GUARD = default_guard()
 RECORDING_LOCATIONS = RECOGNITION_GUARD.health.locations
-CODEX = Path(os.environ.get("MEETING_COPILOT_CODEX") or shutil.which("codex") or "/usr/local/bin/codex")
 LOCAL_CONTEXT = LocalContext(HOME / ".config/meeting-copilot/context-folders.json")
 JOURNAL_BLOCK_RE = re.compile(
     r"(?m)^(FACT|CONTRADICTION|HISTORY|RISK|OBJECTION|INCOMING_QUESTION|OPEN_QUESTION|COMMITMENT|DECISION|ASK|URL|PRODUCT|SERVICE)"

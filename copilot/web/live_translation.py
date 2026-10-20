@@ -14,9 +14,10 @@ import subprocess
 import threading
 import time
 
+from first_run import CODEX
+
 
 DETECTOR = Path.home() / ".local/share/meeting-copilot/bin/detect-speech-language"
-CODEX = Path("/opt/homebrew/bin/codex")
 
 
 class LiveTranslation:
