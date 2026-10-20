@@ -261,6 +261,15 @@ class AntigravityTests(unittest.TestCase):
             adapter.call({"provider": "antigravity", "model": "solo", "effort": "", "speed": ""}, "p")
 
 
+class BinaryLookupTests(unittest.TestCase):
+    def test_codex_lookup_uses_the_list_shared_with_swift(self):
+        listed = json.loads((WEB / "tool_locations.json").read_text())["codex"]
+        self.assertIn("/Applications/ChatGPT.app/Contents/Resources/codex", listed)
+        candidates = [str(path) for path in ai_providers.CODEX.candidates() if path]
+        for place in listed:
+            self.assertIn(os.path.expanduser(place), candidates)
+
+
 class OllamaTests(unittest.TestCase):
     def test_not_running_is_unavailable(self):
         found = OllamaAdapter("http://127.0.0.1:9").discover()
@@ -300,6 +309,19 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual((a["efforts"], a["image"], b["efforts"], b["image"]), (["t1", "t2"], True, [], False))
         self.assertTrue(c["problem"])  # one model failing does not hide the others
         self.assertEqual(found["state"], "available")
+
+    def test_thinking_without_levels_is_unknown_not_none(self):
+        show = {"local-a": {"capabilities": ["completion", "thinking"]},
+                "local-b": {"thinking": {}, "capabilities": ["completion"]},
+                "local-c": {"capabilities": ["completion"]}}
+        with self.server(show) as (adapter, _):
+            a, b, c = adapter.discover()["models"]
+        self.assertIn("levels", a["problem"])
+        self.assertIn("levels", b["problem"])
+        self.assertEqual((c["problem"], c["efforts"]), ("", []))
+        state, _ = ai_providers.choice_problem({"state": "available", "models": [a]},
+                                               {"provider": "ollama", "model": "local-a", "effort": "", "speed": ""})
+        self.assertEqual(state, "unavailable")
 
     def test_one_budget_for_all_model_probes(self):
         show = {name: {"capabilities": ["completion"]} for name in ("local-a", "local-b", "local-c")}

@@ -69,19 +69,25 @@ def _stamp(path):
     return f"{real}:{info.st_mtime_ns}:{info.st_size}"
 
 
+TOOL_LOCATIONS = json.loads((Path(__file__).with_name("tool_locations.json")).read_text(encoding="utf-8"))
+
+
 class _Binary:
     """Binary lookup only (a CLI path is not a model): env override, else the newest installed
-    candidate, picked again whenever a candidate file changes (update, reinstall, removal)."""
-    def __init__(self, env_name, name, *preferred):
-        self.env_name, self.name, self.preferred, self.memo = env_name, name, preferred, (None, None)
+    candidate from tool_locations.json (shared with Swift Tooling) or PATH, picked again whenever
+    a candidate file changes (update, reinstall, removal)."""
+    def __init__(self, env_name, name):
+        self.env_name, self.name, self.memo = env_name, name, (None, None)
         self.lock = threading.Lock()
+
+    def candidates(self):
+        listed = [Path(os.path.expanduser(place)) for place in TOOL_LOCATIONS[self.name]]
+        return [*listed, shutil.which(self.name)]
 
     def __call__(self):
         if os.environ.get(self.env_name):
             return Path(os.environ[self.env_name])
-        home = Path.home()
-        candidates = [*(home / part for part in self.preferred), home / ".local/bin" / self.name,
-                      shutil.which(self.name), Path("/opt/homebrew/bin") / self.name, Path("/usr/local/bin") / self.name]
+        candidates = self.candidates()
         signature = tuple(_stamp(candidate) for candidate in candidates)
         with self.lock:
             if signature != self.memo[0]:
@@ -89,7 +95,7 @@ class _Binary:
             return self.memo[1]
 
 
-CODEX = _Binary("MEETING_COPILOT_CODEX", "codex", ".codex/packages/standalone/current/bin/codex")
+CODEX = _Binary("MEETING_COPILOT_CODEX", "codex")
 CLAUDE = _Binary("MEETING_COPILOT_CLAUDE", "claude")
 AGY = _Binary("MEETING_COPILOT_AGY", "agy")
 
@@ -500,10 +506,15 @@ class OllamaAdapter:
                 continue
             thinking = shown.get("thinking") if isinstance(shown.get("thinking"), dict) else {}
             values, capabilities = thinking.get("values"), shown.get("capabilities")
+            image = ("vision" in capabilities) if isinstance(capabilities, list) else None
+            advertised = "thinking" in shown or (isinstance(capabilities, list) and "thinking" in capabilities)
+            if advertised and not (isinstance(values, list) and values):
+                models.append(_model(name, name, image=image,
+                                     problem="Ollama reports thinking for this model but not its levels"))
+                continue
             efforts = [] if not values or values == [False] else \
                 [str(value).lower() if isinstance(value, bool) else str(value) for value in values]
-            models.append(_model(name, name, efforts, (), "Ollama does not report speed tiers",
-                                 image=("vision" in capabilities) if isinstance(capabilities, list) else None))
+            models.append(_model(name, name, efforts, (), "Ollama does not report speed tiers", image=image))
         return _available(self, models, "local")
 
     def call(self, choice, prompt, *, executable="", env=None, timeout, roots=(), image=None, resume="", keep_session=False):

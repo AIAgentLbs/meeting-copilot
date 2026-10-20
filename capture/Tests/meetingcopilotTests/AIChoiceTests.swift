@@ -211,9 +211,9 @@ struct AIChoiceTests {
     @Test("Ollama is asked over /api/chat, with think only when an effort was chosen")
     func ollamaRequest() throws {
         func body(_ effort: String) -> [String: Any] {
-            LLMBackend.ollamaBody(
+            (try? LLMBackend.ollamaBody(
                 AIChoice(provider: "ollama", model: "local", effort: effort, speed: ""),
-                prompt: "PROMPT")
+                prompt: "PROMPT", contextLength: 8192)) ?? [:]
         }
         let plain = body("")
         #expect(plain["model"] as? String == "local")
@@ -229,6 +229,49 @@ struct AIChoiceTests {
             == "http://127.0.0.1:11434/api/chat")
         #expect(LLMBackend.ollamaChatURL(environment: ["OLLAMA_HOST": "box:1234/"]).absoluteString
             == "http://box:1234/api/chat")
+    }
+
+    @Test("Ollama's context comes from /api/show; unknown or too small is an error, never a silent cut")
+    func ollamaContext() throws {
+        let show: [String: Any] = ["model_info": [
+            "general.architecture": "arch1", "arch1.context_length": 8192, "other.context_length": 99]]
+        #expect(LLMBackend.ollamaContextLength(show) == 8192)
+        #expect(LLMBackend.ollamaContextLength(["model_info": ["general.architecture": "arch1"]]) == nil)
+        #expect(LLMBackend.ollamaContextLength([:]) == nil)
+
+        let choice = AIChoice(provider: "ollama", model: "local", effort: "", speed: "")
+        let small = try LLMBackend.ollamaBody(choice, prompt: "abc", contextLength: 8192)
+        #expect((small["options"] as? [String: Int])?["num_ctx"] == 3 + LLMBackend.ollamaReplyTokens)
+        let limit = LLMBackend.ollamaInputLimit(contextLength: 8192)
+        let full = try LLMBackend.ollamaBody(
+            choice, prompt: String(repeating: "x", count: limit), contextLength: 8192)
+        #expect((full["options"] as? [String: Int])?["num_ctx"] == 8192)
+        #expect(throws: LLMError.self) {
+            try LLMBackend.ollamaBody(
+                choice, prompt: String(repeating: "x", count: limit + 1), contextLength: 8192)
+        }
+    }
+
+    @Test("Summary chunks shrink to the backend's limit, and stay put without one")
+    func summaryChunksFitTheBackend() {
+        let usual = Summarizer.chunkLimit(backendLimit: nil, overhead: 100)
+        #expect(Summarizer.chunkLimit(backendLimit: 4096, overhead: 96) == 4000)
+        #expect(Summarizer.chunkLimit(backendLimit: 10_000_000, overhead: 100) == usual)
+        // Nothing fits: no flood of tiny calls; the call itself reports too long.
+        #expect(Summarizer.chunkLimit(backendLimit: 50, overhead: 100) == usual)
+    }
+
+    @Test("The app and the web server look for CLIs in the same places")
+    func toolLocationsMatchTheWebServer() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("copilot/web/tool_locations.json")
+        var shared = try #require(
+            try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        shared.removeValue(forKey: "description")
+        #expect(NSDictionary(dictionary: shared).isEqual(to: Tooling.listedLocations))
+        #expect(Tooling.listedLocations["codex"]?.contains(
+            "/Applications/ChatGPT.app/Contents/Resources/codex") == true)
     }
 
     // MARK: - migrating the old settings once

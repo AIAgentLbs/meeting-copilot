@@ -35,26 +35,28 @@ enum Tooling {
         var runs: Bool { version != nil }
     }
 
-    /// Well-known install locations, in the order they're tried. `~/.local/bin`
-    /// first because that's where both official installers put their entry
-    /// point (for Claude Code, a symlink into `~/.local/share/claude`, which
-    /// is also what the desktop app manages).
-    private static func standardLocations(for name: String) -> [String] {
-        [
-            FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/bin/\(name)").path,
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-        ]
-    }
+    /// Well-known install locations, in the order they're tried, `~` for the
+    /// home folder. The same list as `copilot/web/tool_locations.json`, which
+    /// the web server reads (ToolingLocationsTests keeps the two equal).
+    /// `~/.local/bin` is where both official installers put their entry point;
+    /// ChatGPT.app carries a working `codex` inside its bundle.
+    static let listedLocations: [String: [String]] = [
+        "codex": [
+            "~/.codex/packages/standalone/current/bin/codex",
+            "~/.local/bin/codex",
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/codex",
+        ],
+        "claude": ["~/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"],
+        "agy": ["~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"],
+        "ollama": ["~/.local/bin/ollama", "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"],
+    ]
 
-    /// Binaries shipped inside a desktop app's bundle. Verified present in
-    /// ChatGPT.app; Claude.app carries no `claude` binary and installs one
-    /// into `~/.local/bin` instead, which `standardLocations` already covers.
-    private static func bundledLocations(for name: String) -> [String] {
-        switch name {
-        case "codex": return ["/Applications/ChatGPT.app/Contents/Resources/codex"]
-        default: return []
+    private static func locations(for name: String) -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return (listedLocations[name] ?? []).map {
+            $0.hasPrefix("~/") ? home + $0.dropFirst() : $0
         }
     }
 
@@ -145,7 +147,7 @@ enum Tooling {
 
     private static func search(for name: String) -> String? {
         let fm = FileManager.default
-        if let found = (standardLocations(for: name) + bundledLocations(for: name))
+        if let found = locations(for: name)
             .first(where: { fm.isExecutableFile(atPath: $0) }) {
             return found
         }

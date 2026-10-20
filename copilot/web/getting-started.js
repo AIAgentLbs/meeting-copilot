@@ -112,7 +112,7 @@
     return options[provider];
   }
   function purposeRow(purpose) {
-    const status = aiState.purposes[purpose] || {}, checked = (current.ai?.purposes || {})[purpose];
+    const status = aiState.purposes[purpose] || {}, checked = (aiState.check?.purposes || {})[purpose];
     const draft = drafts[purpose] ||= {provider: "", model: "", effort: "", speed: "", ...(status.choice || {})};
     const box = node("fieldset"); box.className = "ai-purpose"; box.append(node("legend", word(...purposes[purpose])));
     const redraw = () => renderAI();
@@ -142,9 +142,8 @@
     const save = node("button", word("Save", "Сохранить")); save.type = "button"; save.className = "quiet-button"; save.disabled = !ready;
     save.addEventListener("click", async () => {
       save.disabled = true;
-      try {aiState.purposes[purpose] = (await api("/api/ai/choice", {purpose, choice: draft})).status; $("ai-choice-message").textContent = word("Saved.", "Сохранено.");}
-      catch (error) {$("ai-choice-message").textContent = error.message;}
-      redraw();
+      try {await api("/api/ai/choice", {purpose, choice: draft}); await loadAI(); $("ai-choice-message").textContent = word("Saved.", "Сохранено.");}
+      catch (error) {$("ai-choice-message").textContent = error.message; redraw();}
     });
     box.append(save);
     const speedName = speed => speed === "standard" ? word("standard speed", "обычная скорость") : speed;
@@ -158,7 +157,7 @@
     return box;
   }
   function renderAI() {$("ai-purposes").replaceChildren(...Object.keys(purposes).map(purposeRow));}
-  async function loadAI() {try {aiState = await api("/api/ai"); drafts = {}; renderAI();} catch (error) {$("ai-choice-message").textContent = error.message;}}
+  async function loadAI() {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; drafts = {}; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
   $("ai-refresh").onclick = async () => {
     $("ai-refresh").disabled = true;
     try {await Promise.all(Object.keys(options).map(provider => providerOptions(provider, true))); await loadAI();}

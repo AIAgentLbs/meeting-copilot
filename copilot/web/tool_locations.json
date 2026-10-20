@@ -1,0 +1,13 @@
+{
+  "description": "Where each CLI is looked for, before PATH and the login shell. One list for the Python web server (ai_providers._Binary) and the Swift app (Setup/Tooling.swift, kept equal by ToolingLocationsTests). ~ is the home folder.",
+  "codex": [
+    "~/.codex/packages/standalone/current/bin/codex",
+    "~/.local/bin/codex",
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+    "/Applications/ChatGPT.app/Contents/Resources/codex"
+  ],
+  "claude": ["~/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"],
+  "agy": ["~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"],
+  "ollama": ["~/.local/bin/ollama", "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"]
+}

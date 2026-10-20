@@ -280,49 +280,12 @@ enum SettingsSchema {
                       "Topic, key points, decisions, action items, open questions.",
                       "Тема, главное, решения, задачи, открытые вопросы."),
                   .toggle, default: true, askedInSetup: true),
-            Entry(["summary", "backend"],
-                  localised("Which model to ask", "У какой модели спрашивать"),
-                  localised(
-                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set. none still turns summaries off.",
-                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет. none по-прежнему выключает саммари."),
-                  .choice(["auto", "claude-cli", "anthropic-api", "codex-cli", "openai-api", "ollama", "none"]),
-                  default: "auto"),
-            Entry(["summary", "model"],
-                  localised("Anthropic model", "Модель Anthropic"),
-                  localised(
-                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
-                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
-                  .text, default: localised("not set", "не задана")),
-            Entry(["summary", "openai_model"],
-                  localised("OpenAI model", "Модель OpenAI"),
-                  localised(
-                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
-                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
-                  .text, default: localised("not set", "не задана")),
-            Entry(["summary", "ollama_model"],
-                  localised("Local model", "Местная модель"),
-                  localised(
-                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
-                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
-                  .text, default: localised("not set", "не задана")),
             Entry(["summary", "language"],
                   localised("Summary language", "Язык саммари"),
                   localised(
                       "Leave empty to write in whichever language the meeting was held in.",
                       "Пусто — саммари пишется на языке самой встречи."),
                   .text, default: localised("the language of the meeting", "язык встречи")),
-            Entry(["summary", "api_key_path"],
-                  localised("Anthropic key file", "Файл ключа Anthropic"),
-                  localised(
-                      "Where the Anthropic key is read from. ANTHROPIC_API_KEY wins over it.",
-                      "Откуда читается ключ Anthropic. ANTHROPIC_API_KEY важнее."),
-                  .text, default: "~/.config/meeting-copilot/keys/anthropic"),
-            Entry(["summary", "openai_api_key_path"],
-                  localised("OpenAI key file", "Файл ключа OpenAI"),
-                  localised(
-                      "Where the OpenAI key is read from. OPENAI_API_KEY wins over it.",
-                      "Откуда читается ключ OpenAI. OPENAI_API_KEY важнее."),
-                  .text, default: "~/.config/meeting-copilot/keys/openai"),
         ]),
 
         Section(title: localised("Calendar and naming", "Календарь и имена"), entries: [
@@ -356,19 +319,6 @@ enum SettingsSchema {
                   .text,
                   default: localised(
                       "the account's full name", "полное имя учётной записи")),
-            Entry(["speaker_names", "backend"],
-                  localised("Which model to ask", "У какой модели спрашивать"),
-                  localised(
-                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
-                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
-                  .choice(["auto", "claude-cli", "anthropic-api", "codex-cli", "openai-api", "ollama"]),
-                  default: "auto"),
-            Entry(["speaker_names", "model"],
-                  localised("Anthropic model for naming", "Модель Anthropic для имён"),
-                  localised(
-                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
-                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
-                  .text, default: localised("not set", "не задана")),
         ]),
 
         Section(title: localised("Interface", "Интерфейс"), entries: [
@@ -555,7 +505,17 @@ enum SettingsSchema {
     /// Older releases exposed these choices. Retained audio now always becomes
     /// one compact stereo M4A, but accepting the keys keeps an old config from
     /// being reported as misspelled until its owner next edits the file.
-    static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"]
+    static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"] + legacyAIKeys
+
+    /// The summary and naming settings from before `ai.purposes`. Not offered
+    /// anywhere: the AI is chosen in one place, Getting started. Still known,
+    /// because `AIChoice.migrateLegacy` reads them once (and `summary.backend`
+    /// "none" still turns summaries off).
+    static let legacyAIKeys = [
+        "summary.backend", "summary.model", "summary.openai_model", "summary.ollama_model",
+        "summary.api_key_path", "summary.openai_api_key_path",
+        "speaker_names.backend", "speaker_names.model",
+    ]
 
     /// The settings above that this slice does not render, because there is no
     /// local model behind them. They stay *known*: a config carrying them on

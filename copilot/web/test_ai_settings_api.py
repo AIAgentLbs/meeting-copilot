@@ -45,9 +45,20 @@ class AISettingsAPITests(unittest.TestCase):
                     self.assertEqual(status, 400)
                     self.assertIn("absent", body["error"])
                     self.assertEqual(call("GET", "/api/ai")[1]["purposes"]["live_analysis"]["choice"], choice)
+                    call("POST", "/api/getting-started/check-ai", {})
+                    self.assertNotEqual(call("GET", "/api/ai")[1]["check"]["purposes"]["live_analysis"]["state"], "unchecked")
+                    call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": {**choice, "speed": "standard"}})
+                    # a changed choice is never shown with the old check result
+                    self.assertEqual(call("GET", "/api/ai")[1]["check"]["purposes"]["live_analysis"]["state"], "unchecked")
                 finally:
                     httpd.shutdown()
                     httpd.server_close()
+
+    def test_panel_shows_the_check_snapshot_for_the_saved_choice(self):
+        source = (Path(server.__file__).parent / "getting-started.js").read_text(encoding="utf-8")
+        self.assertIn("checked = (aiState.check?.purposes || {})[purpose]", source)
+        self.assertIn('await api("/api/ai/choice", {purpose, choice: draft}); await loadAI();', source)
+        self.assertIn("if (aiState.check) current.ai = aiState.check;", source)
 
 
 if __name__ == "__main__":

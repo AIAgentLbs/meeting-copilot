@@ -66,20 +66,32 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] The Claude Code boundary relies on `--restricted` (Claude Code 2.1.304).
   Add a version check or a Check AI escape probe so an older CLI without it is
   reported unavailable rather than run unrestricted.
-- [ ] Swift summary cards in `capture/Sources/meetingcopilot/UI/SetupForm.swift`
-  now only write legacy `summary.backend` keys that feed the migration. Decide
-  whether to remove them and point to Getting started.
-- [ ] Anthropic and OpenAI API-key summary backends no longer run (phase 2
-  removed them with the fixed fallback order). Re-add as discovered providers if
-  users need them.
+- [x] Review round 3 (2026-10-20): Setup summary cards and the legacy summary/
+  naming entries in Settings > Advanced removed; Getting started is the only place
+  the AI is chosen (`SettingsSchema.legacyAIKeys` stay known for the migration).
+  Ollama summaries size `num_ctx` and chunks from the model's reported
+  `<arch>.context_length` and refuse a prompt that does not fit; CLI install
+  locations come from one list, `copilot/web/tool_locations.json`, mirrored by
+  `Tooling.listedLocations` (equality test); Ollama thinking without levels is
+  unavailable; the panel shows the check snapshot of the saved choice.
+- [ ] Bring back the Anthropic and OpenAI API-key summary backends as discovered
+  providers (owner decision 2026-10-20: left out of phase 2). They need an adapter
+  in `copilot/web/ai_providers.py` and `capture/.../Summary/LLMBackend.swift` that
+  lists models from the provider's models endpoint with the user's key, never a
+  fixed model; `SummaryKeyProbe` in `Setup/SetupSelection.swift` already checks
+  keys.
+- [ ] Ollama context sizing counts one character as at least one token
+  (`LLMBackend.ollamaInputLimit`) and keeps a fixed 4096-token reply allowance.
+  Use the tokenizer (or `prompt_eval_count`) if CJK transcripts get cut or long
+  answers are truncated.
 - [ ] Check AI for `summary` and `speaker_names` probes through the Python
   adapters, not the Swift invocation in `Summary/LLMBackend.swift`; the argv
   can drift. Add a shared argv fixture both sides test against.
 - [ ] Phase 3 (speech-to-text): `capture/Sources/meetingcopilot/Config.swift:63`
   defaults `transcription.engine` to `"auto"` and `:76` defaults the cloud
-  provider to `"assemblyai"`. `Transcription/OpenAIEngine.swift:46` now refuses
-  to run until `transcription.openai.model` is set (built-in model removed in
-  round 2; confirm the UI asks for it).
+  provider to `"assemblyai"`. `Transcription/OpenAIEngine.swift:46` refuses
+  to run until `transcription.openai.model` is set (built-in model removed; owner
+  decision 2026-10-20 keeps it so until phase 3 asks for the choice).
 - [ ] Phase 4 (Windows): `scripts/windows/install.ps1:67-68` writes a new
   `config.json` with pinned engine/backends and no lock or ACL; `:80-85` does a
   read-modify-write without `config.json.lock`; `:96-98` pins speech models.

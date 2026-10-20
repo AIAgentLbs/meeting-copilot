@@ -133,13 +133,16 @@ enum Summarizer {
         backend: LLMBackend
     ) async throws -> LLMReply {
         let system = systemPrompt(language: settings.language)
-        if body.count <= maxCharsPerCall {
+        let limit = chunkLimit(
+            backendLimit: try await backend.inputLimit(),
+            overhead: system.count + header.count + chunkInstructions.count + summaryInstructions.count + 64)
+        if body.count <= limit {
             return try await backend.call(
                 system, "\(header)\n\(summaryInstructions)\n\n---\n\(body)"
             )
         }
 
-        let chunks = split(body, limit: maxCharsPerCall)
+        let chunks = split(body, limit: limit)
         var notes: [String] = []
         for (index, chunk) in chunks.enumerated() {
             notes.append(try await backend.call(
@@ -161,6 +164,15 @@ enum Summarizer {
         transcript.segments
             .map { "\($0.speaker): \($0.text)" }
             .joined(separator: "\n")
+    }
+
+    /// Transcript characters per call: the usual size, or less when the
+    /// backend's own limit (minus the prompt around the transcript) is smaller.
+    static func chunkLimit(backendLimit: Int?, overhead: Int) -> Int {
+        // Nothing fits: keep the usual size so the call fails with the
+        // backend's own "too long" error instead of a flood of tiny calls.
+        guard let backendLimit, backendLimit - overhead > 0 else { return maxCharsPerCall }
+        return min(maxCharsPerCall, backendLimit - overhead)
     }
 
     /// Split on line boundaries so a chunk never ends mid-sentence.

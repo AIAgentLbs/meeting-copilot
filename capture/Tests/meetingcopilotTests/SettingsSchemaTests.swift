@@ -202,33 +202,34 @@ struct SettingsSchemaTests {
         ])
     }
 
-    /// The two that stay on both tabs, and why: setup asks them, but cannot
+    /// The one that stays on both tabs, and why: setup asks it, but cannot
     /// say everything the schema allows. The language menu offers parakeet's
-    /// 25 European languages while the cloud engines understand more, and the
-    /// summary cards have no card for `none`. Flagging either would leave a
-    /// legal value reachable only by editing the config file by hand.
+    /// 25 European languages while the cloud engines understand more.
     @Test("A setting setup asks only partly is still asked in Advanced")
     func partialCoverageStaysInAdvanced() {
         let advanced = Set(SettingsSchema.advancedSections
             .flatMap(\.entries)
             .map { $0.path.joined(separator: ".") })
         #expect(advanced.contains("transcription.language"))
-        #expect(advanced.contains("summary.backend"))
 
         // The claim about the menu, checked rather than asserted: a menu that
         // grew to every language the cloud takes would make the field above
         // redundant after all.
         let offered = Set(MeetingLanguages.menu.map(\.code))
         #expect(!offered.contains("ja"), "the meeting-language menu now covers more than parakeet")
-        // And the claim about the cards: every card setup offers, resolved
-        // through the translation the form uses, and none of them is `none`.
-        let cards = ["claude-cli", "codex-cli", "api-key", "ollama"]
-        let reachable = cards.flatMap { card in
-            ["anthropic-api", "openai-api"].compactMap {
-                SetupSelection.summaryBackend(choice: card, keyBackend: $0)
-            }
+    }
+
+    /// The AI for summaries and speaker names is chosen in one place,
+    /// Getting started. The old keys are known (the migration reads them) but
+    /// no window offers them.
+    @Test("No window offers the old summary or naming AI settings")
+    func legacyAIKeysAreKnownButNotOffered() {
+        let offered = Set(SettingsSchema.sections.flatMap(\.entries).map { $0.path.joined(separator: ".") })
+        for key in SettingsSchema.legacyAIKeys {
+            #expect(!offered.contains(key), "\(key) is offered again")
+            #expect(SettingsSchema.knownKeys.contains(key))
         }
-        #expect(!reachable.contains("none"), "a summary card now writes none after all")
+        #expect(SettingsSchema.strayKeys(in: ["summary": ["backend": "codex-cli", "model": "m"]]).isEmpty)
     }
 
     /// The list that tells someone a setting is being ignored has to be right

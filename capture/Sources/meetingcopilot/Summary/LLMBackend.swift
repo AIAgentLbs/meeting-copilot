@@ -20,6 +20,9 @@ struct LLMBackend {
     let model: String
     /// (system prompt, user prompt) → the answer and the model that gave it.
     let call: (String, String) async throws -> LLMReply
+    /// The most prompt characters one call may carry, when the provider has a
+    /// limit worth sizing to (Ollama's context window); nil means no such limit.
+    var inputLimit: () async throws -> Int? = { nil }
 
     /// The backend for a purpose, from the person's config. Runs the one-time
     /// migration of the old summary settings first.
@@ -192,11 +195,40 @@ struct LLMBackend {
         return URL(string: host + "/api/chat") ?? URL(string: "http://127.0.0.1:11434/api/chat")!
     }
 
-    static func ollamaBody(_ choice: AIChoice, prompt: String) -> [String: Any] {
+    /// Room kept for the answer inside Ollama's context, in tokens.
+    /// ponytail: one fixed allowance; size it per purpose if answers get cut.
+    static let ollamaReplyTokens = 4096
+
+    /// The context length the model reports in `/api/show`
+    /// (`model_info["<general.architecture>.context_length"]`), or nil.
+    static func ollamaContextLength(_ show: [String: Any]) -> Int? {
+        guard let info = show["model_info"] as? [String: Any],
+              let arch = info["general.architecture"] as? String,
+              let length = (info["\(arch).context_length"] as? NSNumber)?.intValue, length > 0
+        else { return nil }
+        return length
+    }
+
+    /// Prompt characters that fit a context of `contextLength` tokens.
+    /// ponytail: counts one character as at least one token, which holds for
+    /// the Latin and Cyrillic text of a transcript; use a tokenizer if CJK
+    /// transcripts get truncated.
+    static func ollamaInputLimit(contextLength: Int) -> Int {
+        max(0, contextLength - ollamaReplyTokens)
+    }
+
+    /// The /api/chat body. `num_ctx` is what this prompt needs, never above
+    /// what the model reports; a prompt that cannot fit is an error, not a
+    /// silent truncation.
+    static func ollamaBody(_ choice: AIChoice, prompt: String, contextLength: Int) throws -> [String: Any] {
+        guard prompt.count <= ollamaInputLimit(contextLength: contextLength) else {
+            throw LLMError.tooLong("ollama", choice.model, contextLength)
+        }
         var body: [String: Any] = [
             "model": choice.model,
             "messages": [["role": "user", "content": prompt]],
             "stream": false,
+            "options": ["num_ctx": min(contextLength, prompt.count + ollamaReplyTokens)],
         ]
         switch choice.effort {
         case "": break
@@ -207,22 +239,38 @@ struct LLMBackend {
         return body
     }
 
-    private static func ollama(choice: AIChoice, url: URL) -> LLMBackend {
-        LLMBackend(name: "ollama", model: choice.model) { system, prompt in
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 1800
-            request.setValue("application/json", forHTTPHeaderField: "content-type")
-            request.httpBody = try JSONSerialization.data(
-                withJSONObject: ollamaBody(choice, prompt: "\(system)\n\n\(prompt)"))
+    private static func ollamaPost(
+        _ url: URL, _ payload: [String: Any], timeout: TimeInterval
+    ) async throws -> [String: Any] {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw LLMError.http(http.statusCode, text(data))
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw LLMError.malformedResponse("ollama")
+        }
+        return json
+    }
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                throw LLMError.http(http.statusCode, text(data))
+    private static func ollama(choice: AIChoice, url: URL) -> LLMBackend {
+        let showURL = url.deletingLastPathComponent().appendingPathComponent("show")
+        let contextLength: @Sendable () async throws -> Int = {
+            let show = try await ollamaPost(showURL, ["model": choice.model], timeout: 30)
+            guard let length = ollamaContextLength(show) else {
+                throw LLMError.unknownContext("ollama", choice.model)
             }
-            guard
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                var content = (json["message"] as? [String: Any])?["content"] as? String
+            return length
+        }
+        var backend = LLMBackend(name: "ollama", model: choice.model) { system, prompt in
+            let body = try ollamaBody(
+                choice, prompt: "\(system)\n\n\(prompt)", contextLength: try await contextLength())
+            let json = try await ollamaPost(url, body, timeout: 1800)
+            guard var content = (json["message"] as? [String: Any])?["content"] as? String
             else { throw LLMError.malformedResponse("ollama") }
             // A reasoning model asked without `think` writes its thinking inline.
             if let end = content.range(of: "</think>") {
@@ -233,6 +281,8 @@ struct LLMBackend {
             }
             return LLMReply(text: content, model: json["model"] as? String ?? choice.model)
         }
+        backend.inputLimit = { ollamaInputLimit(contextLength: try await contextLength()) }
+        return backend
     }
 
     // MARK: -
@@ -323,9 +373,17 @@ enum LLMError: Error, CustomStringConvertible {
     case malformedResponse(String)
     case http(Int, String)
     case exit(Int, String)
+    /// The prompt does not fit the model's reported context (tokens).
+    case tooLong(String, String, Int)
+    /// The provider does not report the model's context length.
+    case unknownContext(String, String)
 
     var description: String {
         switch self {
+        case .tooLong(let backend, let model, let length):
+            return "\(backend): the text is longer than \(model)'s context of \(length) tokens; choose a model with a longer context"
+        case .unknownContext(let backend, let model):
+            return "\(backend) does not report the context length of \(model); choose another model in Getting started"
         case .emptyResponse(let backend): return "\(backend) returned nothing"
         case .malformedResponse(let backend): return "\(backend) returned an unexpected shape"
         case .http(let code, let body): return "HTTP \(code): \(body)"
@@ -363,6 +421,9 @@ enum LLMError: Error, CustomStringConvertible {
         case .exit(_, let output):
             let haystack = output.lowercased()
             return isUsageLimit || Self.transientMarkers.contains { haystack.contains($0) }
+        case .tooLong, .unknownContext:
+            // Only another model choice fixes these.
+            return false
         case .emptyResponse, .malformedResponse:
             // The model answered; it just answered badly. Repeating the same
             // request is unlikely to change that.
