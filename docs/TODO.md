@@ -372,3 +372,18 @@ stored in this repository. Verify the public installed package as well as source
   through context selection, recording and a useful answer. Evaluate a direct
   downloadable installer after packaging/signing acceptance. Website placement
   and promotional demos belong to the website backlog, not this release gate.
+
+## AI provider layer: Codex review round 5 leftovers (2026-10-20, P2)
+
+- [ ] Ollama live chat pins the whole first prompt (transcript, question,
+  excerpts) as the system message, so trimming cannot reclaim it and valid
+  continuations are rejected on small contexts (`copilot/web/ai_providers.py`
+  ~603). Split immutable session rules from meeting content; let old
+  snapshots be trimmed.
+- [ ] `live_translation.py` ~84: a status change to `needs_choice` /
+  `unavailable` does not bump `revision`, so `AnnotationCache.snapshot()`
+  keeps serving the old empty `translation_state`. Bump revision on status
+  change.
+- [ ] `live_translation.py` ~77: an English/Russian/undetected segment clears
+  `needs_choice` while foreign segments still wait for a translation choice.
+  Keep the status while unresolved jobs need a choice.
