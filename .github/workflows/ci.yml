@@ -1,0 +1,15 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  python:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 copilot/web/server.py --self-test
+  swift-build:
+    # CATapDescription process restoration is provided by the macOS 26 SDK;
+    # the produced app still has a macOS 15 deployment target.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -c release --package-path capture

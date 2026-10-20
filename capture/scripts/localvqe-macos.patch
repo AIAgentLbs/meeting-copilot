@@ -1,0 +1,12 @@
+diff --git a/ggml/CMakeLists.txt b/ggml/CMakeLists.txt
+index 6f7169f..04c5db5 100644
+--- a/ggml/CMakeLists.txt
++++ b/ggml/CMakeLists.txt
+@@ -50,6 +50,6 @@ elseif(LOCALVQE_CUDA)
+     set(GGML_CUDA ON CACHE BOOL "" FORCE)
+     set(GGML_STATIC OFF CACHE BOOL "" FORCE)
+-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
++elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64" AND NOT APPLE)
+     # x86: build all CPU backend variants (SSE4.2 through AVX-512/Zen4) as shared
+     # libraries, selected at runtime based on CPU capabilities.
+     # This avoids needing -march=native (which Nix strips).

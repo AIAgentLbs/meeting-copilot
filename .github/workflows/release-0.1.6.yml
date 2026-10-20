@@ -1,0 +1,48 @@
+name: Publish v0.1.6 live English translation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-0.1.6.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test live translation and UI
+        run: |
+          python3 copilot/web/server.py --self-test
+          python3 -m unittest discover -s copilot/web -p 'test_live_translation.py' -v
+          node --check copilot/web/app.js
+      - name: Patch the existing macOS package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/base" "$RUNNER_TEMP/stage"
+          gh release download v0.1.5 --pattern meeting-copilot-macos.zip --dir "$RUNNER_TEMP/base"
+          unzip -q "$RUNNER_TEMP/base/meeting-copilot-macos.zip" -d "$RUNNER_TEMP/stage"
+          test -f "$RUNNER_TEMP/stage/payload/web/server.py"
+          cp copilot/web/server.py "$RUNNER_TEMP/stage/payload/web/server.py"
+          cp copilot/web/live_translation.py "$RUNNER_TEMP/stage/payload/web/live_translation.py"
+          cp copilot/web/archive.py "$RUNNER_TEMP/stage/payload/web/archive.py"
+          cp copilot/web/app.js "$RUNNER_TEMP/stage/payload/web/app.js"
+          cp copilot/web/index.html "$RUNNER_TEMP/stage/payload/web/index.html"
+          cp copilot/web/styles.css "$RUNNER_TEMP/stage/payload/web/styles.css"
+          cp copilot/bin/DetectSpeechLanguage.swift "$RUNNER_TEMP/stage/payload/bin/DetectSpeechLanguage.swift"
+          (cd "$RUNNER_TEMP/stage" && zip -qry "$RUNNER_TEMP/meeting-copilot-macos.zip" .)
+          unzip -tq "$RUNNER_TEMP/meeting-copilot-macos.zip"
+          shasum -a 256 "$RUNNER_TEMP/meeting-copilot-macos.zip"
+      - name: Publish v0.1.6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create v0.1.6 "$RUNNER_TEMP/meeting-copilot-macos.zip"
+          --target "$GITHUB_SHA"
+          --title "Meeting Copilot v0.1.6"
+          --notes "Adds live English translations for non-Russian/non-English speech while preserving the original transcript. Language detection runs on macOS; translation uses the authenticated Codex CLI."

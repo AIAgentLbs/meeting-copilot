@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>MeetOnTrack by aiagentlbs.com</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-lockup">
+          <div class="brand">MeetOnTrack</div>
+          <a class="brand-company" href="https://aiagentlbs.com/" target="_blank" rel="noopener noreferrer">by aiagentlbs.com</a>
+        </div>
+        <div class="meeting-title" id="meeting-title" data-i18n="meeting.connecting">Подключение к записи...</div>
+      </div>
+      <div class="status-strip" aria-live="polite">
+        <span class="status" id="capture-status" hidden><i></i><span></span></span>
+        <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
+        <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-expanded="false" aria-controls="archive-dialog">Встречи</button>
+        <button class="quiet-button" id="new-meeting-button" type="button" data-i18n="meeting.new" aria-haspopup="dialog" aria-describedby="new-meeting-help" disabled>Начать новую встречу</button>
+        <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
+        <button class="quiet-button" id="updates-notice" type="button" aria-controls="settings-panel" hidden></button>
+        <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
+        <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
+        <button class="quiet-button" id="getting-started-open" type="button" aria-expanded="false" aria-controls="getting-started">Начать работу</button>
+        <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
+          <button data-language="ru" type="button">RU</button>
+          <button data-language="en" type="button">EN</button>
+        </div>
+        <button class="quiet-button" id="refresh-button" type="button" data-i18n="common.refresh">Обновить</button>
+        <button class="quiet-button" id="swap-panels" type="button" data-i18n="nav.swap_panels" aria-pressed="false">Поменять панели</button>
+      </div>
+    </header>
+
+    <div class="meeting-boundary-bar">
+      <span id="new-meeting-help" data-i18n="meeting.new_help">Сохранит текущую встречу отдельно и начнёт новую. Запись звука не прервётся.</span>
+      <span id="new-meeting-status" role="status" aria-live="polite"></span>
+    </div>
+    <dialog id="new-meeting-dialog" class="meeting-boundary-dialog" aria-labelledby="new-meeting-heading" aria-describedby="new-meeting-explanation">
+      <h2 id="new-meeting-heading" data-i18n="meeting.new_question">Начать новую встречу?</h2>
+      <p id="new-meeting-explanation" data-i18n="meeting.new_explanation">Текущая встреча останется в истории. Новая стенограмма и карта будут собираться с момента подтверждения. Звук продолжит записываться в исходный файл.</p>
+      <label for="new-meeting-title" data-i18n="meeting.new_title">Название новой встречи (необязательно)</label>
+      <input id="new-meeting-title" maxlength="200" type="text" autocomplete="off" />
+      <p id="new-meeting-error" role="alert"></p>
+      <div class="meeting-boundary-actions">
+        <button class="quiet-button" id="new-meeting-cancel" type="button" data-i18n="meeting.cancel">Отмена</button>
+        <button class="primary-button" id="new-meeting-confirm" type="button" data-i18n="meeting.new_confirm">Да, начать новую встречу</button>
+      </div>
+    </dialog>
+
+    <section id="settings-panel" class="settings-panel" hidden aria-labelledby="settings-heading">
+      <div class="repo-dialog-header">
+        <h2 id="settings-heading" data-i18n="settings.open">Настройки</h2>
+        <button class="quiet-button" id="settings-close" type="button" data-i18n="common.close">Закрыть</button>
+      </div>
+      <div id="settings-content">
+        <section id="delivery-settings" class="delivery-settings" aria-labelledby="delivery-settings-heading">
+          <h3 id="delivery-settings-heading" data-delivery-text="heading">Хранение и доставка отчетов</h3>
+          <p data-delivery-text="local">Записи и отчеты сохраняются на компьютере. Облачные сервисы подключать необязательно.</p>
+          <p id="delivery-local-path"></p>
+          <form id="delivery-settings-form">
+            <fieldset>
+              <legend data-delivery-text="mail">Письмо после встречи</legend>
+              <label class="switch-label"><input type="checkbox" id="delivery-email-enabled"><span data-delivery-text="autoMail">Автоматически отправлять отчет по почте</span></label>
+              <div class="delivery-fields">
+                <div><label for="delivery-provider" data-delivery-text="provider">Способ отправки</label><select id="delivery-provider"><option value="smtp">SMTP</option><option value="gmail">Gmail API (OAuth)</option></select></div>
+                <div><label for="delivery-recipient" data-delivery-text="recipient">Получатель отчета</label><input id="delivery-recipient" type="email" maxlength="254" autocomplete="email"></div>
+              </div>
+              <p data-delivery-text="attachment">PDF прикладывается к письму. Google Drive для этого не нужен.</p>
+              <div id="delivery-smtp" hidden>
+                <p data-delivery-text="smtpHelp"></p>
+                <div class="delivery-fields">
+                  <div><label for="delivery-smtp-host" data-delivery-text="host">SMTP-сервер</label><input id="delivery-smtp-host" autocomplete="off" maxlength="253"></div>
+                  <div><label for="delivery-smtp-port" data-delivery-text="port">Порт</label><input id="delivery-smtp-port" type="number" min="1" max="65535" value="587"></div>
+                  <div><label for="delivery-smtp-security" data-delivery-text="security">Защита соединения</label><select id="delivery-smtp-security"><option value="starttls">STARTTLS</option><option value="tls">TLS</option></select></div>
+                  <div><label for="delivery-smtp-user" data-delivery-text="username">Логин SMTP</label><input id="delivery-smtp-user" autocomplete="username" maxlength="254"></div>
+                  <div><label for="delivery-smtp-from" data-delivery-text="sender">Адрес отправителя</label><input id="delivery-smtp-from" type="email" maxlength="254"></div>
+                  <div><label for="delivery-smtp-password" data-delivery-text="password">Пароль SMTP или пароль приложения</label><input id="delivery-smtp-password" type="password" autocomplete="new-password" maxlength="4096"></div>
+                </div>
+                <p id="delivery-password-help"></p>
+                <details>
+                  <summary>Gmail SMTP</summary>
+                  <p data-delivery-text="smtpGoogleHelp"></p>
+                  <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noopener noreferrer" data-delivery-text="smtpGoogleDocs"></a>
+                </details>
+                <button type="button" class="quiet-button" id="delivery-smtp-check" data-delivery-text="checkSmtp">Проверить SMTP без отправки письма</button>
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend data-delivery-text="google">Google — необязательно, свой OAuth-клиент</legend>
+              <label for="delivery-profile" data-delivery-text="account">Аккаунт для Gmail и Google Drive</label>
+              <select id="delivery-profile"></select>
+              <p data-delivery-text="accountHelp"></p>
+              <label for="delivery-oauth-json" data-delivery-text="oauthFile"></label>
+              <input id="delivery-oauth-json" type="file" accept="application/json,.json" aria-describedby="delivery-oauth-import-help">
+              <p id="delivery-oauth-import-help" data-delivery-text="oauthImportHelp"></p>
+              <button type="button" class="quiet-button" id="delivery-google-import" data-delivery-text="oauthImport"></button>
+              <div id="delivery-own-google" hidden>
+                <label for="delivery-google-email" data-delivery-text="oauthEmail"></label>
+                <input id="delivery-google-email" type="email" maxlength="254" autocomplete="email">
+                <p data-delivery-text="oauthPermissions"></p>
+                <label class="switch-label"><input type="checkbox" id="delivery-oauth-mail"><span data-delivery-text="oauthMail"></span></label>
+                <label class="switch-label"><input type="checkbox" id="delivery-oauth-drive"><span data-delivery-text="oauthDrive"></span></label>
+                <label class="switch-label"><input type="checkbox" id="delivery-oauth-context"><span data-delivery-text="oauthContext"></span></label>
+                <p data-delivery-text="oauthConsentHelp"></p>
+              </div>
+              <div class="delivery-actions">
+                <button type="button" class="quiet-button" id="delivery-google-connect" data-delivery-text="connect">Подключить Google</button>
+                <button type="button" class="quiet-button" id="delivery-google-check" data-delivery-text="checkGoogle">Проверить аккаунт</button>
+                <button type="button" class="quiet-button" id="delivery-google-disconnect" data-delivery-text="disconnect">Отключить от MeetOnTrack</button>
+              </div>
+              <p id="delivery-account-status" role="status"></p>
+              <a id="delivery-google-login-link" hidden target="_blank" rel="noopener noreferrer" data-delivery-text="oauthOpen"></a>
+              <details>
+                <summary data-delivery-text="googleGuide"></summary>
+                <ol>
+                  <li data-delivery-text="googleStep1"></li>
+                  <li data-delivery-text="googleStep2"></li>
+                  <li data-delivery-text="googleStep3"></li>
+                </ol>
+                <a href="https://developers.google.com/identity/protocols/oauth2/native-app" target="_blank" rel="noopener noreferrer" data-delivery-text="googleDocs"></a>
+              </details>
+            </fieldset>
+            <fieldset>
+              <legend>Google Drive</legend>
+              <label class="switch-label"><input type="checkbox" id="delivery-drive-enabled"><span data-delivery-text="autoDrive">Автоматически сохранять отчет на Google Drive</span></label>
+              <label for="delivery-drive-folder" data-delivery-text="folder">Ссылка или ID папки Google Drive</label>
+              <input id="delivery-drive-folder" maxlength="500" autocomplete="off">
+            </fieldset>
+            <fieldset>
+              <legend>Telegram</legend>
+              <label class="switch-label"><input type="checkbox" id="delivery-telegram-enabled"><span data-delivery-text="autoTelegram">Отправлять в подключенный Telegram</span></label>
+              <p id="delivery-telegram-help"></p>
+            </fieldset>
+            <p data-delivery-text="consent">Выключение канала останавливает новые отправки и ожидающие повторы, но не отзывает уже отправленное. После включения старые встречи автоматически не рассылаются: их можно отправить из истории.</p>
+            <button type="submit" class="primary-button" id="delivery-save" data-delivery-text="save">Сохранить настройки доставки</button>
+            <p id="delivery-settings-status" role="status" aria-live="polite"></p>
+          </form>
+        </section>
+        <section id="updates-settings" tabindex="-1" aria-labelledby="updates-heading">
+          <h3 id="updates-heading"></h3>
+          <p id="updates-help"></p>
+          <label><input type="checkbox" id="updates-enabled" /><span id="updates-enabled-label"></span></label>
+          <p id="updates-status" role="status"></p>
+          <button class="quiet-button" type="button" id="updates-check"></button>
+          <div id="updates-manual" hidden>
+            <p id="updates-command-help"></p>
+            <pre id="updates-command" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+            <button class="quiet-button" type="button" id="updates-copy"></button>
+            <p id="updates-copy-status" role="status"></p>
+          </div>
+          <div id="updates-release" hidden>
+            <h4 id="updates-version"></h4>
+            <pre id="updates-notes"></pre>
+            <p id="updates-safe-install"></p>
+            <a id="updates-link" target="_blank" rel="noopener noreferrer"></a>
+            <button class="quiet-button" type="button" id="updates-dismiss"></button>
+          </div>
+        </section>
+      </div>
+    </section>
+    <section id="assistant-problem" class="startup-problem" hidden role="alert">
+      <span id="assistant-problem-text"></span>
+      <button type="button" class="quiet-button" id="assistant-problem-fix">Проверить ИИ</button>
+    </section>
+    <section id="getting-started" class="getting-started" hidden aria-labelledby="getting-started-heading">
+      <div class="repo-dialog-header"><h2 id="getting-started-heading">Начать работу с MeetOnTrack</h2><button class="quiet-button" id="getting-started-close" type="button">Закрыть</button></div>
+      <p id="getting-started-intro"></p>
+      <div class="startup-step"><h3 id="startup-audio-heading"></h3><p id="startup-audio-status" role="status"></p><button class="quiet-button" id="startup-recorder" type="button"></button> <button class="primary-button" id="startup-record" type="button"></button></div>
+      <div class="startup-step"><h3 id="startup-ai-heading"></h3><p id="startup-ai-help"></p><p id="startup-ai-status" role="status"></p><button class="quiet-button" id="startup-ai-check" type="button"></button> <a href="https://developers.openai.com/codex/cli/" target="_blank" rel="noopener noreferrer" id="startup-ai-install"></a><p id="startup-ai-login"></p></div>
+      <div class="startup-step"><h3 id="startup-context-heading"></h3><p id="startup-context-help"></p><button class="quiet-button" id="startup-context" type="button"></button> <button class="quiet-button" id="startup-google" type="button"></button></div>
+      <details class="startup-example"><summary id="startup-example-title"></summary><p id="startup-example-source"></p><p id="startup-example-question"></p><p id="startup-example-answer"></p></details>
+      <p id="startup-message" role="status"></p>
+    </section>
+    <main class="workspace">
+      <section class="transcript-pane" aria-labelledby="transcript-heading">
+        <div class="pane-header">
+          <div>
+            <h1 id="transcript-heading" data-i18n="transcript.heading">Ход созвона</h1>
+            <p id="transcript-meta" data-i18n="transcript.loading">Получаю последние реплики</p>
+          </div>
+          <div class="transcript-actions">
+            <button class="quiet-button translation-jump" id="translation-jump" type="button" hidden></button>
+            <button class="quiet-button copy-dialog-button" id="copy-dialog" type="button" data-i18n="transcript.copy">Копировать диалог</button>
+            <button class="quiet-button" id="speaker-edit" type="button" data-i18n="speakers.open">Имена</button>
+            <div class="view-tabs transcript-tabs" role="group" aria-label="Вид левой панели" data-i18n-aria-label="aria.transcript_view">
+              <button class="active" data-transcript-view="transcript" type="button"><span data-i18n="transcript.tab">Стенограмма</span></button>
+              <button data-transcript-view="frames" type="button"><span data-i18n="frames.tab">Кадры</span> <span id="frame-count">0</span></button>
+            </div>
+            <div class="segmented" id="speaker-filters" role="group" aria-label="Фильтр участников" data-i18n-aria-label="aria.speaker_filter">
+              <button class="active" data-source="all" type="button" data-i18n="speaker.all">Все</button>
+              <button data-source="microphone" type="button" data-i18n="speaker.me">Я</button>
+              <button data-source="system" type="button" data-i18n="speaker.others">Собеседники</button>
+            </div>
+          </div>
+        </div>
+        <section class="recognition-notice" id="recognition-notice" hidden aria-label="Состояние расшифровки" data-i18n-aria-label="recognition.heading">
+          <span id="recognition-notice-text" role="status" aria-live="polite" aria-atomic="true"></span>
+          <button class="quiet-button" id="recognition-resume" type="button" data-i18n="recognition.resume">Возобновить расшифровку</button>
+        </section>
+        <div class="transcript" id="transcript" aria-live="polite">
+          <div class="empty-state">
+            <strong data-i18n="transcript.empty_title">Жду стенограмму</strong>
+            <span data-i18n="transcript.empty_text">MeetOnTrack передаёт локальную расшифровку примерно раз в секунду.</span>
+          </div>
+        </div>
+        <div class="frames" id="frames" hidden>
+          <div class="frames-toolbar">
+            <span><span data-i18n="frames.local_note">Кадры хранятся только локально вместе с записью.</span> <span id="frame-status"></span></span>
+            <button class="quiet-button" id="capture-frame" type="button" data-i18n="frames.capture">Снять кадр сейчас</button>
+          </div>
+          <div class="frames-grid" id="frames-grid"></div>
+        </div>
+      </section>
+
+      <section class="copilot-pane" aria-labelledby="copilot-heading">
+        <div class="pane-header copilot-header">
+          <div>
+            <h2 id="copilot-heading" data-i18n="copilot.heading">Чат с контекстом</h2>
+            <p id="copilot-meta" data-i18n="copilot.meta">Codex читает стенограмму и локальные Git-репозитории</p>
+          </div>
+        </div>
+
+        <section class="delivery-notice" id="delivery-notice" hidden>
+          <span id="delivery-notice-text" role="status" aria-live="polite" aria-atomic="true"></span>
+          <button class="quiet-button" id="delivery-notice-details" type="button" data-i18n="delivery.details">Подробнее</button>
+          <button class="quiet-button" id="delivery-notice-dismiss" type="button" data-i18n="delivery.dismiss">Прочитано</button>
+        </section>
+        <div class="copilot-content">
+          <div class="workspace-filters" id="workspace-filters" role="tablist" aria-label="Чат и сигналы" data-i18n-aria-label="aria.workspace_filter">
+            <button class="active" data-content-view="board" role="tab" aria-selected="true" type="button" data-i18n="board.tab">Обзор звонка</button>
+            <button data-content-view="plan" id="call-plan-tab" role="tab" type="button" hidden><span data-i18n="plan.tab">Подготовка</span><span class="tab-count" id="call-plan-count">0</span></button>
+            <button data-content-view="chat" role="tab" type="button" data-i18n="view.chat">Чат</button>
+            <button data-content-view="questions" role="tab" type="button"><span data-i18n="journal.questions">Вопросы</span><span class="tab-count" id="questions-count">0</span></button>
+            <button data-content-view="objections" role="tab" type="button"><span data-i18n="journal.objections">Риски и возражения</span><span class="tab-count" id="objections-count">0</span></button>
+            <button data-content-view="decisions" role="tab" type="button"><span data-i18n="journal.decisions">Решения</span><span class="tab-count" id="decisions-count">0</span></button>
+            <button data-content-view="notes" role="tab" type="button"><span data-i18n="journal.notes">Мои заметки</span><span class="tab-count" id="notes-count">0</span></button>
+            <button data-content-view="entities" role="tab" type="button"><span data-i18n="journal.entities">Ссылки и сервисы</span><span class="tab-count" id="entities-count">0</span></button>
+            <button data-content-view="meeting-chat" role="tab" type="button"><span data-i18n="view.meeting_chat">Чат встречи</span><span class="tab-count" id="meeting-chat-count">0</span></button>
+          </div>
+          <div class="workspace-view">
+            <section class="call-board" id="call-board" aria-label="Обзор звонка" data-i18n-aria-label="board.tab"></section>
+            <div class="call-plan" id="call-plan" hidden aria-live="polite"></div>
+            <div class="chat" id="chat" hidden aria-live="polite">
+              <div class="welcome" id="welcome">
+                <h3 data-i18n="welcome.title">Спросите по ходу разговора</h3>
+                <p data-i18n="welcome.text">Ответ будет проверен по локальным источникам. Репозитории открываются только для чтения.</p>
+                <div class="suggestions">
+                  <button type="button" data-i18n="suggestion.latest">Что они только что сказали?</button>
+                  <button type="button" data-i18n="suggestion.repos">Проверь это по репозиториям</button>
+                  <button type="button" data-i18n="suggestion.history">Что мы решали раньше?</button>
+                  <button type="button" data-i18n="suggestion.challenge">Что здесь стоит оспорить?</button>
+                </div>
+              </div>
+            </div>
+            <button class="chat-latest" id="chat-latest" type="button" hidden data-i18n="message.latest">К последнему ответу</button>
+            <div class="journal" id="journal" hidden>
+              <div class="journal-list" id="journal-list" aria-live="polite"></div>
+            </div>
+            <div class="meeting-chat" id="meeting-chat" hidden>
+              <div class="meeting-chat-tools">
+                <button id="chat-import-file" class="quiet-button" type="button" data-i18n="meeting_chat.import">Импорт TXT / JSON</button>
+                <input id="chat-import-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
+                <label><input id="chat-questions-only" type="checkbox"><span data-i18n="meeting_chat.questions">Только вопросы аудитории</span></label>
+                <span id="chat-import-result" role="status"></span>
+              </div>
+              <div class="meeting-chat-note" data-i18n="meeting_chat.note">Сообщения извлекаются из видимой панели Zoom Chat и сохраняются только локально.</div>
+              <div class="meeting-chat-list" id="meeting-chat-list" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="composer-wrap" id="composer-wrap">
+          <div class="analysis-row">
+            <label class="switch-label">
+              <input id="auto-analysis" type="checkbox" aria-describedby="analysis-help" checked />
+              <span data-i18n="analysis.auto">Анализировать разговор автоматически</span>
+            </label>
+            <button class="quiet-button" id="analyze-button" type="button" aria-describedby="analysis-help" data-i18n="analysis.now">Проанализировать сейчас</button>
+          </div>
+          <div class="note-help" id="analysis-help" data-i18n="analysis.help">Находит вопросы, риски и решения в расшифровке. Галочка включает автоматические проверки новых реплик; кнопка запускает одну проверку сейчас. На запись звука не влияет.</div>
+          <div class="analysis-status" id="analysis-status" data-i18n="analysis.initial">Автоанализ ещё не запускался</div>
+          <form class="composer" id="chat-form">
+            <label for="question" data-i18n="composer.label">Вопрос или заметка к текущему созвону</label>
+            <div class="composer-input">
+              <textarea
+                id="question"
+                rows="2"
+                maxlength="8000"
+                placeholder="Спросите Copilot или запишите мысль по ходу разговора."
+                data-i18n-placeholder="composer.placeholder"
+              ></textarea>
+              <div class="composer-buttons">
+                <button class="note-button" id="note-button" type="button" aria-describedby="note-help" data-i18n="note.button">Сохранить заметку</button>
+                <button class="send-button" id="send-button" type="submit" data-i18n="composer.ask">Спросить</button>
+              </div>
+            </div>
+            <div class="note-help" id="note-help">Сохранит введённый текст в «Мои заметки» с отметкой времени звонка. Ответ от ИИ не запрашивается.</div>
+            <div class="composer-help" id="composer-help" data-i18n="composer.help">Enter спрашивает · ⌘Enter сохраняет заметку · Shift+Enter переносит строку</div>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="project-dialog" id="project-dialog">
+      <div class="project-dialog-shell">
+        <div class="repo-dialog-header">
+          <div>
+            <h2 data-i18n="project.choose_title">Контекст этой встречи</h2>
+            <p data-i18n="project.choose_description">Подключите папки и Google Drive для поиска. Выбор Git-проекта ниже действует только для этой встречи; подключённые источники сохраняются до отключения.</p>
+          </div>
+          <button class="icon-button" id="project-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
+        </div>
+        <p class="project-help" id="project-help" data-i18n="project.loading">Загружаю варианты…</p>
+        <section class="context-folders" aria-labelledby="context-folders-title">
+          <h3 id="context-folders-title"></h3><p id="context-folders-help"></p>
+          <button class="quiet-button" id="context-folder-choose" type="button"></button>
+          <label id="context-folder-path-label" for="context-folder-path"></label>
+          <input id="context-folder-path" type="text" maxlength="4096" autocomplete="off" spellcheck="false" />
+          <button class="quiet-button" id="context-folder-add" type="button"></button>
+          <ul id="context-folder-list"></ul><p id="context-folder-message" role="status"></p>
+          <button class="quiet-button" id="context-google-open" type="button"></button>
+        </section>
+        <div class="project-options" id="project-options"></div>
+        <details class="google-context-settings" id="google-context-settings">
+          <summary data-i18n="google.heading">Google: поиск контекста</summary>
+          <p data-i18n="google.privacy">Выключен по умолчанию. Только чтение. Найденные фрагменты используются в текущем звонке выбранной моделью анализа; при облачной модели покидают компьютер.</p>
+          <p id="google-account" role="status" aria-live="polite"></p>
+          <div class="google-connection-actions">
+            <button class="quiet-button" id="google-connect" type="button" data-i18n="google.connect">Подключить Google</button>
+            <button class="quiet-button" id="google-disconnect" type="button" data-i18n="google.disconnect">Отключить Google от Copilot</button>
+            <button class="quiet-button" id="google-check" type="button" data-i18n="google.check">Проверить подключение</button>
+          </div>
+          <p data-i18n="google.automatic">После подключения и выбора источников LLM сам формулирует поисковые запросы по вопросу или теме звонка. Репозитории остаются дополнительным источником, а не единственным.</p>
+          <p data-i18n="google.calendar_note">При включении Calendar Copilot также сопоставляет подготовку с событиями дня звонка.</p>
+          <fieldset id="google-sources">
+            <legend data-i18n="google.sources">Где искать</legend>
+            <label><input type="checkbox" value="calendar" /> Google Calendar</label>
+            <label><input type="checkbox" value="gmail" /> Gmail</label>
+            <label><input type="checkbox" value="drive" /> Google Drive</label>
+          </fieldset>
+          <button class="quiet-button" type="button" id="google-save" data-i18n="google.save">Сохранить источники</button>
+          <details id="google-manual-search">
+            <summary data-i18n="google.manual">Проверить поиск вручную (необязательно)</summary>
+          <form id="google-search-form" class="google-search-form">
+            <label for="google-query" data-i18n="google.query">Участник, компания или тема встречи</label>
+            <input id="google-query" type="search" minlength="2" maxlength="160" required autocomplete="off" />
+            <button class="quiet-button" id="google-search" type="submit" data-i18n="google.search">Найти для текущего звонка</button>
+          </form>
+          </details>
+          <p data-i18n="google.limits">Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 результатов; для первых 2 — фрагменты Google Docs или A1:Z80 первого листа Google Sheets. Другие форматы и ошибки чтения помечаются как «только метаданные». Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.</p>
+          <p id="google-message" role="status" aria-live="polite"></p>
+          <div id="google-results"></div>
+        </details>
+        <div class="repo-dialog-footer">
+          <span data-i18n="project.local_note">Папки и Google — отдельные источники. Git-репозитории подключать необязательно.</span>
+          <button class="quiet-button" id="project-edit-repos" type="button" data-i18n="project.edit_repos">Изменить набор репозиториев</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="repo-dialog" id="repo-dialog">
+      <form method="dialog" class="repo-dialog-shell">
+        <div class="repo-dialog-header">
+          <div>
+            <h2 data-i18n="repos.title">Репозитории для контекста</h2>
+            <p data-i18n="repos.description">Выберите до 15 уже клонированных GitHub/GitLab-репозиториев. Файлы и Git остаются только для чтения.</p>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="Закрыть" data-i18n-aria-label="common.close" type="submit">×</button>
+        </div>
+        <div class="repo-toolbar">
+          <input id="repo-search" type="search" placeholder="Имя, путь или remote URL" data-i18n-placeholder="repos.search" autocomplete="off" />
+          <span id="repo-selection-count">0 из 15</span>
+        </div>
+        <div class="repo-list" id="repo-list"></div>
+        <div class="repo-dialog-footer">
+          <span id="repo-help" data-i18n="repos.help">Список берётся из локального каталога — клонирования и сетевых Git-команд нет.</span>
+          <div>
+            <button class="quiet-button" value="cancel" type="submit" data-i18n="common.cancel">Отмена</button>
+            <button class="send-button" id="repo-save" value="default" type="button" data-i18n="repos.save">Сохранить набор</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <section class="archive-dialog" id="archive-dialog" hidden aria-labelledby="archive-heading">
+      <div class="archive-shell">
+        <div class="archive-header">
+          <div>
+            <h2 id="archive-heading" data-i18n="archive.title">Встречи</h2>
+            <p id="archive-description" data-i18n="archive.description">Стенограммы, заметки, чат, кадры и отчёты хранятся локально.</p>
+          </div>
+          <button class="quiet-button" id="archive-close" type="button">Скрыть историю</button>
+        </div>
+        <section class="delivery-summary" id="delivery-summary" aria-labelledby="delivery-summary-title" hidden>
+          <h3 id="delivery-summary-title" data-i18n="delivery.heading">Доставка отчётов</h3>
+          <dl class="delivery-channels" id="delivery-channels"></dl>
+          <p class="delivery-summary-note" data-i18n="delivery.local_note">Запись и отчёт остаются локально. Ошибки доставки не останавливают звонок.</p>
+        </section>
+        <div class="archive-layout">
+          <aside class="archive-sidebar">
+            <label class="archive-search-label" for="archive-search" data-i18n="library.search">Поиск по названию, участникам и содержимому</label>
+            <input id="archive-search" type="search" maxlength="200" autocomplete="off" />
+            <div class="archive-list" id="archive-list" aria-live="polite"></div>
+          </aside>
+          <section class="archive-detail" id="archive-detail">
+            <div class="empty-state">
+              <strong data-i18n="archive.select_title">Выберите встречу</strong>
+              <span data-i18n="archive.select_text">Здесь появятся её материалы и готовые отчёты.</span>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+    <dialog class="speaker-dialog" id="speaker-dialog">
+      <div class="speaker-dialog-shell">
+        <div class="repo-dialog-header">
+          <div><h2 data-i18n="speakers.title">Участники и реплики</h2><p id="speaker-edit-help"></p></div>
+          <button class="icon-button" id="speaker-edit-close" type="button" data-i18n-aria-label="common.close">×</button>
+        </div>
+        <div class="speaker-editor-body">
+          <h3 data-i18n="speakers.rename_title">Переименовать во всей встрече</h3>
+          <div id="speaker-name-list"></div>
+          <h3 data-i18n="speakers.assign_title">Исправить, кто говорит</h3>
+          <div class="speaker-selection-actions">
+            <button class="quiet-button" id="speaker-select-pending" type="button" data-i18n="speakers.select_pending">Выбрать неразмеченные</button>
+            <button class="quiet-button" id="speaker-select-clear" type="button" data-i18n="speakers.clear_selection">Снять выбор</button>
+            <span id="speaker-selection-count" aria-live="polite"></span>
+          </div>
+          <div class="speaker-assignment-controls">
+            <select id="speaker-assignment-target" data-i18n-aria-label="speakers.target"></select>
+            <input id="speaker-assignment-name" maxlength="80" data-i18n-placeholder="speakers.new_name" data-i18n-aria-label="speakers.new_name">
+            <button class="send-button" id="speaker-assignment-save" type="button" data-i18n="speakers.assign">Назначить выбранным</button>
+          </div>
+          <div id="speaker-utterance-list"></div>
+        </div>
+        <div class="repo-dialog-footer"><span id="speaker-edit-status" role="status"></span></div>
+      </div>
+    </dialog>
+    <script src="/updates.js" defer></script>
+    <script src="/delivery.js" defer></script>
+    <script src="/app.js" defer></script>
+    <script src="/getting-started.js" defer></script>
+  </body>
+</html>

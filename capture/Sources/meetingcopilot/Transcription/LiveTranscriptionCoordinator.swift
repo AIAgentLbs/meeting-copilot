@@ -1,0 +1,571 @@
+@preconcurrency import AVFoundation
+import FluidAudio
+import Foundation
+import os.lock
+
+/// Runs the optional low-latency transcript beside the durable recorder. The
+/// two speakers get independent streaming state while sharing the heavyweight
+/// CoreML model bundle.
+actor LiveTranscriptionCoordinator {
+    private struct AudioPacket: @unchecked Sendable {
+        var buffer: AVAudioPCMBuffer
+    }
+
+    typealias Status = LiveRecognitionStatus
+
+    struct Snapshot: Sendable {
+        let isRecording: Bool
+        let isEnabled: Bool
+        let entries: [LiveTranscriptState.Entry]
+        let status: Status
+        var captureWarnings: [CaptureWarning] = []
+        var recognitionProgressAt: Date? = nil
+        var recoveryAttempts: Int = 0
+    }
+
+    struct CaptureWarning: Sendable, Encodable {
+        let started_at: String
+        var ended_at: String? = nil
+        let reason = "system-audio-lost"
+    }
+
+    struct SessionSinks: Sendable {
+        let mic: LiveAudioBufferRelay.Sink
+        let system: LiveAudioBufferRelay.Sink
+    }
+
+    private enum Source: Sendable, Hashable {
+        case mic
+        case system
+
+        var speaker: LiveTranscriptState.Speaker {
+            self == .mic ? .you : .them
+        }
+    }
+
+    private let modelStore: LiveTranscriptionModelStore
+    private var transcript = LiveTranscriptState()
+    private var status: Status = .idle
+    private var isRecording = false
+    private var startedAt = Date()
+    private var update: (@Sendable (Snapshot) -> Void)?
+    /// Handing the recorders their sinks is deferred until the model is
+    /// actually consuming audio — see `startPipeline`.
+    private var attach: (@Sendable (SessionSinks?) -> Void)?
+    private var pendingSinks: SessionSinks?
+    private var drops: [Date] = []
+    private var lastConsumedAt: [Source: Date] = [:]
+    private var liveLanguage = "auto"
+    /// The engine reports one running transcript per speaker and never says
+    /// where an utterance ended, so the pause is what ends it here.
+    private var partials = CumulativePartials()
+    private var silentSeconds: [Source: Double] = [:]
+    /// Set by the engine's callback the moment it decodes something, and read
+    /// by the consumer that fed it. Both run outside this actor, and a hop
+    /// through it would arrive after the audio it belongs to had been counted.
+    private var decodedSomething: [Source: OSAllocatedUnfairLock<Bool>] = [:]
+    private var callbackGeneration: [Source: Int] = [:]
+
+    private var loadTask: Task<Void, Never>?
+    private var consumerTasks: [Task<Void, Never>] = []
+    private var continuations: [AsyncStream<AudioPacket>.Continuation] = []
+    private var managers: [Source: StreamingNemotronMultilingualAsrManager] = [:]
+    private var sharedModels: SharedNemotronMultilingualModels?
+    private var currentRemoteVoice: Int?
+    private var lastSystemSignal: Date?
+    private var captureWarnings: [CaptureWarning] = []
+    private var healthTask: Task<Void, Never>?
+    private var pipelineStartedAt = Date()
+    private var recoveryPolicy = RecognitionRecoveryPolicy()
+    private var recoveryExhausted = false
+    private let inputTimes = OSAllocatedUnfairLock(initialState: [Source: Date]())
+
+    init(modelStore: LiveTranscriptionModelStore = .init()) {
+        self.modelStore = modelStore
+    }
+
+    var snapshot: Snapshot {
+        Snapshot(
+            isRecording: isRecording,
+            isEnabled: transcript.isEnabled,
+            entries: transcript.entries,
+            status: status,
+            captureWarnings: captureWarnings,
+            recognitionProgressAt: lastConsumedAt.values.max(),
+            recoveryAttempts: recoveryPolicy.attempts.count
+        )
+    }
+
+    func beginRecording(
+        enabled: Bool,
+        language: String,
+        update: @escaping @Sendable (Snapshot) -> Void,
+        attach: @escaping @Sendable (SessionSinks?) -> Void
+    ) {
+        stopPipeline(releaseSharedModels: true)
+        self.update = update
+        self.attach = attach
+        startedAt = Date()
+        lastSystemSignal = nil
+        captureWarnings = []
+        isRecording = true
+        recoveryPolicy = RecognitionRecoveryPolicy()
+        recoveryExhausted = false
+        lastConsumedAt.removeAll()
+        status = enabled ? .loading : .paused
+        let epoch = transcript.beginRecording(enabled: enabled)
+        publish()
+        guard enabled else { return }
+        startHealthWatchdog()
+        startPipeline(language: language, epoch: epoch)
+    }
+
+    /// The caller detaches the old sinks before calling this, so no audio can
+    /// enter a closing epoch; new sinks arrive through `attach` once the model
+    /// is loaded and consuming.
+    func setEnabled(_ enabled: Bool, language: String) {
+        guard isRecording else { return }
+        healthTask?.cancel()
+        healthTask = nil
+        recoveryPolicy = RecognitionRecoveryPolicy()
+        recoveryExhausted = false
+        stopPipeline(releaseSharedModels: enabled)
+        if enabled { transcript.setEnabled(false) }
+        let epoch = transcript.setEnabled(enabled)
+        status = enabled ? .loading : .paused
+        publish()
+        guard enabled else { return }
+        startHealthWatchdog()
+        startPipeline(language: language, epoch: epoch)
+    }
+
+    func finishRecording() async {
+        transcript.finishRecording()
+        isRecording = false
+        healthTask?.cancel()
+        healthTask = nil
+        status = .idle
+        publish()
+        // AppController's closures capture the recording session, while this
+        // actor lives for the whole app. Keeping them here keeps its mic engine
+        // and an explicitly enabled voice-processing route alive after Stop.
+        update = nil
+        attach = nil
+
+        // In contrast to a temporary toggle, meeting stop is a hard memory
+        // boundary: wait for an in-progress preload and both managers to let
+        // go before the canonical Parakeet job is allowed to start.
+        let detached = detachPipeline()
+        await detached.load?.value
+        for manager in detached.managers { await manager.cleanup() }
+        sharedModels = nil
+    }
+
+    /// Builds the queues and their sinks but does not hand the sinks over.
+    ///
+    /// Loading Nemotron takes several seconds, and audio pushed into a queue
+    /// nobody is reading yet fills five seconds of buffer and then overflows —
+    /// which used to be reported as "your Mac couldn't keep up" before a
+    /// single word had been transcribed. The recorders start feeding the
+    /// queues at the moment the model starts consuming them, and not before.
+    private func startPipeline(language: String, epoch: Int) {
+        liveLanguage = language
+        pipelineStartedAt = Date()
+        inputTimes.withLock { $0.removeAll() }
+        guard modelStore.isReady(language: language) else {
+            status = .modelMissing
+            publish()
+            return
+        }
+        drops.removeAll(keepingCapacity: true)
+        partials.reset()
+        silentSeconds.removeAll(keepingCapacity: true)
+        currentRemoteVoice = nil
+        decodedSomething = [
+            .mic: .init(initialState: false),
+            .system: .init(initialState: false),
+        ]
+
+        // This is a live preview, so freshness matters more than preserving a
+        // backlog the model can no longer catch up with. When decoding is
+        // temporarily slower than real time, discard the oldest queued audio
+        // and keep consuming the current conversation.
+        let micPair = AsyncStream<AudioPacket>.makeStream(
+            bufferingPolicy: .bufferingNewest(48))
+        let systemPair = AsyncStream<AudioPacket>.makeStream(
+            bufferingPolicy: .bufferingNewest(48))
+        continuations = [micPair.continuation, systemPair.continuation]
+
+        pendingSinks = SessionSinks(
+            mic: makeSink(continuation: micPair.continuation, source: .mic, epoch: epoch),
+            system: makeSink(continuation: systemPair.continuation, source: .system, epoch: epoch))
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+            await self.loadAndConsume(
+                mic: micPair.stream,
+                system: systemPair.stream,
+                language: language,
+                epoch: epoch
+            )
+        }
+    }
+
+    nonisolated private func makeSink(
+        continuation: AsyncStream<AudioPacket>.Continuation,
+        source: Source,
+        epoch: Int
+    ) -> LiveAudioBufferRelay.Sink {
+        let inputTimes = self.inputTimes
+        return { [weak self] buffer in
+            inputTimes.withLock { $0[source] = Date() }
+            switch continuation.yield(AudioPacket(buffer: buffer)) {
+            case .enqueued:
+                break
+            case .dropped:
+                Task { await self?.pipelineOverloaded(source: source, epoch: epoch) }
+            case .terminated:
+                break
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func loadAndConsume(
+        mic: AsyncStream<AudioPacket>,
+        system: AsyncStream<AudioPacket>,
+        language: String,
+        epoch: Int
+    ) async {
+        async let loadedRemoteDiarizer = RemoteSpeakerDiarizer.load()
+        do {
+            let shared: SharedNemotronMultilingualModels
+            if let sharedModels {
+                shared = sharedModels
+            } else {
+                shared = try await StreamingNemotronMultilingualAsrManager.preloadShared(
+                    from: modelStore.variantDirectory(language: language))
+            }
+            guard transcript.epoch == epoch, transcript.isEnabled else { return }
+            sharedModels = shared
+
+            let micManager = StreamingNemotronMultilingualAsrManager()
+            let systemManager = StreamingNemotronMultilingualAsrManager()
+            try await micManager.loadFromShared(shared)
+            try await systemManager.loadFromShared(shared)
+            await micManager.setLanguage(language)
+            await systemManager.setLanguage(language)
+            await installCallback(on: micManager, source: .mic, epoch: epoch)
+            await installCallback(on: systemManager, source: .system, epoch: epoch)
+            let remoteDiarizer = await loadedRemoteDiarizer
+            guard transcript.epoch == epoch, transcript.isEnabled else {
+                await micManager.cleanup()
+                await systemManager.cleanup()
+                return
+            }
+
+            managers = [.mic: micManager, .system: systemManager]
+            consumerTasks = [
+                consume(
+                    mic, from: .mic, with: micManager,
+                    spoken: decodedSomething[.mic], epoch: epoch),
+                consume(
+                    system, from: .system, with: systemManager,
+                    spoken: decodedSomething[.system], epoch: epoch,
+                    remoteDiarizer: remoteDiarizer),
+            ]
+            status = .live
+            lastConsumedAt = [.mic: Date(), .system: Date()]
+            publish()
+            if let sinks = pendingSinks {
+                pendingSinks = nil
+                attach?(sinks)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            fail(error.localizedDescription, epoch: epoch)
+        }
+    }
+
+    private func installCallback(
+        on manager: StreamingNemotronMultilingualAsrManager,
+        source: Source,
+        epoch: Int
+    ) async {
+        let pulse = decodedSomething[source]
+        let generation = (callbackGeneration[source] ?? 0) + 1
+        callbackGeneration[source] = generation
+        await manager.setPartialCallback { [weak self] text in
+            pulse?.withLock { $0 = true }
+            Task { await self?.received(text, from: source, epoch: epoch, generation: generation) }
+        }
+    }
+
+    nonisolated private func consume(
+        _ stream: AsyncStream<AudioPacket>,
+        from source: Source,
+        with manager: StreamingNemotronMultilingualAsrManager,
+        spoken pulse: OSAllocatedUnfairLock<Bool>?,
+        epoch: Int,
+        remoteDiarizer: RemoteSpeakerDiarizer? = nil
+    ) -> Task<Void, Never> {
+        Task { [weak self] in
+            var activeRemoteDiarizer = remoteDiarizer
+            do {
+                for await packet in stream {
+                    guard !Task.isCancelled else { return }
+                    await self?.observeAudio(peak: AudioLevel.peak(of: packet.buffer), from: source, epoch: epoch)
+                    let seconds = Double(packet.buffer.frameLength)
+                        / packet.buffer.format.sampleRate
+                    if let diarizer = activeRemoteDiarizer {
+                        do {
+                            if let voice = try diarizer.process(packet.buffer) {
+                                await self?.receivedRemoteVoice(voice, epoch: epoch)
+                            }
+                        } catch {
+                            activeRemoteDiarizer = nil
+                            FileHandle.standardError.write(Data(
+                                "remote speaker diarization stopped: \(error)\n".utf8
+                            ))
+                        }
+                    }
+                    _ = try await manager.process(audioBuffer: packet.buffer)
+                    let spoken = pulse?.withLock { decoded -> Bool in
+                        defer { decoded = false }
+                        return decoded
+                    } ?? false
+                    await self?.decoded(
+                        seconds: seconds, spoken: spoken, from: source, epoch: epoch)
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                await self?.fail(error.localizedDescription, epoch: epoch)
+            }
+        }
+    }
+
+    private func received(_ text: String, from source: Source, epoch: Int, generation: Int? = nil) {
+        guard transcript.epoch == epoch else { return }
+        if let generation, callbackGeneration[source] != generation { return }
+        guard let text = partials.text(from: text, for: source.speaker) else { return }
+        let milliseconds = Int(Date().timeIntervalSince(startedAt) * 1000)
+        transcript.applyPartial(
+            speaker: source.speaker,
+            text: text,
+            startMilliseconds: milliseconds,
+            voiceID: source == .system ? currentRemoteVoice : nil,
+            epoch: epoch
+        )
+        publish()
+    }
+
+    private func observeAudio(peak: Float?, from source: Source, epoch: Int) {
+        guard transcript.epoch == epoch, source == .system, let peak else { return }
+        let now = Date()
+        if peak > 0.00001 {
+            lastSystemSignal = now
+            if let index = captureWarnings.indices.last, captureWarnings[index].ended_at == nil {
+                captureWarnings[index].ended_at = ISO8601DateFormatter().string(from: now)
+                publish()
+            }
+        } else if let lastSystemSignal, now.timeIntervalSince(lastSystemSignal) >= 45,
+                  captureWarnings.last?.ended_at != nil || captureWarnings.isEmpty {
+            captureWarnings.append(CaptureWarning(started_at: ISO8601DateFormatter().string(from: lastSystemSignal)))
+            publish()
+        }
+    }
+
+    /// A real voice change closes the current far-end paragraph even if the
+    /// speakers handed over without two seconds of silence. Nemotron remains
+    /// cumulative; `CumulativePartials` subtracts the closed prefix when the
+    /// next callback arrives.
+    private func receivedRemoteVoice(_ voice: Int, epoch: Int) {
+        guard transcript.epoch == epoch else { return }
+        defer { currentRemoteVoice = voice }
+        guard let previous = currentRemoteVoice, previous != voice else { return }
+        guard transcript.endSegment(speaker: .them, epoch: epoch) else { return }
+        partials.close(.them)
+        publish()
+    }
+
+    /// How much audio a side has to go through without decoding a word before
+    /// its block is closed. Tokens only arrive while someone is speaking, so a
+    /// gap in them is a pause — the audio needs no second listen to hear it.
+    ///
+    /// Measured in audio rather than on the clock: the model can fall a couple
+    /// of seconds behind while it warms up, and a stopwatch reads that as a
+    /// pause and cuts the sentence it is still working through.
+    private static let pauseEndingABlock: Double = 2
+
+    private func decoded(
+        seconds: Double, spoken: Bool, from source: Source, epoch: Int
+    ) async {
+        guard transcript.epoch == epoch else { return }
+        recoverFromOverloadIfCaughtUp(epoch: epoch)
+        lastConsumedAt[source] = Date()
+        guard !spoken else {
+            silentSeconds[source] = 0
+            return
+        }
+        let silence = (silentSeconds[source] ?? 0) + seconds
+        silentSeconds[source] = silence
+        guard silence >= Self.pauseEndingABlock else { return }
+        await endSegment(on: source, epoch: epoch)
+    }
+
+    /// Closes the block and asks the engine to commit, which clears the
+    /// accumulation the next block would otherwise be appended to — the whole
+    /// meeting decoded again on every chunk, into one paragraph per speaker.
+    private func endSegment(on source: Source, epoch: Int) async {
+        guard transcript.entries.contains(where: {
+            if case .speech(let block) = $0 {
+                return block.speaker == source.speaker && block.isProvisional
+            }
+            return false
+        }), let manager = managers[source] else { return }
+        // Ignore callbacks queued by the previous decoder state, including
+        // finish()'s flush callback. Apply its returned final text exactly once.
+        callbackGeneration[source, default: 0] += 1
+        do {
+            let final = try await LiveUtteranceDecoder.finish(manager)
+            guard transcript.epoch == epoch else { return }
+            received(final, from: source, epoch: epoch)
+            transcript.endSegment(speaker: source.speaker, epoch: epoch)
+            partials.reset(source.speaker)
+            silentSeconds[source] = 0
+            await installCallback(on: manager, source: source, epoch: epoch)
+            publish()
+        } catch {
+            fail(error.localizedDescription, epoch: epoch)
+        }
+    }
+
+    /// A dropped buffer here and there is what a bounded queue is for. Live
+    /// text is a preview, and losing a fifth of a second is preferable to
+    /// permanently stopping the transcript. The UI reports sustained pressure
+    /// while both consumers continue on the newest available audio.
+    private static let dropWindow: TimeInterval = 5
+    private static let dropsBeforeGivingUp = 20
+
+    /// Queue pressure alone is not a stalled decoder: slow consumers that
+    /// still make progress must not be restarted on every expensive chunk.
+    static func decoderStalled(lastConsumedAt: Date, now: Date) -> Bool {
+        now.timeIntervalSince(lastConsumedAt) >= 30
+    }
+
+    private func pipelineOverloaded(source: Source, epoch: Int) {
+        guard transcript.epoch == epoch else { return }
+        let now = Date()
+        drops.append(now)
+        drops.removeAll { now.timeIntervalSince($0) > Self.dropWindow }
+        guard drops.count >= Self.dropsBeforeGivingUp else { return }
+
+        // One independent watchdog owns recovery, not every dropped packet.
+        guard status != .overloaded else { return }
+        status = .overloaded
+        publish()
+    }
+
+    private func recoverFromOverloadIfCaughtUp(epoch: Int) {
+        guard transcript.epoch == epoch, status == .overloaded else { return }
+        let now = Date()
+        drops.removeAll { now.timeIntervalSince($0) > Self.dropWindow }
+        guard drops.isEmpty else { return }
+        status = .live
+        publish()
+    }
+
+    private func fail(_ message: String, epoch: Int) {
+        guard transcript.epoch == epoch else { return }
+        stopPipeline(releaseSharedModels: false)
+        transcript.invalidateActiveEpoch()
+        status = .error(message)
+        publish()
+    }
+
+    private func startHealthWatchdog() {
+        healthTask?.cancel()
+        healthTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                await self?.checkHealth()
+            }
+        }
+    }
+
+    private func checkHealth() {
+        guard isRecording, transcript.isEnabled else { return }
+        let now = Date()
+        let inputs = inputTimes.withLock { $0 }
+        let needsRecovery: Bool
+        switch status {
+        case .loading:
+            needsRecovery = now.timeIntervalSince(pipelineStartedAt)
+                >= RecognitionRecoveryPolicy.loadingGrace
+        case .live, .overloaded:
+            needsRecovery = [Source.mic, .system].contains {
+                RecognitionRecoveryPolicy.stalled(
+                    inputAt: inputs[$0], consumedAt: lastConsumedAt[$0], now: now)
+            }
+        case .error:
+            needsRecovery = !recoveryExhausted
+        default:
+            needsRecovery = false
+        }
+        switch recoveryPolicy.decide(needsRecovery: needsRecovery, now: now) {
+        case .retry:
+            stopPipeline(releaseSharedModels: true)
+            transcript.setEnabled(false)
+            let epoch = transcript.setEnabled(true)
+            lastConsumedAt = [.mic: now, .system: now]
+            status = .loading
+            startPipeline(language: liveLanguage, epoch: epoch)
+        case .exhausted:
+            recoveryExhausted = true
+            stopPipeline(releaseSharedModels: true)
+            status = .error("Automatic recognition recovery exhausted; audio recording is independent")
+        case .healthy, .wait:
+            break
+        }
+        // Export a heartbeat during silence too. No words is not a dead app.
+        publish()
+    }
+
+    /// Synchronous cancellation keeps toggle/stop deterministic. Manager
+    /// cleanup is scheduled separately; shared models are retained across a
+    /// temporary disable and released at the end of the recording.
+    private func stopPipeline(releaseSharedModels: Bool) {
+        currentRemoteVoice = nil
+        pendingSinks = nil
+        attach?(nil)
+        let detached = detachPipeline()
+        let oldManagers = detached.managers
+        if !oldManagers.isEmpty {
+            Task {
+                for manager in oldManagers { await manager.cleanup() }
+            }
+        }
+        if releaseSharedModels { sharedModels = nil }
+    }
+
+    private func detachPipeline() -> (
+        load: Task<Void, Never>?, managers: [StreamingNemotronMultilingualAsrManager]
+    ) {
+        let oldLoad = loadTask
+        oldLoad?.cancel()
+        loadTask = nil
+        continuations.forEach { $0.finish() }
+        continuations.removeAll(keepingCapacity: false)
+        consumerTasks.forEach { $0.cancel() }
+        consumerTasks.removeAll(keepingCapacity: false)
+        let oldManagers = Array(managers.values)
+        managers.removeAll(keepingCapacity: false)
+        return (oldLoad, oldManagers)
+    }
+
+    private func publish() {
+        update?(snapshot)
+    }
+}

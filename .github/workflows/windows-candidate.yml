@@ -1,0 +1,29 @@
+name: Windows packaged candidate acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/windows-installer]
+    paths: ['.github/workflows/windows-candidate.yml', 'scripts/check_windows_candidate.ps1']
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    # Draft assets are not visible to a contents:read token. Restrict the
+    # collaborator permission to this candidate job; no publishing step runs.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download private draft candidate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release download handoff-2026-10-19 --repo $env:GITHUB_REPOSITORY --pattern 'meeting-copilot-windows-v0.1.10-x64.zip' --dir candidate
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
+      - name: Exact packaged installation and regressions
+        shell: pwsh
+        run: |
+          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meeting-copilot-windows-v0.1.10-x64.zip -ExpectedSha256 3126a3fc819bb80d1ddd762ce14310d42bf99ae3b974983f0872fdcff39026c9 -Installer ./scripts/windows/install.ps1

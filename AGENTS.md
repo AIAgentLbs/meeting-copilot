@@ -1,27 +1,29 @@
-# MeetOnTrack website ownership
+# MeetOnTrack application repository
 
 Owner scope decision: 2026-10-19.
 
-This existing GitHub Pages repository owns the public MeetOnTrack website,
-domain/DNS launch work, analytics, SEO, competitor comparisons, keyword and
-trademark research, and promotional material. Use root `SITE_TODO.md` as the
-single task tracker for those concerns.
-
-Application implementation and end-user runtime acceptance belong to
-`AIAgentLbs/meeting-copilot-private-copy` and its `docs/TODO.md`. Application source
-and build workflows are removed from the website's current tree. Preserve earlier
-published Git history and any saved local work; keep release hosting and download
-links working. Do not copy private application code into this public repository.
-
-Inspect branch/status and current canonical website revision before publishing.
-The earlier dirty application work and diverged local main were preserved in
-local `recovery/` branches, a named stash and
-`refs/recovery/pre-site-separation-20261019-stash`. The active `main` checkout
-now follows the website-only remote tree. Do not restore those application
-files into this repository or publish a recovery branch wholesale. Never discard
-saved work. This scope decision is not permission to alter DNS/accounts or
-publish unreviewed files.
-
-Secrets stay in the approved Vault; private operational evidence stays in
-`AIAgentLbs/operations`. Keep only a reference here, not private account records
-or a duplicated operational backlog.
+- This repository owns end-user software: native capture, the local web UI,
+  transcription, context retrieval, integrations, installers, packaging,
+  automatic updates, tests and user documentation.
+- Keep `docs/TODO.md` limited to that software scope.
+- Website, domain/DNS, GA4, GSC, Umami, SEO, marketing email-domain setup,
+  competitor comparisons, keyword/trademark research and promotional demos belong
+  to the private `AIAgentLbs/meetontrack-website` repository, deployed by
+  Coolify on 5.78.46.146 (owner decision 2026-10-20). Its single website backlog
+  is root `SITE_TODO.md` (local sibling checkout
+  `../meetontrack-website/SITE_TODO.md`). Keep only a cross-reference here.
+- This repository is the public `AIAgentLbs/meeting-copilot`. It also hosts the
+  GitHub Releases that the website download links point to. Never commit
+  secrets, private client data or meeting recordings.
+- Do not add website/marketing acceptance to the application's release gate.
+  The app owns a functioning installer and update artifacts; the website owns
+  how their download links, instructions and claims are presented.
+- Website sources, research and the Pages workflow were moved out on 2026-10-19.
+  Do not reintroduce them here. Historical Git revisions retain their old files;
+  the current checkout contains application work only. The website repository's
+  `planning/2026-10-19-repository-separation.json` records file hashes and ownership.
+- Windows installer source is `scripts/windows/install.ps1`, macOS is `install.sh`.
+  Packaging and tests must use these application-owned sources. The website may
+  publish a tested installer snapshot matched to a public package and checksum.
+- Preserve required upstream licence attribution and compatibility identifiers.
+  Do not confuse product branding with deleting legal notices or data paths.

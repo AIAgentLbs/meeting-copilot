@@ -19,4 +19,8 @@ journal.json
 meeting-chat.json
 frames.json
 *.live.json
+*.jpg
+*.png
+.impeccable/review/
+_site/
 
