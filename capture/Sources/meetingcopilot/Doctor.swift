@@ -28,6 +28,7 @@ enum DoctorReport {
             // should do next: everything else describes how the next meeting
             // will go, this one says a meeting is being recorded now.
             checkLiveRecording(recordingsRoot),
+            checkConfig(),
             checkMicrophone(),
             checkSystemAudio(),
             checkRecordingsRoot(recordingsRoot),
@@ -135,33 +136,32 @@ enum DoctorReport {
         )
     }
 
-    static func checkSummary() -> Check {
-        let settings = Config.summary()
-        guard settings.enabled, settings.backend != "none" else {
-            return Check(name: "summary", status: .ok, remediation: nil)
+    /// A config file that can't be parsed: the app runs on defaults and
+    /// refuses to save, so a person needs to hear about it.
+    static func checkConfig() -> Check {
+        guard let problem = Config.loadProblem() else {
+            return Check(name: "config", status: .ok, remediation: nil)
         }
-        if hasSummaryBackend(
-            anthropicKey: Config.anthropicKey(),
-            openAIKey: Config.openAIKey(),
-            claudeRuns: Tooling.probe("claude")?.runs == true,
-            codexRuns: Tooling.probe("codex")?.runs == true
-        ) {
-            return Check(name: "summary", status: .ok, remediation: nil)
-        }
-        return Check(
-            name: "summary",
-            status: .warn("no key and no claude or codex CLI — will fall back to ollama"),
-            remediation: "paste a key in Setup, or run ollama, or set summary.enabled=false"
-        )
+        return Check(name: "config", status: .warn(problem),
+                     remediation: "fix the JSON by hand, or move the file aside to start over")
     }
 
-    static func hasSummaryBackend(
-        anthropicKey: String?,
-        openAIKey: String?,
-        claudeRuns: Bool,
-        codexRuns: Bool
-    ) -> Bool {
-        anthropicKey != nil || openAIKey != nil || claudeRuns || codexRuns
+    /// Summaries and speaker names each run on the AI chosen for them in
+    /// Getting started, and on nothing else.
+    static func checkSummary() -> Check {
+        var problems: [String] = []
+        if Config.summary().writesSummaries, let problem = LLMBackend.resolve(.summary).problem {
+            problems.append("summary: \(problem)")
+        }
+        if Config.speakerNames().enabled, let problem = LLMBackend.resolve(.speakerNames).problem {
+            problems.append("speaker names: \(problem)")
+        }
+        guard !problems.isEmpty else { return Check(name: "summary", status: .ok, remediation: nil) }
+        return Check(
+            name: "summary",
+            status: .warn(problems.joined(separator: "; ")),
+            remediation: "choose AI in Getting started, or set summary.enabled=false"
+        )
     }
 
     static func checkMicrophone() -> Check {

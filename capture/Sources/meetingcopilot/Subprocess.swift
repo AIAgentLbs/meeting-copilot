@@ -19,8 +19,9 @@ enum Subprocess {
         var isCancelled: Bool { lock.withLock { cancelled } }
     }
 
+    /// `currentDirectory` nil runs the child in the private scratch folder.
     static func run(executable: String, arguments: [String], input: Data,
-                    timeout: TimeInterval) async throws -> Output {
+                    timeout: TimeInterval, currentDirectory: URL? = nil) async throws -> Output {
         let cancellation = Cancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -28,7 +29,8 @@ enum Subprocess {
                     do {
                         continuation.resume(returning: try runSync(
                             executable: executable, arguments: arguments, input: input,
-                            timeout: timeout, isCancelled: { cancellation.isCancelled }))
+                            timeout: timeout, currentDirectory: currentDirectory,
+                            isCancelled: { cancellation.isCancelled }))
                     } catch { continuation.resume(throwing: error) }
                 }
             }
@@ -36,7 +38,7 @@ enum Subprocess {
     }
 
     static func runSync(executable: String, arguments: [String], input: Data = Data(),
-                        timeout: TimeInterval,
+                        timeout: TimeInterval, currentDirectory: URL? = nil,
                         isCancelled: @Sendable () -> Bool = { false }) throws -> Output {
         let scratch = FileManager.default.temporaryDirectory
             .appendingPathComponent("meetingcopilot-process-\(UUID().uuidString)", isDirectory: true)
@@ -70,7 +72,7 @@ enum Subprocess {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        process.currentDirectoryURL = scratch
+        process.currentDirectoryURL = currentDirectory ?? scratch
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr

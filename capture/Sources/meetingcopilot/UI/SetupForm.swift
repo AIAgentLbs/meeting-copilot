@@ -1240,11 +1240,12 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private var chosenSummaryIsMissing: Bool {
         let summary = Config.summary()
         guard summary.enabled else { return false }
-        switch SetupSelection.summaryChoice(backend: summary.backend) {
+        let backend = summary.legacyBackend ?? "auto"
+        switch SetupSelection.summaryChoice(backend: backend) {
         case let looked where summaryToolRuns[looked] != nil:
             return summaryToolRuns[looked] == false
         case "api-key":
-            return summary.backend == "openai-api"
+            return backend == "openai-api"
                 ? Config.openAIKey() == nil
                 : Config.anthropicKey() == nil
         default:
@@ -1335,9 +1336,10 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
 
         let summary = Config.summary()
         summariesOn.state = summary.enabled ? .on : .off
-        let backendIsKey = summary.backend == "anthropic-api" || summary.backend == "openai-api"
-        summaryCards.select(SetupSelection.summaryChoice(backend: summary.backend))
-        if backendIsKey { keyProvider.selectedSegment = summary.backend == "openai-api" ? 1 : 0 }
+        let backend = summary.legacyBackend ?? "auto"
+        let backendIsKey = backend == "anthropic-api" || backend == "openai-api"
+        summaryCards.select(SetupSelection.summaryChoice(backend: backend))
+        if backendIsKey { keyProvider.selectedSegment = backend == "openai-api" ? 1 : 0 }
         showKeyProvider()
         for card in summaryCards.cards { card.isEnabled = summary.enabled }
 

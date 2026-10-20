@@ -267,10 +267,10 @@ enum SettingsSchema {
                   .text, default: localised("the API's own default", "выбор самого API")),
             Entry(["transcription", "openai", "model"], localised("OpenAI model", "Модель OpenAI"),
                   localised(
-                      "The default is the only OpenAI model that returns both timings and speakers.",
-                      "По умолчанию стоит единственная модель OpenAI, которая возвращает и время, "
-                          + "и говорящих."),
-                  .text, default: "gpt-4o-transcribe-diarize"),
+                      "Required for OpenAI transcription: its diarizing model, the only one that returns both timings and speakers.",
+                      "Нужна для расшифровки через OpenAI: ее модель с разметкой говорящих, единственная, "
+                          + "которая возвращает и время, и говорящих."),
+                  .text, default: localised("not set", "не задана")),
         ]),
 
         Section(title: localised("Summaries", "Саммари"), entries: [
@@ -283,28 +283,28 @@ enum SettingsSchema {
             Entry(["summary", "backend"],
                   localised("Which model to ask", "У какой модели спрашивать"),
                   localised(
-                      "auto walks the chain: claude CLI, Anthropic API, codex CLI, OpenAI API, ollama — subscriptions before metered keys. none skips summarizing without turning off the rest.",
-                      "auto идёт по цепочке: claude CLI, Anthropic API, codex CLI, OpenAI API, "
-                          + "ollama — сначала подписки, потом платные ключи. none пропускает саммари, "
-                          + "не выключая всего остального."),
+                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set. none still turns summaries off.",
+                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет. none по-прежнему выключает саммари."),
                   .choice(["auto", "claude-cli", "anthropic-api", "codex-cli", "openai-api", "ollama", "none"]),
                   default: "auto"),
             Entry(["summary", "model"],
                   localised("Anthropic model", "Модель Anthropic"),
                   localised(
-                      "Used on the API path. The CLI uses whatever model Claude Code is set to.",
-                      "Для пути через API. CLI берёт ту модель, на которую настроен Claude Code."),
-                  .text, default: "claude-opus-5"),
+                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
+                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
+                  .text, default: localised("not set", "не задана")),
             Entry(["summary", "openai_model"],
                   localised("OpenAI model", "Модель OpenAI"),
                   localised(
-                      "Used by the codex CLI and the OpenAI API.",
-                      "Для codex CLI и для OpenAI API."),
-                  .text, default: "gpt-5"),
+                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
+                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
+                  .text, default: localised("not set", "не задана")),
             Entry(["summary", "ollama_model"],
                   localised("Local model", "Местная модель"),
-                  localised("The fully-offline fallback.", "Запасной вариант, целиком без сети."),
-                  .text, default: "qwen3:8b"),
+                  localised(
+                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
+                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
+                  .text, default: localised("not set", "не задана")),
             Entry(["summary", "language"],
                   localised("Summary language", "Язык саммари"),
                   localised(
@@ -359,16 +359,16 @@ enum SettingsSchema {
             Entry(["speaker_names", "backend"],
                   localised("Which model to ask", "У какой модели спрашивать"),
                   localised(
-                      "Same chain as summaries. auto walks it until one answers.",
-                      "Та же цепочка, что у саммари. auto идёт по ней, пока кто-нибудь не ответит."),
+                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
+                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
                   .choice(["auto", "claude-cli", "anthropic-api", "codex-cli", "openai-api", "ollama"]),
                   default: "auto"),
             Entry(["speaker_names", "model"],
                   localised("Anthropic model for naming", "Модель Anthropic для имён"),
                   localised(
-                      "Naming is an easier job than summarizing; empty uses the summary's model.",
-                      "Имена — работа проще саммари; пусто — та же модель, что у саммари."),
-                  .text, default: localised("the summary's model", "модель саммари")),
+                      "Legacy. Summaries and speaker names use the AI chosen in Getting started; this is read once, to fill that choice when none is set.",
+                      "Устаревшее. Саммари и имена говорящих используют ИИ, выбранный в «Начале работы»; это читается один раз, чтобы заполнить выбор, если его еще нет."),
+                  .text, default: localised("not set", "не задана")),
         ]),
 
         Section(title: localised("Interface", "Интерфейс"), entries: [

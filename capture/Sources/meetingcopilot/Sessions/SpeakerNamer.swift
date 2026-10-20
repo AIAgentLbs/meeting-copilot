@@ -79,62 +79,57 @@ enum SpeakerNamer {
             return finish(merged, transcript: transcript, dir: dir, log: log)
         }
 
-        // The naming model is configurable separately because this is an
-        // easier job than summarizing; unset, it inherits the summary's.
-        let backends = LLMBackend.available(
-            preference: settings.backend, anthropicModel: settings.model
-        )
-        var allTransient = true
-
-        for backend in backends {
-            do {
-                log("naming speakers with \(backend.name)")
-                let answer = try await backend.call(
-                    systemPrompt,
-                    prompt(
-                        transcript: transcript,
-                        labels: asking,
-                        title: title,
-                        attendees: attendees,
-                        app: app
-                    )
-                )
-                let proposals = try parse(answer)
-                var fresh = resolved
-                fresh.backend = backend.name
-                fresh.model = backend.model
-                for proposal in proposals where asking.contains(proposal.label) {
-                    fresh.speakers[proposal.label] = accept(proposal, in: transcript, log: log)
-                }
-                // Labels the model skipped entirely still get an entry, so the
-                // file records that they were considered and left unnamed.
-                for label in asking where fresh.speakers[label] == nil {
-                    fresh.speakers[label] = SpeakerNames.Entry(name: nil, source: .model)
-                }
-
-                let merged = existing?.merged(with: fresh) ?? fresh
-                log("named \(merged.namedCount) of \(labels.count) speaker(s)")
-                let finished = finish(merged, transcript: transcript, dir: dir, log: log)
-                if finished != nil {
-                }
-                return finished
-            } catch {
-                let transient = LLMError.isTransient(error)
-                allTransient = allTransient && transient
-                log(LLMError.isUsageLimit(error)
-                    ? "\(backend.name) is out of allowance — trying the next backend"
-                    : "naming via \(backend.name) failed: \(error)")
-            }
+        // Naming has its own choice (`ai.purposes.speaker_names`): it is an
+        // easier job than summarizing, and the person may pick accordingly.
+        let backend: LLMBackend
+        switch LLMBackend.resolve(.speakerNames) {
+        case .ready(let chosen): backend = chosen
+        case let other:
+            log("speakers not named — \(other.problem ?? AIChoice.needsChoiceMessage)")
+            SessionState.update(dir, with: [SessionState.Key.speakersStatus: SessionState.needsChoice])
+            return nil
         }
 
-        SessionState.update(dir, with: [
-            SessionState.Key.speakersStatus:
-                allTransient ? SessionState.deferred : "failed",
-        ])
-        log(allTransient
-            ? "no backend could be reached — naming deferred, will be retried later"
-            : "every backend failed for good — giving up on speaker names")
-        return nil
+        do {
+            log("naming speakers with \(backend.name) (\(backend.model))")
+            let reply = try await backend.call(
+                systemPrompt,
+                prompt(
+                    transcript: transcript,
+                    labels: asking,
+                    title: title,
+                    attendees: attendees,
+                    app: app
+                )
+            )
+            let proposals = try parse(reply.text)
+            var fresh = resolved
+            fresh.backend = backend.name
+            fresh.model = reply.model
+            for proposal in proposals where asking.contains(proposal.label) {
+                fresh.speakers[proposal.label] = accept(proposal, in: transcript, log: log)
+            }
+            // Labels the model skipped entirely still get an entry, so the
+            // file records that they were considered and left unnamed.
+            for label in asking where fresh.speakers[label] == nil {
+                fresh.speakers[label] = SpeakerNames.Entry(name: nil, source: .model)
+            }
+
+            let merged = existing?.merged(with: fresh) ?? fresh
+            log("named \(merged.namedCount) of \(labels.count) speaker(s)")
+            return finish(merged, transcript: transcript, dir: dir, log: log)
+        } catch {
+            let transient = LLMError.isTransient(error)
+            SessionState.update(dir, with: [
+                SessionState.Key.speakersStatus: transient ? SessionState.deferred : "failed",
+            ])
+            log(LLMError.isUsageLimit(error)
+                ? "\(backend.name) is out of allowance — naming deferred, will be retried later"
+                : transient
+                    ? "naming via \(backend.name) deferred: \(error)"
+                    : "naming via \(backend.name) failed for good: \(error)")
+            return nil
+        }
     }
 
     /// Write the file, re-render the markdown against it, and clear the

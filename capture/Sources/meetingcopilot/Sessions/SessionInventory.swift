@@ -16,12 +16,14 @@ enum SessionInventory {
         case pending
         /// Attempted, but nothing could be reached. Comes back on its own.
         case deferred
+        /// No AI is chosen for this step yet. Runs once one is.
+        case needsChoice
         /// Attempted and won't work on a retry.
         case failed(String)
         /// Turned off in the config.
         case off
 
-        var isOutstanding: Bool { self == .pending || self == .deferred }
+        var isOutstanding: Bool { self == .pending || self == .deferred || self == .needsChoice }
 
         /// For a terminal listing, which stays in English along with the
         /// rest of the command line — half of what it prints is the names of
@@ -32,6 +34,7 @@ enum SessionInventory {
             case .done: return "done"
             case .pending: return "pending"
             case .deferred: return "deferred"
+            case .needsChoice: return "needs choice"
             case .failed: return "failed"
             case .off: return "off"
             }
@@ -44,6 +47,10 @@ enum SessionInventory {
             case .done: return localised("done", "готово")
             case .pending: return localised("pending", "в очереди")
             case .deferred: return localised("deferred", "отложено")
+            case .needsChoice:
+                return localised(
+                    "needs choice — choose AI in Getting started",
+                    "нужен выбор — выберите ИИ в «Начале работы»")
             case .failed: return localised("failed", "не вышло")
             case .off: return localised("off", "выключено")
             }
@@ -201,6 +208,7 @@ enum SessionInventory {
             return .pending
         }
         if status == SessionState.deferred { return .deferred }
+        if status == SessionState.needsChoice { return .needsChoice }
         return blocked ? .pending : .failed(status)
     }
 

@@ -1060,14 +1060,12 @@ struct SetupTests {
         return resolved
     }
 
-    @Test("Doctor accepts either API key or a CLI that actually runs")
-    func summaryAvailabilityPolicy() {
-        #expect(DoctorReport.hasSummaryBackend(
-            anthropicKey: nil, openAIKey: "key", claudeRuns: false, codexRuns: false))
-        #expect(DoctorReport.hasSummaryBackend(
-            anthropicKey: nil, openAIKey: nil, claudeRuns: false, codexRuns: true))
-        #expect(!DoctorReport.hasSummaryBackend(
-            anthropicKey: nil, openAIKey: nil, claudeRuns: false, codexRuns: false))
+    @Test("A legacy backend of none still turns summaries off")
+    func legacyNoneTurnsSummariesOff() {
+        var settings = Config.SummarySettings()
+        #expect(settings.writesSummaries)
+        settings.legacyBackend = "none"
+        #expect(!settings.writesSummaries)
     }
 }
 

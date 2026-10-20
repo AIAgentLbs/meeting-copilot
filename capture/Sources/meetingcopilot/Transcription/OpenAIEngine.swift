@@ -3,10 +3,11 @@ import Foundation
 
 /// OpenAI's diarizing transcription, over the mixed-down session audio.
 ///
-/// The model is `gpt-4o-transcribe-diarize`, and it is the only one of
-/// OpenAI's transcription models meetingcopilot can use: the others return running text
-/// with no timings at all, and a transcript with no clock can be neither
-/// aligned with the recording nor attributed to a speaker. This one returns
+/// The model is whatever `transcription.openai.model` names — never a default
+/// written here — and only OpenAI's diarizing transcription model works: the
+/// others return running text with no timings at all, and a transcript with
+/// no clock can be neither aligned with the recording nor attributed to a
+/// speaker. The diarizing one returns
 /// segments with start, end and a speaker label — the same shape AssemblyAI
 /// returns, which is why both are `.mixed` engines and share everything
 /// downstream.
@@ -24,6 +25,7 @@ import Foundation
 actor OpenAITranscriptionEngine: TranscriptionEngine {
     enum EngineError: TranscriptionFailure, CustomStringConvertible {
         case noAPIKey
+        case noModel
         case http(Int, String)
         case empty
 
@@ -40,6 +42,9 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             case .noAPIKey:
                 return "no OpenAI API key — put one in \(Config.openAIKeyPath.path)"
                     + " (chmod 600) or set OPENAI_API_KEY"
+            case .noModel:
+                return "no OpenAI transcription model chosen — set transcription.openai.model"
+                    + " to OpenAI's diarizing transcription model"
             case .http(let code, let body):
                 return "openai transcription failed: HTTP \(code) \(body.prefix(400))"
             case .empty:
@@ -74,7 +79,8 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         guard let key = Config.openAIKey() else { throw EngineError.noAPIKey }
         apiKey = key
         expected = MeetingLanguages.expected(primary: Config.transcriptionLanguage())
-        model = Config.openAITranscriptionModel()
+        guard let model = Config.openAITranscriptionModel() else { throw EngineError.noModel }
+        self.model = model
         self.requestLimit = requestLimit
     }
 

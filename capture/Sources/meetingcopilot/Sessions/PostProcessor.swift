@@ -23,10 +23,7 @@ enum PostProcessor {
         var summary: Bool
 
         static var configured: Policy {
-            let summary = Config.summary()
-            return Policy(
-                names: Config.speakerNames().enabled,
-                summary: summary.enabled && summary.backend != "none")
+            Policy(names: Config.speakerNames().enabled, summary: Config.summary().writesSummaries)
         }
     }
 
@@ -49,7 +46,7 @@ enum PostProcessor {
         }
         func gaveUp(_ key: String) -> Bool {
             guard let status = SessionState.value(dir, key) as? String else { return false }
-            return status != SessionState.deferred
+            return status != SessionState.deferred && status != SessionState.needsChoice
         }
 
         guard exists("transcript.json") else { return Work() }
