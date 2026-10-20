@@ -22,6 +22,13 @@ Owner scope decision: 2026-10-19.
   come from what is installed, signed in and supported by the user's plan, read
   from the provider itself, never from a fixed list in code. Code may hold engine
   adapters, not chosen models; a missing choice is asked for, not defaulted.
+- One settings store for every component (owner rule 2026-10-20): the Swift
+  Mac app, the C# Windows recorder and the Python web server all read and write
+  `~/.config/meeting-copilot/config.json` (Windows:
+  `%USERPROFILE%\.config\meeting-copilot\config.json`) with one shared schema
+  and one vocabulary. Writers change only their keys with an atomic
+  read-modify-write and preserve every other key. No parallel settings files
+  for the same choice.
 - Do not add website/marketing acceptance to the application's release gate.
   The app owns a functioning installer and update artifacts; the website owns
   how their download links, instructions and claims are presented.

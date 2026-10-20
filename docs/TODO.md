@@ -16,6 +16,17 @@ The 2026-10-19 file migration is complete: 37 website files moved with verified
 hashes, Pages removed, and the Windows installer relocated to
 `scripts/windows/install.ps1` with packaging/CI references updated.
 
+## One settings store and vocabulary across Mac, Windows and web (owner rule 2026-10-20)
+
+- [ ] All components already share `~/.config/meeting-copilot/config.json`, but
+  the vocabulary diverges: the Mac app writes `transcription.engine = "parakeet"`
+  while `scripts/windows/install.ps1:67` and the C# recorder use
+  `engine = "local"` + `local_engine = "parakeet"`; Python reads only
+  `interface_language` and `live_transcription.enabled`. Define one schema
+  (`docs/config.schema.json`), migrate both vocabularies to it, and make every
+  writer preserve keys it does not own (verify Swift `Config.update` and C#
+  `AppSettingsStore`). Settings UIs on all platforms show the same values.
+
 ## No hardcoded providers, models or modes: AI and speech-to-text (owner rule 2026-10-20)
 
 - [ ] Replace the hardcoded `gpt-6.1-sol` (`copilot/web/first_run.py:84`,
