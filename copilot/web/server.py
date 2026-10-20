@@ -1900,7 +1900,13 @@ class CodexSession:
             )
             self.last_analyzed_at = float(payload.get("last_analyzed_at") or 0)
             analysis = payload.get("analysis")
-            if isinstance(analysis, dict):
+            # An error belongs to the AI setup of its run; the next analysis reports the
+            # current one, so a stale "not installed" never outlives a fix or a new choice.
+            if isinstance(analysis, dict) and analysis.get("state") == "error":
+                # Forget the failed attempt too, so the repaired setup is retried at once.
+                self.last_analyzed_fingerprint = ""
+                self.last_analyzed_at = 0.0
+            elif isinstance(analysis, dict):
                 self.analysis = {
                     "state": str(analysis.get("state") or "idle"),
                     "at": str(analysis.get("at") or ""),

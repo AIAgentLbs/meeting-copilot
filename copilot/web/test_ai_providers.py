@@ -736,5 +736,23 @@ class NoHardcodedModelsTests(unittest.TestCase):
         self.assertEqual(hits, [])
 
 
+
+class RestoredAnalysisErrorTests(unittest.TestCase):
+    def test_saved_analysis_error_is_not_restored(self):
+        import tempfile, json as _json
+        from server import CodexSession
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "session.json"
+            path.write_text(_json.dumps({"version": 1, "last_analyzed_fingerprint": "f",
+                "last_analyzed_at": 5, "analysis": {
+                "state": "error", "at": "x", "message": "AI_MISSING: old"}}))
+            restored = CodexSession(path)
+            self.assertEqual(restored.analysis["state"], "idle")
+            self.assertEqual((restored.last_analyzed_fingerprint, restored.last_analyzed_at), ("", 0.0))
+            path.write_text(_json.dumps({"version": 1, "analysis": {
+                "state": "signal", "at": "x", "message": ""}}))
+            self.assertEqual(CodexSession(path).analysis["state"], "signal")
+
 if __name__ == "__main__":
     unittest.main()
+
