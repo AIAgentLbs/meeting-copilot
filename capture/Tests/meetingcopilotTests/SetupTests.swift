@@ -506,9 +506,8 @@ struct SetupTests {
         let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let keyFields = panel.contentView?.allDescendants
             .compactMap { $0 as? NSSecureTextField } ?? []
-        // Both of them: the cloud key and the summary key sit under the same
-        // default button and had the same problem.
-        #expect(keyFields.count == 2)
+        // The cloud key; the summary key went with the summary cards.
+        #expect(keyFields.count == 1)
 
         let editor = NSTextView()
         for field in keyFields {
@@ -617,22 +616,21 @@ struct SetupTests {
         #expect(popup.itemTitles == ["Detect automatically"])
     }
 
-    @Test("Ollama is a full summary card with the official install link")
+    /// The AI for summaries is chosen in one place, Getting started in the
+    /// assistant. The setup form keeps the on/off switch and points there.
+    @Test("Setup offers no summary AI choice of its own and points to Getting started")
     @MainActor
-    func ollamaIsInstallableChoiceCard() throws {
+    func summaryAIIsChosenInGettingStarted() throws {
         let setup = SettingsWindow()
         defer { withExtendedLifetime(setup) {} }
         let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
-        let ollama = try #require(panel.contentView?.allDescendants
-            .compactMap { $0 as? ChoiceCard }
-            .first { $0.id == "ollama" })
-        // The visible label carries a link arrow; the destination is what
-        // this test is actually about.
-        let install = try #require(ollama.allDescendants
-            .compactMap { $0 as? NSButton }
-            .first { $0.title.hasPrefix("Install Ollama") })
-
-        #expect(install.identifier?.rawValue == "https://ollama.com/download/mac")
+        let views = panel.contentView?.allDescendants ?? []
+        let cards = views.compactMap { $0 as? ChoiceCard }.map(\.id)
+        for old in ["claude-cli", "codex-cli", "api-key", "ollama"] {
+            #expect(!cards.contains(old), "\(old) card is back")
+        }
+        #expect(views.compactMap { $0 as? NSTextField }
+            .contains { $0.stringValue.contains("Getting started") })
     }
 
     /// The settings window is not allowed a second, poorer copy of the setup
@@ -655,7 +653,6 @@ struct SetupTests {
         // person opening settings should land on.
         let cards = panel.contentView?.allDescendants.compactMap { $0 as? ChoiceCard } ?? []
         #expect(cards.contains { $0.id == "assemblyai" })
-        #expect(cards.contains { $0.id == "claude-cli" })
     }
 
     @Test("Setup offers no usage statistics control")
@@ -970,17 +967,6 @@ struct SetupTests {
             == "Left: microphone, system audio")
     }
 
-    @Test("The Claude card keeps the automatic fallback chain")
-    func summaryChoiceMapping() {
-        #expect(SetupSelection.summaryBackend(
-            choice: "claude-cli", keyBackend: "anthropic-api") == nil)
-        #expect(SetupSelection.summaryBackend(
-            choice: "codex-cli", keyBackend: "anthropic-api") == "codex-cli")
-        #expect(SetupSelection.summaryBackend(
-            choice: "api-key", keyBackend: "openai-api") == "openai-api")
-        #expect(SetupSelection.summaryChoice(backend: "auto") == "claude-cli")
-    }
-
     @Test("Summary key probes use each provider's authenticated models endpoint")
     func summaryKeyProbeRequests() {
         let anthropic = SummaryKeyProbe.request(provider: .anthropic, key: "anthropic-secret")
@@ -1060,14 +1046,12 @@ struct SetupTests {
         return resolved
     }
 
-    @Test("Doctor accepts either API key or a CLI that actually runs")
-    func summaryAvailabilityPolicy() {
-        #expect(DoctorReport.hasSummaryBackend(
-            anthropicKey: nil, openAIKey: "key", claudeRuns: false, codexRuns: false))
-        #expect(DoctorReport.hasSummaryBackend(
-            anthropicKey: nil, openAIKey: nil, claudeRuns: false, codexRuns: true))
-        #expect(!DoctorReport.hasSummaryBackend(
-            anthropicKey: nil, openAIKey: nil, claudeRuns: false, codexRuns: false))
+    @Test("The summary switch alone decides whether summaries are written")
+    func summarySwitchDecides() {
+        var settings = Config.SummarySettings()
+        #expect(settings.writesSummaries)
+        settings.enabled = false
+        #expect(!settings.writesSummaries)
     }
 }
 

@@ -39,18 +39,96 @@ hashes, Pages removed, and the Windows installer relocated to
 
 ## No hardcoded providers, models or modes: AI and speech-to-text (owner rule 2026-10-20)
 
-- [ ] Replace the hardcoded `gpt-6.1-sol` (`copilot/web/first_run.py:84`,
-  `server.py:2024`, `live_translation.py:62`, `summary_rewrite.py:9`) with a user
-  choice: provider (Codex, Claude Code, Gemini via `agy`) shown only when its CLI
-  is installed and signed in; model list read from that CLI, not hardcoded;
-  effort levels the chosen model supports; fast-mode toggle only where the model
-  and the user's plan support it. Separate settings for live in-call analysis
-  (fast mode useful) and post-call summaries. Check AI tests the exact chosen
-  combination and names the reason on refusal (old CLI does not know the model,
-  plan excludes the model, not signed in). Why: an older Codex works with models
-  it knows; today the app fails with any CLI that does not know `gpt-6.1-sol`.
-  Before building, verify each CLI's model/effort/fast flags and plan
-  availability from current vendor docs (do not rely on memory).
+- [x] Phase 1 (2026-10-20): Python provider layer `copilot/web/ai_providers.py`
+  (Codex app-server, Claude Code initialize, Antigravity `agy models`, Ollama
+  HTTP), per-purpose choice in the shared `config.json` `ai` section
+  (`docs/config.schema.json`), settings panel and per-choice Check AI in Getting
+  started, all five Codex call sites routed through the layer, model ids removed
+  from Python/JS/HTML and the Windows launcher message. Spec:
+  `docs/specs/2026-10-20-no-hardcoded-models.md`.
+- [ ] Release 0.1.11 with phase 1 (packaging, both platforms).
+- [x] Review round 2 (2026-10-20): file boundary enforced (Claude Code
+  `--restricted` + `--add-dir` per selected root, Read/Grep/Glob only, screenshot
+  read from a folder holding only a copy; Codex permissions profile via
+  `-c default_permissions` + `permissions.<id>.filesystem`, run from the realpath
+  binary), per-invocation ticket (choice + executable identity), discovery cache
+  keyed by binary and sign-in, hard deadlines and bounded buffers, structured
+  needs_choice/unavailable for translation and screenshots, per-purpose Check AI.
+- [x] Antigravity is listed with its models but unavailable for every purpose
+  (`permission_mode: always-proceed`, read-only/no-tools not enforceable). Reopen
+  when agy offers a read-only/no-tools mode and stdin input
+  (`ai_providers.AntigravityAdapter`, `capture/.../Summary/AIChoice.swift`).
+- [x] Shared config writers (Python `ai_providers._file_lock`/`AISettings`,
+  Swift `ConfigFile.swift`): `flock` on `config.json.lock` across
+  read-modify-replace, malformed file blocks saves, 0600 temp + fsync + rename.
+  Cross-process test in `test_ai_providers.py` (Python writer vs native-style
+  `flock` writer).
+- [x] Phase 2 (2026-10-20): Swift summary and speaker naming read
+  `ai.purposes.summary` / `ai.purposes.speaker_names`; no model defaults, no
+  fallback order; `--model` (+ effort/speed when chosen) passed to Codex, Claude
+  and Ollama; one-time migration from `summary.backend/model/openai_model/
+  ollama_model` only when present in the file (provider + model, effort and speed
+  left for the person).
+- [ ] Codex 0.153.2 (Homebrew) ignores the `:slash_tmp` deny and lets writes land
+  under the temp dir when cwd is there; reads outside the roots are denied. Our
+  workdir lives in `~/.cache/meeting-copilot/ai-workdir`, so not reachable today.
+  Re-verify on every new Codex version with `codex sandbox -P`.
+- [ ] The Claude Code boundary relies on `--restricted` (Claude Code 2.1.304).
+  Add a version check or a Check AI escape probe so an older CLI without it is
+  reported unavailable rather than run unrestricted.
+- [x] Review round 3 (2026-10-20): Setup summary cards and the legacy summary/
+  naming entries in Settings > Advanced removed; Getting started is the only place
+  the AI is chosen (`SettingsSchema.legacyAIKeys` stay known for the migration).
+  Ollama summaries size `num_ctx` and chunks from the model's reported
+  `<arch>.context_length` and refuse a prompt that does not fit; CLI install
+  locations come from one list, `copilot/web/tool_locations.json`, mirrored by
+  `Tooling.listedLocations` (equality test); Ollama thinking without levels is
+  unavailable; the panel shows the check snapshot of the saved choice.
+- [x] Review round 4 (2026-10-20): live analysis gets HEAD, status and diff stat
+  of each selected repository from the app (`server.git_metadata`), since git
+  cannot start inside the read-only Codex profile; the profile is not widened.
+  Swift `Tooling` picks the newest `--version` with the `MEETING_COPILOT_<TOOL>`
+  override first and re-picks when a candidate file changes (same rule as
+  `first_run.pick_codex`). Python Ollama sends `num_ctx`, drops whole old turns
+  of chat history to fit and rejects a prompt that cannot fit; models without
+  `completion` or without a reported context length are unavailable. Summary
+  merges are reduced in batches until they fit. Saving one purpose keeps the
+  other purposes' drafts.
+- [x] Review round 5 (2026-10-20): Codex isolation flags go on every call
+  without repositories, resumed turns included. Claude identity (discovery,
+  readiness and session keys) includes the signed-in account from
+  `.claude.json` and a hash of env credentials. Ollama keeps a session's first
+  prompt (the session rules) as a system message that trimming and the
+  40-message cap never drop. A legacy `summary.backend: "none"` is migrated
+  once to `summary.enabled: false`. The `ai` subtree is known to the Settings
+  window, so it is not reported as unread.
+- [ ] Bring back the Anthropic and OpenAI API-key summary backends as discovered
+  providers (owner decision 2026-10-20: left out of phase 2). They need an adapter
+  in `copilot/web/ai_providers.py` and `capture/.../Summary/LLMBackend.swift` that
+  lists models from the provider's models endpoint with the user's key, never a
+  fixed model; `SummaryKeyProbe` in `Setup/SetupSelection.swift` already checks
+  keys.
+- [ ] Ollama context sizing counts one character as at least one token
+  (`LLMBackend.ollamaInputLimit`, Python `OllamaAdapter.fit`; images are not
+  counted) and keeps a fixed 4096-token reply allowance.
+  Use the tokenizer (or `prompt_eval_count`) if CJK transcripts get cut or long
+  answers are truncated.
+- [ ] Check AI for `summary` and `speaker_names` probes through the Python
+  adapters, not the Swift invocation in `Summary/LLMBackend.swift`; the argv
+  can drift. Add a shared argv fixture both sides test against.
+- [ ] Phase 3 (speech-to-text): `capture/Sources/meetingcopilot/Config.swift:63`
+  defaults `transcription.engine` to `"auto"` and `:76` defaults the cloud
+  provider to `"assemblyai"`. `Transcription/OpenAIEngine.swift:46` refuses
+  to run until `transcription.openai.model` is set (built-in model removed; owner
+  decision 2026-10-20 keeps it so until phase 3 asks for the choice).
+- [ ] Phase 4 (Windows): `scripts/windows/install.ps1:67-68` writes a new
+  `config.json` with pinned engine/backends and no lock or ACL; `:80-85` does a
+  read-modify-write without `config.json.lock`; `:96-98` pins speech models.
+  `scripts/windows/meeting-copilot.ps1:16-26` looks only for Codex. C#
+  `AppSettingsStore` (not in this repository) must take `config.json.lock` with
+  `FileStream.Lock(0,1)` (same byte as Python `msvcrt.locking`), refuse
+  malformed files and restrict the file ACL to the user (the Windows equivalent of
+  0600, open on the Python side too).
 - [ ] Same rule for speech-to-text in `capture/` (Parakeet, AssemblyAI, OpenAI
   engines and their models): engine and model are user choices, extensible to
   future engines (for example Ollama-hosted), no fixed model in code.
@@ -304,3 +382,18 @@ stored in this repository. Verify the public installed package as well as source
   through context selection, recording and a useful answer. Evaluate a direct
   downloadable installer after packaging/signing acceptance. Website placement
   and promotional demos belong to the website backlog, not this release gate.
+
+## AI provider layer: Codex review round 5 leftovers (2026-10-20, P2)
+
+- [ ] Ollama live chat pins the whole first prompt (transcript, question,
+  excerpts) as the system message, so trimming cannot reclaim it and valid
+  continuations are rejected on small contexts (`copilot/web/ai_providers.py`
+  ~603). Split immutable session rules from meeting content; let old
+  snapshots be trimmed.
+- [ ] `live_translation.py` ~84: a status change to `needs_choice` /
+  `unavailable` does not bump `revision`, so `AnnotationCache.snapshot()`
+  keeps serving the old empty `translation_state`. Bump revision on status
+  change.
+- [ ] `live_translation.py` ~77: an English/Russian/undetected segment clears
+  `needs_choice` while foreign segments still wait for a translation choice.
+  Keep the status while unresolved jobs need a choice.

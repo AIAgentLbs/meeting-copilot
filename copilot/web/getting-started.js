@@ -8,14 +8,14 @@
     "getting-started-open": ["Getting started", "Начать работу"],
     "getting-started-heading": ["Start using MeetOnTrack", "Начать работу с MeetOnTrack"],
     "getting-started-close": ["Close", "Закрыть"],
-    "getting-started-intro": ["Start a call, see both sides in the transcript, then ask a question. Recording and local speech recognition need no paid API key. AI answers use your Codex account and its limits.", "Начните звонок, увидьте обе стороны в стенограмме и задайте вопрос. Для записи и локальной расшифровки платный ключ не нужен. Ответы ИИ используют ваш аккаунт Codex и его лимиты."],
+    "getting-started-intro": ["Start a call, see both sides in the transcript, then ask a question. Recording and local speech recognition need no paid API key. AI answers use the AI tool you choose below and its account limits.", "Начните звонок, увидьте обе стороны в стенограмме и задайте вопрос. Для записи и локальной расшифровки платный ключ не нужен. Ответы ИИ используют выбранный ниже инструмент ИИ и лимиты его аккаунта."],
     "startup-audio-heading": ["1. Prepare recording", "1. Подготовьте запись"],
     "startup-recorder": ["Open recorder / finish setup", "Открыть запись / закончить настройку"],
     "startup-ai-heading": ["2. Check AI answers", "2. Проверьте ответы ИИ"],
-    "startup-ai-help": ["This sends a short test to GPT-6.1 Sol through Codex. No meeting or document is sent by this check. It uses a small amount of your account allowance.", "Проверка отправит короткий тест GPT-6.1 Sol через Codex, без встречи и документов. Запрос использует небольшую часть лимита аккаунта."],
+    "startup-ai-help": ["Choose the AI tool, model, effort and speed for each task. The lists come from the tools installed on this computer and your plan. Check AI then sends a short test for each choice, without meeting data, using a small part of your allowance.", "Выберите для каждой задачи инструмент ИИ, модель, уровень рассуждений и скорость. Списки берутся из установленных на компьютере инструментов и вашего тарифа. Проверка ИИ отправит короткий тест для каждого выбора, без встреч и документов, и использует небольшую часть лимита."],
     "startup-ai-check": ["Check AI", "Проверить ИИ"],
-    "startup-ai-install": ["Install Codex", "Установить Codex"],
-    "startup-ai-login": ["Already installed? Open Codex and sign in, or run codex login in Terminal / PowerShell. Then check again.", "Уже установлен? Откройте Codex и войдите или выполните codex login в Терминале / PowerShell. Затем повторите проверку."],
+    "ai-refresh": ["Refresh lists", "Обновить списки"],
+    "startup-ai-login": ["Tool missing or unavailable? Install it, sign in there, then press Refresh lists.", "Инструмента нет или он недоступен? Установите его, войдите в него и нажмите «Обновить списки»."],
     "startup-context-heading": ["3. Add your context", "3. Добавьте свой контекст"],
     "startup-context-help": ["Connect a folder on your computer (Git is optional), or Google Drive. Files stay at the source; search uses current data when you ask. Calendar and Gmail can be enabled separately.", "Подключите папку на компьютере (Git не нужен) или Google Drive. Файлы остаются у источника; поиск читает актуальные данные при запросе. Календарь и почта включаются отдельно."],
     "startup-context": ["Connect context sources", "Подключить источники контекста"],
@@ -33,17 +33,20 @@
     "assistant-problem-fix": ["Check AI / fix access", "Проверить ИИ / восстановить доступ"]
   };
   const errorText = text => {
-    if (en()) return String(text).replace(/^AI_(?:LIMIT|LOGIN|UPDATE|MODEL|MISSING|NETWORK|FAILED):\s*/, "");
+    if (en()) return String(text).replace(/^AI_(?:LIMIT|LOGIN|UPDATE|MODEL|MISSING|NETWORK|FAILED|CHOICE|UNAVAILABLE):\s*/, "");
     const messages = {
-      AI_LIMIT: "Лимит Codex исчерпан. Проверьте тариф или дождитесь сброса лимита, затем повторите запрос. Запись звука работает независимо.",
-      AI_LOGIN: "Нужно войти в Codex и повторить проверку ИИ. Запись звука работает независимо.",
-      AI_UPDATE: "Codex установлен, но устарел для нужной модели. Обновите Codex и снова проверьте ИИ. Запись звука работает независимо.",
-      AI_MODEL: "Codex отклонил нужную модель. Обновите Codex. Если он уже обновлен, возможно, ваш тариф Codex не включает эту модель. Запись звука работает независимо.",
-      AI_MISSING: "Установите Codex и войдите, затем проверьте ИИ. Для локальной записи и расшифровки Codex не нужен.",
+      AI_LIMIT: "Лимит аккаунта ИИ исчерпан. Проверьте тариф или дождитесь сброса лимита, затем повторите запрос. Запись звука работает независимо.",
+      AI_LOGIN: "Нужно войти в выбранный инструмент ИИ и повторить проверку. Запись звука работает независимо.",
+      AI_UPDATE: "Инструмент ИИ устарел для выбранной модели. Обновите его или выберите другую модель, затем снова проверьте ИИ. Запись звука работает независимо.",
+      AI_MODEL: "Провайдер ИИ отклонил выбранную модель. Возможно, ваш тариф ее не включает. Выберите другую модель в разделе «Начать работу». Запись звука работает независимо.",
+      AI_MISSING: "Выбранный инструмент ИИ не установлен. Установите его и войдите или выберите другой. Для локальной записи и расшифровки ИИ не нужен.",
+      AI_CHOICE: "Для этой задачи не выбраны инструмент и модель ИИ. Выберите их в разделе «Начать работу» и повторите. Запись звука работает независимо.",
       AI_NETWORK: "ИИ не ответил. Проверьте интернет и повторите запрос. Запись звука работает независимо.",
       AI_FAILED: "Запрос к ИИ завершился ошибкой. Проверьте доступ в разделе «Начать работу», затем повторите вопрос."
     };
-    return messages[String(text).split(":")[0]] || text;
+    const code = String(text).split(":")[0];
+    if (code === "AI_UNAVAILABLE") return "Выбранный ИИ сейчас недоступен: " + String(text).slice(code.length + 1).trim();
+    return messages[code] || text;
   };
   async function api(path, data) {
     const response = await fetch(path, data === undefined ? {cache:"no-store"} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
@@ -66,9 +69,11 @@
         ? word("Live transcription is enabled. Open the recorder to check permissions and model downloads. Start a call or use Start recording now.", "Расшифровка включена. В окне записи проверьте разрешения и загрузку моделей. Начните звонок или нажмите «Начать запись сейчас».")
         : word("Live transcription is off. Open the recorder, finish setup and enable it to get help during calls.", "Расшифровка во время звонка выключена. Откройте запись, закончите настройку и включите ее для помощи во время разговора.");
     const ai = current.ai || {};
-    $("startup-ai-status").textContent = ai.state === "ready" ? word("AI answered successfully. Account limits still apply.", "ИИ успешно ответил. Лимиты аккаунта продолжают действовать.")
+    $("startup-ai-status").textContent = ai.state === "ready" ? word("AI answered successfully for every task. Account limits still apply.", "ИИ успешно ответил для всех задач. Лимиты аккаунта продолжают действовать.")
       : ai.state === "checking" ? word("Checking account and model access…", "Проверяю аккаунт и доступ к модели…")
+      : ai.state === "needs_choice" ? word("Choose a tool and model for every task, then check again.", "Выберите инструмент и модель для каждой задачи и повторите проверку.")
       : ai.state === "error" ? errorText(ai.message) : word("Access has not been checked yet.", "Доступ еще не проверен.");
+    renderAI();
     $("context-folder-list").replaceChildren(...(current.folders || []).map(doc => {
       const li = document.createElement("li"), remove = document.createElement("button");
       li.append(document.createTextNode(`${doc.name} — ${doc.path} `));
@@ -80,7 +85,85 @@
       }); li.append(remove); return li;
     }));
   }
-  async function load() {try {current = await api("/api/getting-started"); render();} catch(error) {$("startup-message").textContent = error.message;}}
+  /* AI choice per task. Every option comes from the provider; nothing is preselected. */
+  const purposes = {
+    live_analysis: ["Live analysis and chat", "Анализ и чат во время звонка"],
+    live_translation: ["Live translation", "Перевод во время звонка"],
+    frame_relevance: ["Screenshot relevance", "Отбор снимков экрана"],
+    summary_rewrite: ["Summary rewrite", "Переписывание итога"],
+    summary: ["Meeting summary", "Итог встречи"],
+    speaker_names: ["Speaker names", "Имена спикеров"]
+  };
+  const needsImage = new Set(["frame_relevance"]);
+  let aiState = {providers: [], purposes: {}}, drafts = {};
+  const options = {};
+  const node = (tag, text) => {const item = document.createElement(tag); if (text) item.textContent = text; return item;};
+  function picker(label, choices, value, change) {
+    const wrap = node("label", label), list = node("select");
+    for (const [id, name, disabled] of choices) {const option = node("option", name); option.value = id; option.disabled = Boolean(disabled); list.append(option);}
+    list.value = value; list.addEventListener("change", () => change(list.value)); wrap.append(list); return wrap;
+  }
+  async function providerOptions(provider, refresh = false) {
+    if (refresh || !options[provider]) {
+      options[provider] = {state: "loading"};
+      try {options[provider] = (await api(`/api/ai/options?provider=${encodeURIComponent(provider)}${refresh ? "&refresh=1" : ""}`)).options;}
+      catch (error) {options[provider] = {state: "unavailable", reason: error.message};}
+    }
+    return options[provider];
+  }
+  function purposeRow(purpose) {
+    const status = aiState.purposes[purpose] || {}, checked = (aiState.check?.purposes || {})[purpose];
+    const draft = drafts[purpose] ||= {provider: "", model: "", effort: "", speed: "", ...(status.choice || {})};
+    const box = node("fieldset"); box.className = "ai-purpose"; box.append(node("legend", word(...purposes[purpose])));
+    const redraw = () => renderAI();
+    box.append(picker(word("AI tool", "Инструмент ИИ"), [["", word("Choose…", "Выберите…")], ...aiState.providers.map(item => [item.provider, item.label])],
+      draft.provider, value => {Object.assign(draft, {provider: value, model: "", effort: "", speed: ""}); redraw();}));
+    const found = draft.provider ? options[draft.provider] : null;
+    if (draft.provider && !found) void providerOptions(draft.provider).then(redraw);
+    let ready = false;
+    if (found?.state === "loading" || (draft.provider && !found)) box.append(node("p", word("Reading what this tool offers…", "Читаю, что предлагает инструмент…")));
+    else if (found?.state === "unavailable") box.append(node("p", word("Unavailable: ", "Недоступно: ") + found.reason));
+    else if (found) {
+      // A model is offered only when discovery says it can do this task; otherwise it shows why not.
+      const why = item => item.problem || (needsImage.has(purpose) && item.image !== true
+        ? (item.image === false ? word("does not accept images", "не принимает изображения") : word("image input not reported", "прием изображений не указан")) : "");
+      const model = found.models.find(item => item.id === draft.model && !why(item));
+      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...found.models.map(item => [item.id, why(item) ? `${item.label} (${why(item)})` : item.label, why(item)])],
+        model ? draft.model : "", value => {Object.assign(draft, {model: value, effort: "", speed: ""}); redraw();}));
+      if (model?.efforts.length) box.append(picker(word("Effort", "Уровень рассуждений"), [["", word("Choose…", "Выберите…")], ...model.efforts.map(item => [item, item])],
+        draft.effort, value => {draft.effort = value; redraw();}));
+      if (model?.speeds.length) box.append(picker(word("Speed", "Скорость"), [["", word("Choose…", "Выберите…")], ["standard", word("Standard", "Обычная")], ...model.speeds.map(item => [item.id, item.label])],
+        draft.speed, value => {draft.speed = value; redraw();}));
+      if (model && !model.efforts.length) box.append(node("p", word("This model has no effort levels.", "У этой модели нет уровней рассуждений.")));
+      if (model && !model.speeds.length) box.append(node("p", word("Speed: ", "Скорость: ") + model.speed_reason));
+      if (found.plan) box.append(node("p", word("Plan: ", "Тариф: ") + found.plan));
+      ready = Boolean(model) && (!model.efforts.length || draft.effort) && (!model.speeds.length || draft.speed);
+    }
+    const save = node("button", word("Save", "Сохранить")); save.type = "button"; save.className = "quiet-button"; save.disabled = !ready;
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      try {await api("/api/ai/choice", {purpose, choice: draft}); await loadAI(purpose); $("ai-choice-message").textContent = word("Saved.", "Сохранено.");}
+      catch (error) {$("ai-choice-message").textContent = error.message; redraw();}
+    });
+    box.append(save);
+    const speedName = speed => speed === "standard" ? word("standard speed", "обычная скорость") : speed;
+    const state = status.state === "ready" ? word("Ready to use: ", "Готово к работе: ") + [status.choice.model, status.choice.effort, speedName(status.choice.speed)].filter(Boolean).join(", ")
+      : status.state === "unavailable" ? word("Saved choice is unavailable: ", "Сохраненный выбор недоступен: ") + status.reason
+      : status.choice ? word("Choice is not complete: ", "Выбор не закончен: ") + status.reason
+      : word("Not chosen yet. AI does not run for this task until you choose.", "Еще не выбрано. ИИ не работает для этой задачи, пока вы не выберете.");
+    const line = node("p", state); line.setAttribute("role", "status"); box.append(line);
+    if (checked && status.state === "ready") box.append(node("p", checked.state === "ready" ? word("Check passed, model reported: ", "Проверка пройдена, модель: ") + checked.model
+      : checked.state === "unchecked" ? word("Not checked with this choice yet.", "С этим выбором проверки еще не было.") : errorText(checked.message)));
+    return box;
+  }
+  function renderAI() {$("ai-purposes").replaceChildren(...Object.keys(purposes).map(purposeRow));}
+  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) delete drafts[saved]; else drafts = {}; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
+  $("ai-refresh").onclick = async () => {
+    $("ai-refresh").disabled = true;
+    try {await Promise.all(Object.keys(options).map(provider => providerOptions(provider, true))); await loadAI();}
+    finally {$("ai-refresh").disabled = false;}
+  };
+  async function load() {try {current = await api("/api/getting-started"); render(); void loadAI();} catch(error) {$("startup-message").textContent = error.message;}}
   $("getting-started-open").onclick = show;
   $("getting-started-close").onclick = () => {$("getting-started").hidden = true; $("getting-started-open").setAttribute("aria-expanded","false"); localStorage.setItem("meetontrack-started", "1");};
   $("assistant-problem-fix").onclick = show;
@@ -97,7 +180,7 @@
     $("startup-ai-check").disabled = true; current.ai={state:"checking"}; render();
     try {current.ai=(await api("/api/getting-started/check-ai",{})).ai;}
     catch(error) {current.ai={state:"error",message:error.message};}
-    finally {$("startup-ai-check").disabled=false; render();}
+    finally {$("startup-ai-check").disabled=false; render(); void loadAI();}
   };
   $("context-google-open").onclick = () => { $("project-dialog").close(); $("startup-google").click(); };
   $("context-folder-choose").onclick = async () => {

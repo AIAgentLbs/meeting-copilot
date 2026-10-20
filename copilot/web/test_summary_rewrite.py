@@ -4,9 +4,9 @@ import tempfile
 import unittest
 import threading
 import os
-import shutil
 from archive import MeetingArchive, _json, _atomic_json
-from summary_rewrite import SummaryRewrites, codex_summary_runner
+from ai_providers import AIService, Reply
+from summary_rewrite import SummaryRewrites
 
 
 class SummaryRewriteTests(unittest.TestCase):
@@ -24,14 +24,15 @@ class SummaryRewriteTests(unittest.TestCase):
         prompts = []
         def run(prompt):
             prompts.append(prompt)
-            return json.dumps({"points": ["Pilot approval is still pending."], "questions": ["Who approves the pilot?"]})
+            return Reply(json.dumps({"points": ["Pilot approval is still pending."], "questions": ["Who approves the pilot?"]}),
+                         "fixture-reported-model", "")
         jobs = SummaryRewrites(self.archive, run)
         worker = jobs.submit("old", "Focus on approval and next steps")
         worker.join(3)
         self.assertEqual(jobs.snapshot("old")["state"], "done")
         detail = self.archive.detail("old")
         self.assertEqual(detail["overview"]["points"], ["Pilot approval is still pending."])
-        self.assertEqual(detail["overview"]["model"], "gpt-6.1-sol")
+        self.assertEqual(detail["overview"]["model"], "fixture-reported-model")
         self.assertIn("The pilot has not been approved.", prompts[0])
         self.assertEqual(self.archive.source_signature(detail), before)
         self.assertEqual(list(self.archive.reports_root.iterdir()), [])
@@ -77,17 +78,17 @@ class SummaryRewriteTests(unittest.TestCase):
         self.assertEqual(jobs.snapshot("old")["state"], "failed")
         self.assertNotIn("model", self.archive.detail("old")["overview"])
 
-    @unittest.skipUnless(os.environ.get("MEETONTRACK_CODEX_SMOKE") == "1", "Opt-in authenticated Codex smoke on synthetic text")
-    def test_authenticated_codex_can_rewrite_synthetic_meeting(self):
-        binary = os.environ.get("MEETING_COPILOT_CODEX") or shutil.which("codex")
-        self.assertTrue(binary)
-        jobs = SummaryRewrites(self.archive, codex_summary_runner(binary, os.environ.copy()))
+    @unittest.skipUnless(os.environ.get("MEETONTRACK_AI_SMOKE_CONFIG"),
+                         "Opt-in authenticated smoke: path to a config.json whose ai.purposes.summary_rewrite is set")
+    def test_authenticated_provider_can_rewrite_synthetic_meeting(self):
+        service = AIService(os.environ["MEETONTRACK_AI_SMOKE_CONFIG"], os.environ.copy())
+        jobs = SummaryRewrites(self.archive, lambda prompt: service.run("summary_rewrite", prompt, timeout=180))
         worker = jobs.submit("old", "In English, state briefly whether the pilot was approved. Do not invent agreement.")
         worker.join(190)
         self.assertFalse(worker.is_alive())
         self.assertEqual(jobs.snapshot("old")["state"], "done")
         detail = self.archive.detail("old")
-        self.assertEqual(detail["overview"]["model"], "gpt-6.1-sol")
+        self.assertTrue(detail["overview"]["model"])
         self.assertTrue(detail["overview"]["points"])
 
 

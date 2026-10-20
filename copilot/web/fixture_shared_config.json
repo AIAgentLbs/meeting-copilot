@@ -1,0 +1,29 @@
+{
+  "ai" : {
+    "purposes" : {
+      "live_analysis" : {
+        "effort" : "fixture-effort",
+        "model" : "fixture-model",
+        "provider" : "codex",
+        "speed" : ""
+      }
+    }
+  },
+  "auto_record" : {
+    "enabled" : true,
+    "min_duration_seconds" : 45
+  },
+  "interface_language" : "ru",
+  "live_transcription" : {
+    "enabled" : true
+  },
+  "recordings_dir" : "~\/Recordings",
+  "summary" : {
+    "backend" : "auto",
+    "enabled" : true
+  },
+  "transcription" : {
+    "engine" : "auto",
+    "language" : "ru"
+  }
+}

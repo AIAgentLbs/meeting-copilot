@@ -1,214 +1,288 @@
+import Darwin
 import Foundation
 
-/// One way of asking a language model a question, and the ordered list of ways
-/// available on this machine.
+/// The one way of asking a language model a question for a purpose: the
+/// provider, model, effort and speed the person chose in Getting started
+/// (`ai.purposes.<purpose>` in the shared config).
 ///
-/// The order encodes a preference: **a subscription you already pay for beats a
-/// metered API key**. The local `claude` and `codex` CLIs bill against
-/// subscriptions already signed in here, so they go first; the API keys are
-/// what catches a CLI that isn't installed or has run out of allowance; ollama
-/// is the floor that needs neither network nor account.
+/// There is no chain and no `auto`. A purpose without a complete choice does
+/// not run and says so; a choice that cannot run says why. Which model is
+/// strong enough for a summary is the person's decision, made from the list
+/// the installed provider offers, not this file's.
 ///
-/// Every backend is a fallback for the one before it, so a summary survives an
-/// expired key, an exhausted subscription, or a plane.
+/// Every provider gets the transcript in the prompt, on stdin or in the
+/// request body, and no tools: CLIs run in a fresh empty folder with their
+/// tools, shell, MCP and web search turned off.
 struct LLMBackend {
+    /// The provider adapter: `codex`, `claude` or `ollama`.
     let name: String
-    /// Exact local/configured model used for the call. It stays local;
-    let model: String?
-    /// (system prompt, user prompt) → completion text.
-    let call: (String, String) async throws -> String
+    /// The model id that was asked for.
+    let model: String
+    /// (system prompt, user prompt) → the answer and the model that gave it.
+    let call: (String, String) async throws -> LLMReply
+    /// The most prompt characters one call may carry, when the provider has a
+    /// limit worth sizing to (Ollama's context window); nil means no such limit.
+    var inputLimit: () async throws -> Int? = { nil }
 
-    /// The backends to try, in order.
-    ///
-    /// - Parameters:
-    ///   - preference: `auto` (default) or an explicit backend name; an
-    ///     explicit name returns just that one, so a deliberate choice is
-    ///     never silently second-guessed.
-    ///   - anthropicModel / openAIModel: ask a different model than the
-    ///     summary settings name, keeping this ordering. nil — the default —
-    ///     behaves exactly as before. They are separate because one string
-    ///     can't serve both providers: handing an Anthropic model id to the
-    ///     OpenAI backend further down the chain would just fail there.
-    ///
-    /// Callers override models rather than assembling their own chains: which
-    /// backend comes first is a decision that belongs in one place.
-    static func available(
-        preference: String = "auto",
-        anthropicModel: String? = nil,
-        openAIModel overriddenOpenAIModel: String? = nil
-    ) -> [LLMBackend] {
-        let settings = Config.summary()
-        let anthropicModelID = anthropicModel ?? settings.model
-        let openAIModelID = overriddenOpenAIModel ?? settings.openAIModel
-        let claude = cliPath("claude")
-        let codex = cliPath("codex")
-        let anthropicKey = Config.anthropicKey()
-        let openAIKey = Config.openAIKey()
+    /// The backend for a purpose, from the person's config. Runs the one-time
+    /// migration of the old summary settings first.
+    static func resolve(_ purpose: AIPurpose) -> LLMBackendResolution {
+        Config.migrateLegacyAIChoices()
+        if let problem = Config.loadProblem() { return .unavailable(problem) }
+        return resolve(purpose, config: Config.current(), tool: cliPath)
+    }
 
-        switch preference {
-        case "claude-cli":
-            return claude.map { [claudeCLI(path: $0)] } ?? []
-        case "anthropic-api":
-            return anthropicKey.map { [anthropic(key: $0, model: anthropicModelID)] } ?? []
-        case "codex-cli":
-            return codex.map { [codexCLI(path: $0, model: openAIModelID)] } ?? []
-        case "openai-api":
-            return openAIKey.map { [openAI(key: $0, model: openAIModelID)] } ?? []
-        case "ollama":
-            return [ollama(model: settings.ollamaModel)]
-        default:
-            var backends: [LLMBackend] = []
-            if let claude { backends.append(claudeCLI(path: claude)) }
-            if let anthropicKey {
-                backends.append(anthropic(key: anthropicKey, model: anthropicModelID))
+    static func resolve(
+        _ purpose: AIPurpose,
+        config: [String: Any]?,
+        tool: (String) -> String?,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> LLMBackendResolution {
+        switch AIChoice.resolve(purpose, in: config) {
+        case .needsChoice: return .needsChoice
+        case .unavailable(let reason): return .unavailable(reason)
+        case .ready(let choice):
+            switch choice.provider {
+            case "codex":
+                guard let path = tool("codex") else { return .unavailable("the codex CLI is not installed") }
+                return .ready(codex(path: path, choice: choice))
+            case "claude":
+                guard let path = tool("claude") else { return .unavailable("the claude CLI is not installed") }
+                guard ["", "standard", "fastMode"].contains(choice.speed) else {
+                    return .unavailable("claude offers no speed tier \(choice.speed)")
+                }
+                return .ready(claude(path: path, choice: choice))
+            default:
+                return .ready(ollama(choice: choice, url: ollamaChatURL(environment: environment)))
             }
-            if let codex { backends.append(codexCLI(path: codex, model: openAIModelID)) }
-            if let openAIKey { backends.append(openAI(key: openAIKey, model: openAIModelID)) }
-            backends.append(ollama(model: settings.ollamaModel))
-            return backends
         }
     }
 
-    // MARK: - Anthropic
+    // MARK: - Codex
 
-    /// The CLI is handed an empty MCP config on purpose: this needs no tools,
-    /// and without it the CLI starts every MCP server configured on the
-    /// machine — minutes of startup for a one-shot prompt.
-    private static func claudeCLI(path: String) -> LLMBackend {
-        LLMBackend(name: "claude-cli", model: nil) { system, prompt in
-            try await run(
-                executable: path,
-                arguments: [
-                    "-p", system,
-                    "--output-format", "text",
-                    "--mcp-config", #"{"mcpServers":{}}"#,
-                    "--strict-mcp-config",
-                ],
-                input: prompt,
-                timeout: 1800
-            )
+    static func codexArguments(_ choice: AIChoice, workdir: String, packageRoot: String) -> [String] {
+        var args = ["--ask-for-approval", "never", "-m", choice.model]
+        if !choice.effort.isEmpty {
+            args += ["-c", "model_reasoning_effort=\(toml(choice.effort))"]
         }
+        if !choice.speed.isEmpty, choice.speed != "standard" {
+            args += ["-c", "service_tier=\(toml(choice.speed))"]
+        }
+        // Read-only on nothing but an empty folder and Codex's own package,
+        // which its sandbox helper has to be able to read to start at all.
+        args += [
+            "-c", #"default_permissions="meetontrack""#,
+            "-c", "permissions.meetontrack.filesystem={\":minimal\"=\"read\","
+                + "\(toml(workdir))=\"read\",\(toml(packageRoot))=\"read\"}",
+            "exec", "--ignore-user-config", "--skip-git-repo-check", "--ephemeral",
+            "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "multi_agent",
+            "--disable", "enable_mcp_apps", "--disable", "skill_search",
+            "--disable", "skill_mcp_dependency_install", "--disable", "tool_suggest",
+            "-c", #"web_search="disabled""#, "-c", "project_doc_max_bytes=0",
+            "-c", "skills.include_instructions=false",
+            "-C", workdir, "--json", "-",
+        ]
+        return args
     }
 
-    private static func anthropic(key: String, model: String) -> LLMBackend {
-        LLMBackend(name: "anthropic-api", model: model) { system, prompt in
-            var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 600
-            request.setValue("application/json", forHTTPHeaderField: "content-type")
-            request.setValue(key, forHTTPHeaderField: "x-api-key")
-            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "model": model,
-                "max_tokens": 8000,
-                "system": system,
-                "messages": [["role": "user", "content": prompt]],
-            ])
+    /// The text of the last finished agent message in `codex exec --json`.
+    static func codexAnswer(_ stdout: Data) -> String? {
+        var answer: String?
+        for event in jsonLines(stdout) where event["type"] as? String == "item.completed" {
+            guard let item = event["item"] as? [String: Any],
+                  item["type"] as? String == "agent_message",
+                  let text = item["text"] as? String
+            else { continue }
+            answer = text
+        }
+        guard let answer, !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return answer
+    }
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                throw LLMError.http(http.statusCode, text(data))
+    private static func codex(path: String, choice: AIChoice) -> LLMBackend {
+        LLMBackend(name: "codex", model: choice.model) { system, prompt in
+            try await inEmptyFolder { workdir in
+                let stdout = try await run(
+                    executable: path,
+                    arguments: codexArguments(
+                        choice, workdir: workdir.path, packageRoot: packageRoot(of: path)),
+                    input: "\(system)\n\n\(prompt)",
+                    timeout: 1800,
+                    currentDirectory: workdir)
+                guard let text = codexAnswer(Data(stdout.utf8)) else {
+                    throw LLMError.emptyResponse("codex")
+                }
+                // `codex exec --json` does not report the model; the one asked
+                // for is the one that ran.
+                return LLMReply(text: text, model: choice.model)
             }
-            guard
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let content = json["content"] as? [[String: Any]]
-            else { throw LLMError.malformedResponse("anthropic-api") }
-            return content
-                .filter { $0["type"] as? String == "text" }
-                .compactMap { $0["text"] as? String }
-                .joined()
         }
     }
 
-    // MARK: - OpenAI
-
-    /// `codex exec` prints a running trace to stdout, so the answer is read
-    /// from the file it writes with `--output-last-message` rather than
-    /// scraped out of the log.
-    private static func codexCLI(path: String, model: String) -> LLMBackend {
-        LLMBackend(name: "codex-cli", model: model) { system, prompt in
-            let output = FileManager.default.temporaryDirectory
-                .appendingPathComponent("meetingcopilot-codex-\(UUID().uuidString).txt")
-            defer { try? FileManager.default.removeItem(at: output) }
-
-            _ = try await run(
-                executable: path,
-                arguments: [
-                    "exec",
-                    "--skip-git-repo-check",
-                    "--sandbox", "read-only",
-                    "--model", model,
-                    "--output-last-message", output.path,
-                    "-",
-                ],
-                input: "\(system)\n\n\(prompt)",
-                timeout: 1800
-            )
-            guard let text = try? String(contentsOf: output, encoding: .utf8),
-                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            else { throw LLMError.emptyResponse("codex-cli") }
-            return text
-        }
+    /// dirname(dirname(realpath(codex))): the folder Codex is installed in.
+    static func packageRoot(of executable: String) -> String {
+        URL(fileURLWithPath: realPath(executable))
+            .deletingLastPathComponent().deletingLastPathComponent().path
     }
 
-    private static func openAI(key: String, model: String) -> LLMBackend {
-        LLMBackend(name: "openai-api", model: model) { system, prompt in
-            var request = URLRequest(url: URL(string: "https://api.openai.com/v1/chat/completions")!)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 600
-            request.setValue("application/json", forHTTPHeaderField: "content-type")
-            request.setValue("Bearer \(key)", forHTTPHeaderField: "authorization")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "model": model,
-                "messages": [
-                    ["role": "system", "content": system],
-                    ["role": "user", "content": prompt],
-                ],
-            ])
+    /// realpath(3). Foundation's `resolvingSymlinksInPath` deliberately keeps
+    /// `/var` rather than `/private/var`, which is not what a sandbox sees.
+    static func realPath(_ path: String) -> String {
+        guard let pointer = realpath(path, nil) else { return path }
+        defer { free(pointer) }
+        return String(cString: pointer)
+    }
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                // The API's own message names the problem — a model this
-                // account can't see, a spent quota — and is worth reading
-                // rather than paraphrasing.
-                throw LLMError.http(http.statusCode, text(data))
+    // MARK: - Claude
+
+    static func claudeArguments(_ choice: AIChoice) -> [String] {
+        var args = [
+            "-p", "--output-format", "stream-json", "--verbose",
+            "--setting-sources", "", "--strict-mcp-config",
+            "--model", choice.model,
+        ]
+        if !choice.effort.isEmpty { args += ["--effort", choice.effort] }
+        if choice.speed == "fastMode" { args += ["--settings", #"{"fastMode":true}"#] }
+        return args + ["--tools", "", "--no-session-persistence"]
+    }
+
+    /// The answer from the `result` event and the model from `system/init`,
+    /// which is the one that actually ran.
+    static func claudeReply(_ stdout: Data, requested: String) throws -> LLMReply {
+        var model = requested
+        var text: String?
+        var failed = false
+        for event in jsonLines(stdout) {
+            switch event["type"] as? String {
+            case "system" where event["subtype"] as? String == "init":
+                if let reported = event["model"] as? String, !reported.isEmpty { model = reported }
+            case "result":
+                text = event["result"] as? String
+                failed = event["is_error"] as? Bool ?? false
+            default:
+                continue
             }
-            guard
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let choices = json["choices"] as? [[String: Any]],
-                let message = choices.first?["message"] as? [String: Any],
-                let content = message["content"] as? String
-            else { throw LLMError.malformedResponse("openai-api") }
-            return content
+        }
+        if failed { throw LLMError.exit(0, text ?? "claude reported an error") }
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw LLMError.emptyResponse("claude")
+        }
+        return LLMReply(text: text, model: model)
+    }
+
+    private static func claude(path: String, choice: AIChoice) -> LLMBackend {
+        LLMBackend(name: "claude", model: choice.model) { system, prompt in
+            try await inEmptyFolder { workdir in
+                let stdout = try await run(
+                    executable: path,
+                    arguments: claudeArguments(choice),
+                    input: "\(system)\n\n\(prompt)",
+                    timeout: 1800,
+                    currentDirectory: workdir)
+                return try claudeReply(Data(stdout.utf8), requested: choice.model)
+            }
         }
     }
 
-    // MARK: - local
+    // MARK: - Ollama
 
-    private static func ollama(model: String) -> LLMBackend {
-        LLMBackend(name: "ollama", model: model) { system, prompt in
-            var request = URLRequest(url: URL(string: "http://127.0.0.1:11434/api/generate")!)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 1800
-            request.setValue("application/json", forHTTPHeaderField: "content-type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
-                "model": model,
-                "prompt": "\(system)\n\n\(prompt)",
-                "stream": false,
-                "options": ["temperature": 0.2, "num_ctx": 32768],
-            ])
+    static func ollamaChatURL(environment: [String: String]) -> URL {
+        var host = environment["OLLAMA_HOST"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if host.isEmpty { host = "http://127.0.0.1:11434" }
+        while host.hasSuffix("/") { host.removeLast() }
+        if !host.contains("://") { host = "http://" + host }
+        return URL(string: host + "/api/chat") ?? URL(string: "http://127.0.0.1:11434/api/chat")!
+    }
 
-            let (data, _) = try await URLSession.shared.data(for: request)
-            guard
-                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                var response = json["response"] as? String
+    /// Room kept for the answer inside Ollama's context, in tokens.
+    /// ponytail: one fixed allowance; size it per purpose if answers get cut.
+    static let ollamaReplyTokens = 4096
+
+    /// The context length the model reports in `/api/show`
+    /// (`model_info["<general.architecture>.context_length"]`), or nil.
+    static func ollamaContextLength(_ show: [String: Any]) -> Int? {
+        guard let info = show["model_info"] as? [String: Any],
+              let arch = info["general.architecture"] as? String,
+              let length = (info["\(arch).context_length"] as? NSNumber)?.intValue, length > 0
+        else { return nil }
+        return length
+    }
+
+    /// Prompt characters that fit a context of `contextLength` tokens.
+    /// ponytail: counts one character as at least one token, which holds for
+    /// the Latin and Cyrillic text of a transcript; use a tokenizer if CJK
+    /// transcripts get truncated.
+    static func ollamaInputLimit(contextLength: Int) -> Int {
+        max(0, contextLength - ollamaReplyTokens)
+    }
+
+    /// The /api/chat body. `num_ctx` is what this prompt needs, never above
+    /// what the model reports; a prompt that cannot fit is an error, not a
+    /// silent truncation.
+    static func ollamaBody(_ choice: AIChoice, prompt: String, contextLength: Int) throws -> [String: Any] {
+        guard prompt.count <= ollamaInputLimit(contextLength: contextLength) else {
+            throw LLMError.tooLong("ollama", choice.model, contextLength)
+        }
+        var body: [String: Any] = [
+            "model": choice.model,
+            "messages": [["role": "user", "content": prompt]],
+            "stream": false,
+            "options": ["num_ctx": min(contextLength, prompt.count + ollamaReplyTokens)],
+        ]
+        switch choice.effort {
+        case "": break
+        case "true": body["think"] = true
+        case "false": body["think"] = false
+        default: body["think"] = choice.effort
+        }
+        return body
+    }
+
+    private static func ollamaPost(
+        _ url: URL, _ payload: [String: Any], timeout: TimeInterval
+    ) async throws -> [String: Any] {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw LLMError.http(http.statusCode, text(data))
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw LLMError.malformedResponse("ollama")
+        }
+        return json
+    }
+
+    private static func ollama(choice: AIChoice, url: URL) -> LLMBackend {
+        let showURL = url.deletingLastPathComponent().appendingPathComponent("show")
+        let contextLength: @Sendable () async throws -> Int = {
+            let show = try await ollamaPost(showURL, ["model": choice.model], timeout: 30)
+            guard let length = ollamaContextLength(show) else {
+                throw LLMError.unknownContext("ollama", choice.model)
+            }
+            return length
+        }
+        var backend = LLMBackend(name: "ollama", model: choice.model) { system, prompt in
+            let body = try ollamaBody(
+                choice, prompt: "\(system)\n\n\(prompt)", contextLength: try await contextLength())
+            let json = try await ollamaPost(url, body, timeout: 1800)
+            guard var content = (json["message"] as? [String: Any])?["content"] as? String
             else { throw LLMError.malformedResponse("ollama") }
-            // Local reasoning models emit a thinking block before the answer.
-            if let end = response.range(of: "</think>") {
-                response = String(response[end.upperBound...])
+            // A reasoning model asked without `think` writes its thinking inline.
+            if let end = content.range(of: "</think>") {
+                content = String(content[end.upperBound...])
             }
-            return response
+            guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw LLMError.emptyResponse("ollama")
+            }
+            return LLMReply(text: content, model: json["model"] as? String ?? choice.model)
         }
+        backend.inputLimit = { ollamaInputLimit(contextLength: try await contextLength()) }
+        return backend
     }
 
     // MARK: -
@@ -224,16 +298,42 @@ struct LLMBackend {
         String(decoding: data.prefix(400), as: UTF8.self)
     }
 
+    private static func jsonLines(_ data: Data) -> [[String: Any]] {
+        String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: \.isNewline)
+            .compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+    }
+
+    /// A TOML basic string, for values spliced into `codex -c`.
+    private static func toml(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    /// A fresh, empty, owner-only folder for one CLI call, removed afterwards.
+    /// Resolved through symlinks, so the path the sandbox is told about is the
+    /// one the process actually runs in.
+    private static func inEmptyFolder<T>(_ body: (URL) async throws -> T) async throws -> T {
+        let made = FileManager.default.temporaryDirectory
+            .appendingPathComponent("meetontrack-ai-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: made, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        let dir = URL(fileURLWithPath: realPath(made.path), isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        return try await body(dir)
+    }
+
     /// Run a command with stdin, a deadline, and no shell in between.
     static func run(
         executable: String,
         arguments: [String],
         input: String,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        currentDirectory: URL? = nil
     ) async throws -> String {
         let result = try await Subprocess.run(
             executable: executable, arguments: arguments,
-            input: Data(input.utf8), timeout: timeout)
+            input: Data(input.utf8), timeout: timeout, currentDirectory: currentDirectory)
         guard result.status == 0 else {
             throw LLMError.exit(
                 Int(result.status),
@@ -242,7 +342,30 @@ struct LLMBackend {
         }
         return String(decoding: result.stdout, as: UTF8.self)
     }
+}
 
+struct LLMReply: Equatable {
+    let text: String
+    /// The model that answered, as the provider reported it — or the one
+    /// asked for, when the provider reports nothing.
+    let model: String
+}
+
+enum LLMBackendResolution {
+    case ready(LLMBackend)
+    /// No complete choice for this purpose: ask the person, run nothing.
+    case needsChoice
+    /// A choice exists and cannot run; the reason is for the person.
+    case unavailable(String)
+
+    /// What to tell the person when nothing will run.
+    var problem: String? {
+        switch self {
+        case .ready: return nil
+        case .needsChoice: return AIChoice.needsChoiceMessage
+        case .unavailable(let reason): return reason
+        }
+    }
 }
 
 enum LLMError: Error, CustomStringConvertible {
@@ -250,9 +373,17 @@ enum LLMError: Error, CustomStringConvertible {
     case malformedResponse(String)
     case http(Int, String)
     case exit(Int, String)
+    /// The prompt does not fit the model's reported context (tokens).
+    case tooLong(String, String, Int)
+    /// The provider does not report the model's context length.
+    case unknownContext(String, String)
 
     var description: String {
         switch self {
+        case .tooLong(let backend, let model, let length):
+            return "\(backend): the text is longer than \(model)'s context of \(length) tokens; choose a model with a longer context"
+        case .unknownContext(let backend, let model):
+            return "\(backend) does not report the context length of \(model); choose another model in Getting started"
         case .emptyResponse(let backend): return "\(backend) returned nothing"
         case .malformedResponse(let backend): return "\(backend) returned an unexpected shape"
         case .http(let code, let body): return "HTTP \(code): \(body)"
@@ -261,9 +392,7 @@ enum LLMError: Error, CustomStringConvertible {
     }
 
     /// Whether this failure is "the subscription or quota is spent" rather
-    /// than something broken. Worth distinguishing in the log: falling through
-    /// to the next backend is the expected, healthy path here, and reads as an
-    /// error otherwise.
+    /// than something broken. Worth saying in the log: it comes back.
     var isUsageLimit: Bool {
         let haystack: String
         switch self {
@@ -292,6 +421,9 @@ enum LLMError: Error, CustomStringConvertible {
         case .exit(_, let output):
             let haystack = output.lowercased()
             return isUsageLimit || Self.transientMarkers.contains { haystack.contains($0) }
+        case .tooLong, .unknownContext:
+            // Only another model choice fixes these.
+            return false
         case .emptyResponse, .malformedResponse:
             // The model answered; it just answered badly. Repeating the same
             // request is unlikely to change that.

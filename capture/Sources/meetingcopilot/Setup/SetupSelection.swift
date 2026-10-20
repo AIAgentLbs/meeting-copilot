@@ -1,27 +1,5 @@
 import Foundation
 
-/// Translation between the setup window's human choices and the existing
-/// config vocabulary. The Claude card deliberately represents `auto`: it is
-/// the preferred subscription, while the fallback chain still saves a summary
-/// when Claude is unavailable or out of allowance.
-enum SetupSelection {
-    static func summaryBackend(choice: String, keyBackend: String) -> String? {
-        switch choice {
-        case "claude-cli": return nil
-        case "api-key": return keyBackend
-        default: return choice
-        }
-    }
-
-    static func summaryChoice(backend: String) -> String {
-        switch backend {
-        case "auto", "claude-cli": return "claude-cli"
-        case "anthropic-api", "openai-api": return "api-key"
-        default: return backend
-        }
-    }
-}
-
 /// The transcription section's two switches and its provider, in the
 /// vocabulary the config file speaks.
 ///

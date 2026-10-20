@@ -1,6 +1,9 @@
 # No hardcoded AI or speech providers, models or modes
 
-Owner rule 2026-10-20 (see `AGENTS.md`). Status: planned. Backlog: `docs/TODO.md`.
+Owner rule 2026-10-20 (see `AGENTS.md`). Status: phase 1 implemented 2026-10-20
+(Python layer `copilot/web/ai_providers.py`), review fixes and phase 2 (Swift
+summary and speaker naming) implemented 2026-10-20; phases 3-4 planned. Backlog:
+`docs/TODO.md`.
 
 ## Problem (audit 2026-10-20)
 
@@ -56,21 +59,108 @@ Options are read from the exact binary or service the app will call.
 - Selection is per purpose: live analysis and chat, live translation, frame
   relevance, summary rewrite, summary, speaker names. Each purpose stores
   provider, model, effort, speed. Live purposes may use fast mode.
-- Settings source: `~/.config/meeting-copilot/ai.json`, owned by the Python
-  web UI (exists on Mac and Windows); Swift reads it for summary and naming.
+- Settings source: one shared file for every component,
+  `~/.config/meeting-copilot/config.json` (owner decision 2026-10-20; no second
+  settings file). The AI choice lives under the top-level `ai` section:
+  `{"ai": {"purposes": {"live_analysis": {"provider", "model", "effort", "speed"}, ...}}}`.
+  Schema: [`docs/config.schema.json`](../config.schema.json).
+- Ownership: each component writes only its own sections. The Python web server
+  owns `ai` (Swift reads `ai.purposes.summary` and `ai.purposes.speaker_names`
+  and may write them once, for the migration below); Swift (`Config`) and the
+  Windows installer / C# recorder (`AppSettingsStore`, same path) own the
+  capture sections.
+- Migration (Swift, once, `Summary/AIChoice.swift` `migrateLegacy`): when
+  `ai.purposes.summary` or `ai.purposes.speaker_names` is absent and the file
+  itself names a legacy backend (`claude-cli`, `codex-cli`, `ollama` in
+  `summary.backend` / `speaker_names.backend`), write `{provider[, model]}` from
+  the keys present in the file (`summary.model`, `openai_model`, `ollama_model`,
+  `speaker_names.model`). Never from code defaults. Effort and speed are left
+  out, so the partial choice reports needs_choice everywhere until the person
+  finishes it in Getting started.
+- Write protocol, every writer, every OS:
+  1. take the advisory lock on `config.json.lock` (same folder, created 0600) and
+     hold it across the whole read-modify-replace;
+  2. read: missing file = empty object (saving allowed); valid JSON object =
+     use it; unreadable, malformed or not an object = refuse to save and show the
+     error (never treat it as empty);
+  3. change only the owned keys, keep every other key;
+  4. write a temp file in the same folder, private before any byte is written
+     (0600), flush and fsync, then rename it over `config.json`;
+  5. release the lock (closing the lock file releases it).
+  macOS/Linux: `flock(LOCK_EX)` (Python `fcntl.flock`, Swift `flock`). Windows:
+  `msvcrt.locking(LK_LOCK)` on byte 0 of the lock file (Python; retries about
+  10 s, then fails the save); the PowerShell installer and the C# recorder must
+  lock the same byte (`FileStream.Lock(0, 1)`) and set an owner-only ACL instead
+  of 0600 (phase 4, `docs/TODO.md`).
+- Purposes: `live_analysis` (analysis, chat and the context planners),
+  `live_translation`, `frame_relevance`, `summary_rewrite` (Python), `summary`,
+  `speaker_names` (Swift; listed, saved and checked by Python).
+- A choice is complete only with all four keys. `effort` is one of the levels
+  discovery lists, or `""` when it lists none. `speed` is `"standard"` (default
+  tier, chosen explicitly), a tier id discovery lists, or `""` when no tier is
+  offered. A missing key means not chosen (`needs_choice`); the UI never
+  preselects a value. A model whose discovery entry lacks a capability we must
+  choose from (effort list) is shown unavailable with the reason.
+- Purpose capabilities: screenshots need a model that discovery reports as
+  accepting images (Codex `inputModalities`, Ollama `capabilities: vision`;
+  Claude Code does not report it, so it is not offered there). Live analysis
+  with selected repositories needs file access: Codex and Claude Code only;
+  Ollama refuses with a reason.
 - No silent default: if a purpose has no valid choice, the UI asks. A stored
   choice the installed provider no longer offers is shown as unavailable with
   the reason (old CLI, plan, not signed in).
-- Check AI tests the chosen combination per purpose and records the model the
-  provider reports it used.
+- Check AI tests each purpose separately with a purpose-appropriate probe: text
+  for translation and summaries, a generated image for screenshots, a temporary
+  file inside a temporary root for live analysis. A result belongs to the exact
+  choice and executable it tested; any change shows the purpose as unchecked.
 - STT: an engine registry for final, live, retranscription and diarization,
   engine and model chosen by the user, options discovered from the engine.
 
 ## Phases
 
 1. Python AI provider layer + discovery + per-purpose selection UI + Check AI;
-   remove all model ids from Python, JS and UI text. Release 0.1.11.
-2. Swift summary/naming reads `ai.json`; remove code defaults and fixed order;
-   pass the model to Claude CLI.
+   remove all model ids from Python, JS and UI text. Release 0.1.11. Done
+   2026-10-20 except the release itself.
+2. Swift summary/naming read `ai.purposes.summary` and `ai.purposes.speaker_names`
+   from `config.json`; remove code defaults and the fixed order; pass the model,
+   effort and speed to every CLI. Done 2026-10-20.
 3. STT engine registry on Mac (live, final, retranscription, diarization).
 4. Windows: launcher, installer and the C# recorder follow the same rule.
+
+## Phase 1 implementation notes (2026-10-20)
+
+- Discovery is lazy and cached per provider (5 min when available, 30 s when
+  not; "Refresh lists" forces it), with a timeout per call; failures become
+  `unavailable: <reason>`. Nothing runs at import or server start.
+- Every invocation runs from a snapshot (`AIService.resolve` -> ticket: choice,
+  state, executable, key). One question uses one ticket for all its calls; a
+  provider session (Codex thread, Claude session, Ollama history kept in memory)
+  is resumed only by the ticket key that opened it. The key covers the choice and
+  the executable identity (resolved path, mtime, size; Codex also `auth.json`).
+- Discovery is bound to that identity: a changed binary or sign-in re-runs it,
+  and the call uses the executable discovery ran. Discovery loops have one
+  absolute deadline, bounded line and total output buffers, and Ollama model
+  probes share one budget with per-model failures isolated.
+- Model recorded: Claude reports the model that ran (stream `init`); Codex
+  `exec --json` and Ollama report nothing beyond the request, so the requested
+  id is recorded.
+- File boundary (review fix A2): every call starts in one empty working
+  directory. Codex: no `--sandbox` flag; a permissions profile passed with `-c`
+  (`default_permissions="meetontrack"`, `permissions.meetontrack.filesystem`)
+  makes only `:minimal`, the working directory, Codex's own package and the
+  selected repositories readable, and every entry read-only (verified with
+  `codex sandbox` on 0.159.2 and 0.153.2: home and other folders denied, writes
+  denied outside the temp directory, network denied; 0.153.2 still allows writes
+  under the temp directory). Shell and other tools are disabled when no
+  repositories are given. Claude Code: `--restricted` (file tools confined to the
+  working directories), `--add-dir` for each repository, only `Read,Grep,Glob`,
+  `--setting-sources ""`, `--strict-mcp-config`. Screenshots: Codex gets the one
+  image through `--image`; Claude reads a copy in a fresh folder that holds only
+  that copy. The session rules (`SESSION.md`) travel inside the prompt, so no
+  call needs `~/.config`.
+- Antigravity: listed with its models but unavailable for every purpose
+  ("cannot enforce read-only/no-tools: permission_mode always-proceed") until agy
+  can enforce it.
+- Translation and screenshots surface `needs_choice` / `unavailable` with the
+  reason (`AIChoiceError`); a screenshot is not taken without a usable choice,
+  so nothing is discarded as irrelevant for a missing setting.

@@ -5,11 +5,12 @@ from pathlib import Path
 
 from unittest.mock import patch
 
-from first_run import ai_failure, pick_codex
+from ai_providers import AIService, Reply
+from first_run import AIReadiness, ai_failure, pick_codex
 
 
-METADATA = "Model metadata for `gpt-6.1-sol` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."
-REJECTED = "unexpected status 400 Bad Request: {\"detail\":\"The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.\"}"
+METADATA = "Model metadata for `fixture-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."
+REJECTED = "unexpected status 400 Bad Request: {\"detail\":\"The 'fixture-model' model is not supported when using Codex with a ChatGPT account.\"}"
 
 
 class AIFailureTests(unittest.TestCase):
@@ -47,14 +48,41 @@ class PickCodexTests(unittest.TestCase):
             self.assertIsNone(pick_codex([Path(root) / "absent"], runner))
 
 
+class CheckAITests(unittest.TestCase):
+    def test_every_purpose_gets_its_own_purpose_appropriate_probe(self):
+        from test_ai_providers import FakeAdapter, M1, M2
+        with tempfile.TemporaryDirectory() as root:
+            adapter = FakeAdapter()
+            service = AIService(Path(root) / "config.json", {}, adapters=[adapter])
+            for purpose, choice in (("live_analysis", M2), ("summary_rewrite", M2), ("frame_relevance", M1)):
+                service.save(purpose, choice)
+            readiness = AIReadiness(service)
+            self.assertEqual(readiness.snapshot()["purposes"]["live_analysis"]["state"], "unchecked")
+            result = readiness.check()
+            options = {call[1][:20]: call[2] for call in adapter.calls}
+            self.assertEqual(len(adapter.calls), 3)  # same choice for two tasks is still tested twice
+            self.assertIn("roots", next(o for p, o in options.items() if p.startswith("Read the file")))
+            self.assertTrue(next(o for p, o in options.items() if p.startswith("What single")).get("image"))
+            self.assertEqual(result["purposes"]["summary_rewrite"]["state"], "ready")
+            self.assertEqual(result["purposes"]["live_analysis"]["state"], "error")  # the fake cannot read files
+            self.assertEqual(result["purposes"]["live_translation"]["state"], "needs_choice")
+            service.save("summary_rewrite", {**M1, "speed": "standard"})
+            self.assertEqual(readiness.snapshot()["purposes"]["summary_rewrite"]["state"], "unchecked")
+
+
 class LazyResolutionTests(unittest.TestCase):
     def test_importing_server_runs_no_subprocess(self):
         import sys
-        for name in ("server", "live_translation", "first_run"):
-            sys.modules.pop(name, None)
-        with patch("subprocess.run", side_effect=AssertionError("subprocess at import")), \
-             patch("subprocess.Popen", side_effect=AssertionError("subprocess at import")):
-            import server  # noqa: F401
+        names = ("server", "live_translation", "frame_relevance", "first_run", "ai_providers")
+        saved = {name: sys.modules.pop(name) for name in names if name in sys.modules}
+        try:
+            with patch("subprocess.run", side_effect=AssertionError("subprocess at import")), \
+                 patch("subprocess.Popen", side_effect=AssertionError("subprocess at import")):
+                import server  # noqa: F401
+        finally:  # other tests patch the modules they imported; give those back
+            for name in names:
+                sys.modules.pop(name, None)
+            sys.modules.update(saved)
 
 
 if __name__ == "__main__":

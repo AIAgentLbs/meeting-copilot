@@ -35,7 +35,7 @@ if($check){
     foreach($model in @('nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf','parakeet-tdt-0.6b-v3-Q8_0.gguf')){
         if(-not(Test-Path "$data\capture-data\models\$model")){throw "Missing speech model: $model"}
     }
-    Write-Host '[OK] Capture, bundled Python and speech models. AI account access is checked separately in Getting started. Model: gpt-6.1-sol'
+    Write-Host '[OK] Capture, bundled Python and speech models. AI tool, model and account access are chosen and checked in Getting started.'
     exit 0
 }
 if(-not(Get-Process MeetingCopilotCapture -ErrorAction SilentlyContinue)){Start-Process -FilePath $capture}

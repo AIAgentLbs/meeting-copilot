@@ -15,7 +15,8 @@ import Foundation
 ///       "keep_audio": false,
 ///       "calendar": true,
 ///       "auto_record": { "enabled": true, "mic_activity": true, "calendar": false },
-///       "summary": { "enabled": true, "backend": "auto", "language": "ru" },
+///       "summary": { "enabled": true, "language": "ru" },
+///       "ai": { "purposes": { "summary": { "provider", "model", "effort", "speed" } } },
 ///       "on_stop": "my-hook"
 ///     }
 ///
@@ -86,14 +87,16 @@ enum Config {
     /// transcript.json's provenance.
     static let cloudEngines: Set<String> = ["assemblyai", "openai"]
 
-    /// OpenAI's transcription model. The default is the only one of theirs
-    /// that returns timings and speakers; the setting exists for the day they
-    /// ship a better one, not as a menu to browse.
-    static func openAITranscriptionModel() -> String {
+    /// OpenAI's transcription model, exactly as the person set it in
+    /// `transcription.openai.model`. nil when unset: no model id is written
+    /// into this app (owner rule 2026-10-20), so the OpenAI engine refuses to
+    /// start until one is chosen. It has to be one that returns timings and
+    /// speakers (OpenAI's diarizing transcription model).
+    static func openAITranscriptionModel() -> String? {
         guard let model = (transcription()?["openai"] as? [String: Any])?["model"] as? String,
-              !model.isEmpty
-        else { return "gpt-4o-transcribe-diarize" }
-        return model
+              !model.trimmed.isEmpty
+        else { return nil }
+        return model.trimmed
     }
 
     /// Parakeet model version: "v3" (multilingual, default) or "v2"
@@ -260,22 +263,17 @@ enum Config {
     }
 
     /// Putting real names to the transcript's mechanical speaker labels.
+    /// Which AI does it is the person's choice in `ai.purposes.speaker_names`
+    /// (see `AIChoice`); the old `backend` and `model` keys here are read only
+    /// by the one-time migration.
     struct SpeakerNamesSettings {
         var enabled = true
-        /// Which model to ask, in `LLMBackend`'s vocabulary.
-        var backend = "auto"
-        /// Anthropic model for this pass specifically. nil uses the summary's,
-        /// which is the strong one — fine, but naming is an easier job than
-        /// summarizing and doesn't need to cost the same.
-        var model: String?
     }
 
     static func speakerNames() -> SpeakerNamesSettings {
         var settings = SpeakerNamesSettings()
         guard let json = load()?["speaker_names"] as? [String: Any] else { return settings }
         if let v = json["enabled"] as? Bool { settings.enabled = v }
-        if let v = json["backend"] as? String, !v.isEmpty { settings.backend = v }
-        if let v = json["model"] as? String, !v.isEmpty { settings.model = v }
         return settings
     }
 
@@ -438,35 +436,28 @@ enum Config {
 
     // MARK: - summary
 
-    /// Post-transcript summarization. `backend: auto` walks the chain in
-    /// LLMBackend: the local `claude` CLI, the Anthropic API, the `codex` CLI,
-    /// the OpenAI API, then ollama — subscriptions before metered keys.
+    /// Post-transcript summarization: whether, and in what language. Which AI
+    /// writes it is the person's choice in `ai.purposes.summary` (see
+    /// `AIChoice`), never a default here.
     struct SummarySettings {
         var enabled = true
-        var backend = "auto"
-        /// Summarizing is where a cheap model quietly costs you something:
-        /// a missed decision in a meeting you'll never listen to again. The
-        /// difference between tiers is a few cents per meeting, so the default
-        /// is the strong one.
-        var openAIModel = "gpt-5"
         /// Language for the summary itself; the transcript's own language is
         /// whatever was spoken. nil means "same language as the meeting".
         var language: String?
-        var model = "claude-opus-5"
-        var ollamaModel = "qwen3:8b"
         var apiKeyPath: URL?
+
+        /// Whether summaries are written at all. A legacy `backend: none` was
+        /// migrated once to `enabled: false`, so the switch alone decides.
+        var writesSummaries: Bool { enabled }
     }
 
     static func summary() -> SummarySettings {
+        migrateLegacyAIChoices()  // a legacy `backend: none` becomes `enabled: false` before it is read
         var settings = SummarySettings()
         guard let json = load()?["summary"] as? [String: Any] else { return settings }
 
         if let v = json["enabled"] as? Bool { settings.enabled = v }
-        if let v = json["backend"] as? String, !v.isEmpty { settings.backend = v }
         if let v = json["language"] as? String, !v.isEmpty { settings.language = v }
-        if let v = json["model"] as? String, !v.isEmpty { settings.model = v }
-        if let v = json["ollama_model"] as? String, !v.isEmpty { settings.ollamaModel = v }
-        if let v = json["openai_model"] as? String, !v.isEmpty { settings.openAIModel = v }
         if let v = json["api_key_path"] as? String, !v.isEmpty {
             settings.apiKeyPath = URL(fileURLWithPath: (v as NSString).expandingTildeInPath)
         }
@@ -502,22 +493,33 @@ enum Config {
         return secret(at: anthropicKeyPath) ?? secret(atAnyOf: anthropicSharedKeyPaths)
     }
 
-    /// Parse the config file. A malformed config is reported on stderr rather
-    /// than silently ignored — recordings landing in an unexpected place is
-    /// worse than a warning.
+    /// Parse the config file for running. A malformed config is reported on
+    /// stderr rather than silently ignored — recordings landing in an
+    /// unexpected place is worse than a warning — and the defaults apply until
+    /// it is fixed. Saving is another matter: `update` refuses to write over a
+    /// file it cannot parse (see `ConfigFile`).
     private static func load() -> [String: Any]? {
-        guard FileManager.default.fileExists(atPath: path.path) else { return nil }
-        guard
-            let data = try? Data(contentsOf: path),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else {
+        switch ConfigFile.read(path) {
+        case .missing: return nil
+        case .object(let json): return json
+        case .unreadable(let reason):
             FileHandle.standardError.write(Data(
-                "warning: \(path.path) is not valid JSON — ignoring config\n".utf8
+                "warning: \(ConfigFile.Unreadable(path: path, reason: reason)) — using defaults\n".utf8
             ))
             return nil
         }
-        return json
     }
+
+    /// Why the config file can't be used, or nil when it can (or doesn't
+    /// exist yet). Doctor shows this; so does every refused save.
+    static func loadProblem(at url: URL = path) -> String? {
+        guard case .unreadable(let reason) = ConfigFile.read(url) else { return nil }
+        return ConfigFile.Unreadable(path: url, reason: reason).description
+    }
+
+    /// The whole file for code that inspects more than one setting at once,
+    /// such as the AI-choice migration. nil when missing or unreadable.
+    static func current() -> [String: Any]? { load() }
 
     // MARK: - writing
 
@@ -548,30 +550,32 @@ enum Config {
 
     @discardableResult
     static func update(path: [String], value: Any?) -> Bool {
-        guard let first = path.first else { return false }
-        var json = raw()
-
-        if path.count == 1 {
-            if let value { json[first] = value } else { json.removeValue(forKey: first) }
-        } else {
-            var nested = json[first] as? [String: Any] ?? [:]
-            nested = updated(nested, path: Array(path.dropFirst()), value: value)
-            if nested.isEmpty { json.removeValue(forKey: first) } else { json[first] = nested }
-        }
-        switch write(json) {
-        case .failed: return false
-        case .unchanged: return true
-        case .written:
-            NotificationCenter.default.post(name: didChange, object: nil)
-            return true
-        }
+        update(file: Config.path, path: path, value: value)
     }
 
-    /// What a write did, which is not always what it was asked to do.
-    private enum WriteResult {
-        case written
-        case unchanged
-        case failed
+    /// The same against any file, so the protocol is testable without the
+    /// person's real config. False when nothing could be saved — the file is
+    /// malformed, or the disk refused — with the reason on stderr.
+    ///
+    /// Bytes that come out the same are not written. That is not an
+    /// optimisation: a field commits when it loses focus, and focus is lost
+    /// for reasons that are not edits; the file's timestamp is the only claim
+    /// anyone has that a setting was changed, and every write wakes every open
+    /// window to redraw, so a write from inside a redraw would start a loop.
+    @discardableResult
+    static func update(file: URL, path: [String], value: Any?) -> Bool {
+        guard !path.isEmpty else { return false }
+        do {
+            let written = try ConfigFile.update(file) { json in
+                json = updated(json, path: path, value: value)
+            }
+            if written { NotificationCenter.default.post(name: didChange, object: nil) }
+            return true
+        } catch {
+            FileHandle.standardError.write(Data(
+                "couldn't save \(path.joined(separator: ".")): \(error)\n".utf8))
+            return false
+        }
     }
 
     private static func updated(
@@ -587,37 +591,6 @@ enum Config {
         nested = updated(nested, path: Array(path.dropFirst()), value: value)
         if nested.isEmpty { object.removeValue(forKey: first) } else { object[first] = nested }
         return object
-    }
-
-    /// Put the config on disk, unless it is already there.
-    ///
-    /// The unchanged case is not an optimisation. A field commits when it
-    /// loses focus, and focus is lost for reasons that are not edits — a tab
-    /// changed, another window taking over, the window closing — so the same
-    /// bytes were being written back regularly with nobody having decided
-    /// anything. Nothing was lost, but the file's timestamp is the only claim
-    /// anyone has that a setting was changed, and it was lying; and since
-    /// every write wakes every open window to redraw, a write from inside a
-    /// redraw is the start of a loop rather than a wasted syscall.
-    private static func write(_ json: [String: Any]) -> WriteResult {
-        guard let data = try? JSONSerialization.data(
-            withJSONObject: json, options: [.prettyPrinted, .sortedKeys]
-        ) else { return .failed }
-        // Sorted keys and a stable formatter, so identical settings really do
-        // produce identical bytes rather than a diff in key order.
-        if let current = try? Data(contentsOf: path), current == data { return .unchanged }
-        do {
-            try FileManager.default.createDirectory(
-                at: path.deletingLastPathComponent(), withIntermediateDirectories: true
-            )
-            try data.write(to: path, options: .atomic)
-            return .written
-        } catch {
-            FileHandle.standardError.write(Data(
-                "couldn't write \(path.path): \(error)\n".utf8
-            ))
-            return .failed
-        }
     }
 
     /// Resolve the recordings root from an optional CLI override.

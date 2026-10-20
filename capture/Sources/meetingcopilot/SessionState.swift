@@ -24,6 +24,9 @@ enum SessionState {
     }
 
     static let deferred = "deferred"
+    /// No AI is chosen for the step (or the chosen one can't run). Not given
+    /// up: the next pass after a choice is made does the work.
+    static let needsChoice = "needs_choice"
 
     static func read(_ dir: URL) -> [String: Any]? {
         guard

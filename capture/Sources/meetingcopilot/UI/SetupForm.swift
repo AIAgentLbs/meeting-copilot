@@ -147,15 +147,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private var parakeetProgress: Timer?
 
     private let summariesOn = NSSwitch()
-    private let summaryCards = ChoiceGroup()
-    private let keyProvider = NSSegmentedControl(
-        labels: ["Anthropic", "OpenAI"], trackingMode: .selectOne, target: nil, action: nil)
-    private let summaryKey = NSSecureTextField()
-    private let summaryKeyStatus = NSTextField(labelWithString: "")
-    private lazy var summaryKeyLink = link(
-        localised("Get a key", "Получить ключ"),
-        "https://console.anthropic.com/settings/keys")
-
     private let recordingsPath = NSTextField(labelWithString: "")
     private let menuBarIcon = NSSwitch()
     private let dockIcon = NSSwitch()
@@ -174,12 +165,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         return label
     }()
     private let autoRecord = NSSwitch()
-
-    /// What the last look for `claude`, `codex` and ollama found, by card.
-    /// Empty until that look finishes, and a missing answer is not "absent":
-    /// the window says nothing about a tool it has not been to see yet.
-    private var summaryToolRuns: [String: Bool] = [:]
-
 
     init(firstRun: Bool = false) {
         self.firstRun = firstRun
@@ -208,8 +193,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             form.addArrangedSubview(SetupLayout.section(
                 localised("Local speech recognition", "Локальная расшифровка"), content: quickStatus))
             form.addArrangedSubview(SetupLayout.detail(localised(
-                "Speech languages are detected automatically, including changes during a call. Local recognition needs no paid API key. AI answers use Codex and its account limits; connect it in the assistant after setup.",
-                "Языки речи определяются автоматически, в том числе при переключении в звонке. Для локальной расшифровки платный ключ не нужен. Ответы ИИ используют Codex и лимиты его аккаунта; подключение доступно в помощнике после настройки."), lines: 5, width: 580))
+                "Speech languages are detected automatically, including changes during a call. Local recognition needs no paid API key. AI answers use the provider and model you choose in Getting started, in the assistant.",
+                "Языки речи определяются автоматически, в том числе при переключении в звонке. Для локальной расшифровки платный ключ не нужен. Ответы ИИ используют инструмент и модель, которые вы выберете в разделе «Начать работу» в помощнике."), lines: 5, width: 580))
             let settings = SetupLayout.actionButton(localised("Other options…", "Другие настройки…"), target: self, action: #selector(showOtherSettings))
             form.addArrangedSubview(settings)
         } else {
@@ -272,10 +257,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     /// than no form at all.
     func reload() {
         refresh()
-        // Detection runs off the main thread: finding `claude` can mean
-        // starting the login shell, and a form that freezes while it asks
-        // would be a worse first impression than one that fills in.
-        Task { await detectTools() }
     }
 
     /// Put down what outlives a keystroke. The setup window calls it on the
@@ -525,83 +506,20 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             trailing: [keepAudio])
     }
 
+    /// Which AI writes summaries and names speakers is chosen in one place,
+    /// Getting started in the assistant (`ai.purposes` in the shared config);
+    /// this section only switches summaries on and off.
     private func summaryChoices() -> NSView {
-        let claude = ChoiceCard(
-            id: "claude-cli",
-            title: "Claude Code",
-            detail: localised(
-                "On the subscription you're already signed into. No key.",
-                "По подписке, в которую вы уже вошли. Ключ не нужен."),
-            accessories: [link(
-                localised("Install it", "Установить"),
-                "https://claude.com/product/claude-code")])
-        let codex = ChoiceCard(
-            id: "codex-cli",
-            title: "Codex",
-            detail: localised(
-                "Same deal, on your OpenAI subscription.",
-                "То же самое, но по подписке OpenAI."),
-            accessories: [link(
-                localised("Install it", "Установить"),
-                "https://developers.openai.com/codex/cli/")])
-
-        // Without this the switch still slides when you push it — NSSwitch
-        // animates itself — while nothing at all happens: the choice is never
-        // written, the cards below stay live, and every meeting is summarised
-        // by a program the person just told to stop. It went unwired from the
-        // day the section was built, because the only check for it was a
-        // manual one nobody had run.
+        // Without this the switch still slides when you push it while nothing
+        // is written, and every meeting is summarised anyway.
         summariesOn.target = self
         summariesOn.action = #selector(summariesToggled)
-
-        keyProvider.selectedSegment = 0
-        keyProvider.target = self
-        keyProvider.action = #selector(keyProviderChanged)
-        summaryKey.placeholderString = "sk-ant-…"
-        summaryKey.font = SetupLayout.detailFont
-        summaryKey.delegate = self
-        summaryKeyStatus.font = SetupLayout.statusFont
-        summaryKeyStatus.textColor = .secondaryLabelColor
-        summaryKeyStatus.lineBreakMode = .byWordWrapping
-        summaryKeyStatus.maximumNumberOfLines = 2
-        let key = ChoiceCard(
-            id: "api-key",
-            title: localised("My own key", "Свой ключ"),
-            detail: localised(
-                "Billed per meeting, needs no CLI.",
-                "Оплата за встречу, без CLI."),
-            accessories: [keyProvider, summaryKey, summaryKeyStatus, summaryKeyLink])
-
-        // Ollama is a fallback, not a fourth peer: a whole card beside the
-        // three real choices reads as a recommendation, and its summaries are
-        // the weakest of the four. One slim row keeps it choosable and says so.
-        let ollama = ChoiceCard(
-            id: "ollama",
-            title: "Ollama",
-            detail: localised(
-                "No account, no network. Weaker summaries.",
-                "Без аккаунта и без сети. Саммари слабее."),
-            accessories: [link(
-                localised("Install Ollama", "Установить Ollama"),
-                "https://ollama.com/download/mac")],
-            compact: true)
-
-        summaryCards.adopt([claude, codex, key, ollama])
-        summaryCards.onChange = { [weak self] id in
-            guard let self else { return }
-            Config.update(path: ["summary", "backend"], value: SetupSelection.summaryBackend(
-                choice: id, keyBackend: self.selectedKeyBackend))
-            self.refresh()
-        }
-        let disclosure = SetupLayout.detail(
+        return SetupLayout.detail(
             localised(
-                "Claude, Codex and API models receive the transcript, meeting title and calendar participants. Ollama keeps them on this Mac.",
-                "Claude, Codex и API-модели получают расшифровку, название встречи и участников из календаря. С Ollama всё остаётся на этом маке."),
-            lines: 2,
+                "Choose the AI for summaries and speaker names in Getting started, in the assistant. The chosen AI receives the transcript, meeting title and calendar participants.",
+                "ИИ для саммари и имен говорящих выбирается в разделе «Начать работу» в помощнике. Выбранный ИИ получает расшифровку, название встречи и участников из календаря."),
+            lines: 3,
             width: 520)
-        return SetupLayout.group(
-            [SetupLayout.cards([claude, codex, key]), ollama, disclosure],
-            spacing: SetupLayout.cardGap)
     }
 
     /// The two places a person can find a running meetingcopilot, each of which can be
@@ -867,34 +785,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         refresh()
     }
 
-    @objc private func keyProviderChanged() {
-        showKeyProvider()
-        if summaryCards.selected == "api-key" {
-            Config.update(path: ["summary", "backend"], value: selectedKeyBackend)
-        }
-    }
-
-    /// Everything the Anthropic/OpenAI control changes about how its card
-    /// *looks* — and nothing it writes.
-    ///
-    /// Split out because `refresh` needs the looking and must not do the
-    /// writing. A redraw that writes rewrites the config file every time
-    /// anything is drawn, and once something listens for writes in order to
-    /// redraw — which is the whole point of `Config.didChange` — a redraw that
-    /// writes is a redraw that never stops.
-    private func showKeyProvider() {
-        summaryKey.placeholderString = selectedKeyBackend == "anthropic-api" ? "sk-ant-…" : "sk-…"
-        summaryKeyStatus.stringValue = ""
-        summaryKeyLink.identifier = NSUserInterfaceItemIdentifier(
-            selectedKeyBackend == "anthropic-api"
-                ? "https://console.anthropic.com/settings/keys"
-                : "https://platform.openai.com/api-keys")
-    }
-
-    private var selectedKeyBackend: String {
-        keyProvider.selectedSegment == 1 ? "openai-api" : "anthropic-api"
-    }
-
     /// Register with Login Items, the way every other application does.
     private func startAtLogin() {
         if isRecording?() == true {
@@ -1011,7 +901,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
         if field === cloudKey { Task { await saveCloudKey() } }
-        if field === summaryKey { Task { await saveSummaryKey() } }
     }
 
     /// Return in a key field submits the key and stops there.
@@ -1025,7 +914,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     ///
     /// Ending editing here is the same path a click elsewhere takes — it fires
     /// `controlTextDidEndEditing`, which saves — and returning true keeps the
-    /// keystroke from travelling any further. Only these two fields swallow
+    /// keystroke from travelling any further. Only this field swallows
     /// Return: everywhere else in the window it should still mean Done.
     func control(
         _ control: NSControl,
@@ -1033,7 +922,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         doCommandBy selector: Selector
     ) -> Bool {
         guard selector == #selector(NSResponder.insertNewline(_:)),
-              control === cloudKey || control === summaryKey
+              control === cloudKey
         else { return false }
         control.window?.makeFirstResponder(nil)
         return true
@@ -1106,34 +995,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         commitTranscription()
     }
 
-    private func saveSummaryKey() async {
-        let key = summaryKey.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
-        let backend = selectedKeyBackend
-        let provider: SummaryKeyProbe.Provider = backend == "anthropic-api" ? .anthropic : .openAI
-        let path = backend == "anthropic-api"
-            ? Config.anthropicKeyPath
-            : Config.openAIKeyPath
-        summaryKeyStatus.stringValue = Self.checkingKey
-        guard await SummaryKeyProbe.works(provider: provider, key: key) else {
-            summaryKeyStatus.stringValue = localised(
-                "that key was refused — nothing was overwritten",
-                "этот ключ не приняли — ничего не перезаписано")
-            return
-        }
-        do {
-            try Self.writeSecret(key, to: path)
-        } catch {
-            summaryKeyStatus.stringValue =
-                localised("couldn't save the key: ", "не удалось сохранить ключ: ") + "\(error)"
-            return
-        }
-        summaryKey.stringValue = ""
-        summaryKeyStatus.stringValue = localised("key works", "ключ работает")
-        Config.update(path: ["summary", "backend"], value: backend)
-        refresh()
-    }
-
     /// A key is a secret: it goes to a file only its owner can read, never
     /// into the config file — which the settings window shows on screen. The
     /// directory is meetingcopilot's own and mode 0700, so a key pasted here can't be
@@ -1163,57 +1024,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
 
     // MARK: - reading the machine
 
-    func detectTools() async {
-        // The form is reopened for exactly one reason: something about the
-        // machine changed. Usually it is the **Install it** link having been
-        // followed — so the cached "not here" from the last look is the one
-        // answer guaranteed to be wrong now.
-        Tooling.forget()
-
-        // Off the main actor: `Tooling` may start a login shell and run the
-        // binaries it finds, which is seconds, not milliseconds.
-        let claude = await Task.detached { Tooling.probe("claude") }.value
-        let codex = await Task.detached { Tooling.probe("codex") }.value
-        let ollama = await Task.detached { Tooling.probe("ollama") }.value
-        let models = await Tooling.ollamaModels()
-
-        for (id, tool) in [("claude-cli", claude), ("codex-cli", codex)] {
-            summaryCards.card(id)?.report(Self.describe(tool), good: tool?.version != nil)
-            summaryCards.card(id)?.showLink(tool == nil)
-        }
-
-        let ollamaCard = summaryCards.card("ollama")
-        if let models {
-            ollamaCard?.report(
-                models.isEmpty
-                    ? localised("running, no models", "работает, моделей нет")
-                    : localised("running · ", "работает · ")
-                        + models.prefix(2).joined(separator: ", "),
-                good: true)
-        } else {
-            ollamaCard?.report(ollama == nil
-                ? localised("not here", "не установлена")
-                : localised("installed, not running", "установлена, но не запущена"))
-        }
-        ollamaCard?.showLink(ollama == nil)
-
-        summaryToolRuns = [
-            "claude-cli": claude?.runs == true,
-            "codex-cli": codex?.runs == true,
-            "ollama": models?.isEmpty == false,
-        ]
-        refresh()
-    }
-
-    private static func describe(_ tool: Tooling.Found?) -> String {
-        guard let tool else { return localised("not here", "не установлен") }
-        guard let version = tool.version else {
-            return localised(
-                "found but it doesn't run from here", "нашёлся, но отсюда не запускается")
-        }
-        return localised("installed · ", "установлен · ") + version
-    }
-
     /// Whether the local model is on this Mac. A Mac that cannot run it at
     /// all is not missing it, so the question is answered yes there and the
     /// window stops asking.
@@ -1234,22 +1044,12 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         transcriptionChoice.needsLocalModel(downloaded: parakeetIsDownloaded)
     }
 
-    /// Summaries are on and the thing chosen to write them is not on this
-    /// Mac. The card says "not here" in orange; this is what puts it in the
-    /// one line somebody reads before pressing Done.
+    /// Summaries are on and no runnable AI is chosen for them in Getting
+    /// started: the one line somebody reads before pressing Done says so.
     private var chosenSummaryIsMissing: Bool {
-        let summary = Config.summary()
-        guard summary.enabled else { return false }
-        switch SetupSelection.summaryChoice(backend: summary.backend) {
-        case let looked where summaryToolRuns[looked] != nil:
-            return summaryToolRuns[looked] == false
-        case "api-key":
-            return summary.backend == "openai-api"
-                ? Config.openAIKey() == nil
-                : Config.anthropicKey() == nil
-        default:
-            return false
-        }
+        guard Config.summary().enabled else { return false }
+        if case .ready = AIChoice.resolve(.summary, in: Config.current()) { return false }
+        return true
     }
 
     // MARK: - refresh
@@ -1335,11 +1135,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
 
         let summary = Config.summary()
         summariesOn.state = summary.enabled ? .on : .off
-        let backendIsKey = summary.backend == "anthropic-api" || summary.backend == "openai-api"
-        summaryCards.select(SetupSelection.summaryChoice(backend: summary.backend))
-        if backendIsKey { keyProvider.selectedSegment = summary.backend == "openai-api" ? 1 : 0 }
-        showKeyProvider()
-        for card in summaryCards.cards { card.isEnabled = summary.enabled }
 
         menuBarIcon.state = Config.menuBarIcon() ? .on : .off
         dockIcon.state = Config.dockIcon() ? .on : .off
@@ -1502,8 +1297,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             let prompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
             if !liveModelStore.isReady(language: prompt) { left.append(.liveModel) }
         }
-        // The window used to say everything was granted while the card it had
-        // chosen to write the summaries said "not here" three inches above.
+        // Summaries on with nothing chosen to write them is not "everything
+        // granted".
         if !firstRun, chosenSummaryIsMissing { left.append(.summaryTool) }
         return left
     }
@@ -1522,7 +1317,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         case parakeet
         case liveModel
         case liveEnabled
-        /// Summaries are on, and whatever was chosen to write them isn't here.
+        /// Summaries are on, and no AI is chosen for them in Getting started.
         case summaryTool
 
         var described: String {
@@ -1537,7 +1332,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             case .liveEnabled:
                 return localised("enable live transcription", "включить расшифровку звонка")
             case .summaryTool:
-                return localised("something to summarise with", "чем писать саммари")
+                return localised("choose AI for summaries in Getting started",
+                                 "выбрать ИИ для саммари в разделе «Начать работу»")
             }
         }
     }

@@ -2,8 +2,8 @@ import Foundation
 
 /// Turns a finished transcript into `summary.md`.
 ///
-/// The backend chain lives in LLMBackend: subscription CLIs first, then API
-/// keys, then ollama. Summarizing is just one caller of it.
+/// It runs on the AI chosen for `ai.purposes.summary` (see `LLMBackend`) and
+/// on nothing else; with no choice made it waits for one.
 ///
 /// Nothing here is allowed to fail loudly. A missing summary is an
 /// inconvenience; a transcript lost because summarizing threw is a lost
@@ -25,7 +25,7 @@ enum Summarizer {
         func log(_ message: String) { appendSessionLog(message, to: dir) }
 
         let settings = Config.summary()
-        guard settings.enabled, settings.backend != "none" else { return nil }
+        guard settings.writesSummaries else { return nil }
 
         let body = plainText(transcript)
         guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -33,57 +33,49 @@ enum Summarizer {
             return nil
         }
 
-        let backends = LLMBackend.available(preference: settings.backend)
-        guard !backends.isEmpty else {
-            log("summary skipped — no backend available")
+        let backend: LLMBackend
+        switch LLMBackend.resolve(.summary) {
+        case .ready(let chosen): backend = chosen
+        case let other:
+            // Not a failure of this meeting: once an AI is chosen, the next
+            // pass writes the summary.
+            log("summary not written — \(other.problem ?? AIChoice.needsChoiceMessage)")
+            SessionState.update(dir, with: [SessionState.Key.summaryStatus: SessionState.needsChoice])
             return nil
         }
-        // Whether every failure so far was of a kind that passes. If they all
-        // are, the session is left marked for a later run rather than written
-        // off: a meeting summarized on a plane should still get its summary
-        // that evening.
-        var allTransient = true
 
         // Whatever we know about the meeting, above the transcript. Names in
         // particular: given a participant list, the summarizer writes "Anna
         // will send the contract" instead of "them will send the contract".
         let header = context.isEmpty ? "" : context.joined(separator: "\n") + "\n"
-        for backend in backends {
-            do {
-                log("summarizing with \(backend.name)")
-                let markdown = try await produce(
-                    body: body, header: header, settings: settings, backend: backend
-                )
-                let text = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { throw LLMError.emptyResponse(backend.name) }
-                try Data((text + "\n").utf8).write(
-                    to: dir.appendingPathComponent("summary.md"), options: .atomic
-                )
-                log("summary written by \(backend.name)")
-                SessionState.update(dir, with: [SessionState.Key.summaryStatus: nil])
-                return backend.name
-            } catch {
-                // Falling through is the expected path when a subscription is
-                // spent, so say which kind of failure this was — otherwise a
-                // healthy hand-off reads like something broke.
-                let transient = LLMError.isTransient(error)
-                allTransient = allTransient && transient
-                log(LLMError.isUsageLimit(error)
-                    ? "\(backend.name) is out of allowance — trying the next backend"
-                    : "summary via \(backend.name) failed: \(error)")
-            }
+        do {
+            log("summarizing with \(backend.name) (\(backend.model))")
+            let reply = try await produce(
+                body: body, header: header, language: settings.language, backend: backend
+            )
+            let text = reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { throw LLMError.emptyResponse(backend.name) }
+            try Data((text + "\n").utf8).write(
+                to: dir.appendingPathComponent("summary.md"), options: .atomic
+            )
+            log("summary written by \(backend.name) (model \(reply.model))")
+            SessionState.update(dir, with: [SessionState.Key.summaryStatus: nil])
+            return backend.name
+        } catch {
+            // Record which kind of failure, so a later pass can tell "come
+            // back to this" from "this will never work". A summary missed on
+            // a plane should still get written that evening.
+            let transient = LLMError.isTransient(error)
+            SessionState.update(dir, with: [
+                SessionState.Key.summaryStatus: transient ? SessionState.deferred : "failed",
+            ])
+            log(LLMError.isUsageLimit(error)
+                ? "\(backend.name) is out of allowance — summary deferred, will be retried later"
+                : transient
+                    ? "summary via \(backend.name) deferred: \(error)"
+                    : "summary via \(backend.name) failed for good: \(error)")
+            return nil
         }
-
-        // Nothing answered. Record which kind of nothing, so a later pass can
-        // tell "come back to this" from "this will never work".
-        SessionState.update(dir, with: [
-            SessionState.Key.summaryStatus:
-                allTransient ? SessionState.deferred : "failed",
-        ])
-        log(allTransient
-            ? "no backend could be reached — summary deferred, will be retried later"
-            : "every backend failed for good — giving up on the summary")
-        return nil
     }
 
     // MARK: - prompting
@@ -134,32 +126,70 @@ enum Summarizer {
     Below are consecutive notes on parts of a single meeting. Combine them into one note.
     """
 
-    private static func produce(
+    static func produce(
         body: String,
         header: String,
-        settings: Config.SummarySettings,
+        language: String?,
         backend: LLMBackend
-    ) async throws -> String {
-        let system = systemPrompt(language: settings.language)
-        if body.count <= maxCharsPerCall {
+    ) async throws -> LLMReply {
+        let system = systemPrompt(language: language)
+        let limit = chunkLimit(
+            backendLimit: try await backend.inputLimit(),
+            overhead: system.count + header.count + chunkInstructions.count + mergeInstructions.count
+                + summaryInstructions.count + 64)
+        if body.count <= limit {
             return try await backend.call(
                 system, "\(header)\n\(summaryInstructions)\n\n---\n\(body)"
             )
         }
 
-        let chunks = split(body, limit: maxCharsPerCall)
+        let chunks = split(body, limit: limit)
         var notes: [String] = []
         for (index, chunk) in chunks.enumerated() {
             notes.append(try await backend.call(
                 system,
                 "\(header)Part \(index + 1) of \(chunks.count).\n\(chunkInstructions)\n\n---\n\(chunk)"
-            ))
+            ).text)
+        }
+        // Notes that do not fit one merge are combined in batches that do,
+        // round after round, until they fit (or no batch can shrink them, and
+        // the backend's own "too long" error says so).
+        while notes.joined(separator: noteSeparator).count > limit {
+            let batches = mergeBatches(notes, limit: limit)
+            guard batches.count < notes.count else { break }
+            var combined: [String] = []
+            for batch in batches {
+                combined.append(batch.count == 1 ? batch[0] : try await backend.call(
+                    system,
+                    "\(header)\n\(mergeInstructions)\n\n---\n" + batch.joined(separator: noteSeparator)
+                ).text)
+            }
+            notes = combined
         }
         return try await backend.call(
             system,
             "\(header)\n\(mergeInstructions)\n\(summaryInstructions)\n\n---\n"
-                + notes.joined(separator: "\n\n---\n\n")
+                + notes.joined(separator: noteSeparator)
         )
+    }
+
+    private static let noteSeparator = "\n\n---\n\n"
+
+    /// Consecutive notes grouped so each group's text stays within `limit`;
+    /// a note longer than that is a group of its own.
+    static func mergeBatches(_ notes: [String], limit: Int) -> [[String]] {
+        var batches: [[String]] = []
+        var current: [String] = []
+        for note in notes {
+            let size = (current + [note]).joined(separator: noteSeparator).count
+            if !current.isEmpty && size > limit {
+                batches.append(current)
+                current = []
+            }
+            current.append(note)
+        }
+        if !current.isEmpty { batches.append(current) }
+        return batches
     }
 
     /// The transcript as the summarizer sees it: one speaker-tagged line per
@@ -169,6 +199,15 @@ enum Summarizer {
         transcript.segments
             .map { "\($0.speaker): \($0.text)" }
             .joined(separator: "\n")
+    }
+
+    /// Transcript characters per call: the usual size, or less when the
+    /// backend's own limit (minus the prompt around the transcript) is smaller.
+    static func chunkLimit(backendLimit: Int?, overhead: Int) -> Int {
+        // Nothing fits: keep the usual size so the call fails with the
+        // backend's own "too long" error instead of a flood of tiny calls.
+        guard let backendLimit, backendLimit - overhead > 0 else { return maxCharsPerCall }
+        return min(maxCharsPerCall, backendLimit - overhead)
     }
 
     /// Split on line boundaries so a chunk never ends mid-sentence.

@@ -1,38 +1,8 @@
 """Explicit, isolated rewrites of one archived meeting. No delivery or live context."""
 import json
-import subprocess
-import tempfile
 import threading
 from datetime import datetime, timezone
 from archive import _atomic_json, _json, _safe
-
-MODEL = "gpt-6.1-sol"
-
-
-def codex_summary_runner(binary, environment):
-    def run(prompt):
-        with tempfile.TemporaryDirectory(prefix="meetontrack-summary-") as directory:
-            result = subprocess.run([str(binary), "--model", MODEL, "--ask-for-approval", "never", "exec",
-                                     "--ignore-user-config", "--sandbox", "read-only", "--ephemeral",
-                                     "--disable", "shell_tool", "--disable", "unified_exec",
-                                     "--disable", "multi_agent", "--disable", "enable_mcp_apps",
-                                     "--disable", "skill_search", "--disable", "skill_mcp_dependency_install",
-                                     "--disable", "tool_suggest", "-c", 'web_search="disabled"',
-                                     "-c", "project_doc_max_bytes=0", "-c", "skills.include_instructions=false",
-                                     "--skip-git-repo-check", "-C", directory, "--json", "-"],
-                                    input=prompt, text=True, capture_output=True, timeout=180, env=environment)
-        if result.returncode:
-            raise RuntimeError("Summary model unavailable")
-        answers = []
-        for line in result.stdout.splitlines():
-            try: event = json.loads(line)
-            except ValueError: continue
-            item = event.get("item", {})
-            if event.get("type") == "item.completed" and item.get("type") == "agent_message":
-                answers.append(item.get("text", ""))
-        if not answers: raise ValueError("No summary returned")
-        return answers[-1]
-    return run
 
 
 class SummaryRewrites:
@@ -69,14 +39,16 @@ class SummaryRewrites:
             if self.worker and self.worker.is_alive():
                 raise ValueError("A summary is already being updated. Wait for it to finish")
             while len(self.states) >= 20: self.states.pop(next(iter(self.states)))
-            self.states[meeting_id] = {"state": "running", "model": MODEL}
+            self.states[meeting_id] = {"state": "running"}
             self.worker = threading.Thread(target=self._rewrite, args=(meeting_id, instructions, source, prompt), daemon=True)
             self.worker.start()
             return self.worker
 
     def _rewrite(self, meeting_id, instructions, source, prompt):
         try:
-            result = json.loads(self.run(prompt))
+            reply = self.run(prompt)  # text, or a provider Reply carrying the model it reports
+            model = str(getattr(reply, "model", "") or "")
+            result = json.loads(getattr(reply, "text", reply))
             for key, maximum in (("points", 5), ("questions", 8)):
                 items = result.get(key)
                 if not isinstance(items, list) or len(items) > maximum or not all(isinstance(item, str) and 0 < len(item) <= 1000 for item in items):
@@ -88,11 +60,11 @@ class SummaryRewrites:
                 path = self.archive.archive_root / meeting_id / "library.json"
                 preferences = _json(path, {})
                 preferences["rewrite"] = {"points": result["points"], "questions": result["questions"],
-                    "model": MODEL, "instructions": instructions, "source_signature": source,
+                    "model": model, "instructions": instructions, "source_signature": source,
                     "generated_at": datetime.now(timezone.utc).isoformat()}
                 _atomic_json(path, preferences)
-            state = {"state": "done", "model": MODEL}
+            state = {"state": "done", "model": model}
         except Exception:
             # Never return raw subprocess errors which may contain meeting text.
-            state = {"state": "failed", "model": MODEL}
+            state = {"state": "failed"}
         with self.lock: self.states[meeting_id] = state

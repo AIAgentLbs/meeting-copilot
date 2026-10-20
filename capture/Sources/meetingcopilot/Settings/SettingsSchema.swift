@@ -267,10 +267,10 @@ enum SettingsSchema {
                   .text, default: localised("the API's own default", "выбор самого API")),
             Entry(["transcription", "openai", "model"], localised("OpenAI model", "Модель OpenAI"),
                   localised(
-                      "The default is the only OpenAI model that returns both timings and speakers.",
-                      "По умолчанию стоит единственная модель OpenAI, которая возвращает и время, "
-                          + "и говорящих."),
-                  .text, default: "gpt-4o-transcribe-diarize"),
+                      "Required for OpenAI transcription: its diarizing model, the only one that returns both timings and speakers.",
+                      "Нужна для расшифровки через OpenAI: ее модель с разметкой говорящих, единственная, "
+                          + "которая возвращает и время, и говорящих."),
+                  .text, default: localised("not set", "не задана")),
         ]),
 
         Section(title: localised("Summaries", "Саммари"), entries: [
@@ -280,49 +280,12 @@ enum SettingsSchema {
                       "Topic, key points, decisions, action items, open questions.",
                       "Тема, главное, решения, задачи, открытые вопросы."),
                   .toggle, default: true, askedInSetup: true),
-            Entry(["summary", "backend"],
-                  localised("Which model to ask", "У какой модели спрашивать"),
-                  localised(
-                      "auto walks the chain: claude CLI, Anthropic API, codex CLI, OpenAI API, ollama — subscriptions before metered keys. none skips summarizing without turning off the rest.",
-                      "auto идёт по цепочке: claude CLI, Anthropic API, codex CLI, OpenAI API, "
-                          + "ollama — сначала подписки, потом платные ключи. none пропускает саммари, "
-                          + "не выключая всего остального."),
-                  .choice(["auto", "claude-cli", "anthropic-api", "codex-cli", "openai-api", "ollama", "none"]),
-                  default: "auto"),
-            Entry(["summary", "model"],
-                  localised("Anthropic model", "Модель Anthropic"),
-                  localised(
-                      "Used on the API path. The CLI uses whatever model Claude Code is set to.",
-                      "Для пути через API. CLI берёт ту модель, на которую настроен Claude Code."),
-                  .text, default: "claude-opus-5"),
-            Entry(["summary", "openai_model"],
-                  localised("OpenAI model", "Модель OpenAI"),
-                  localised(
-                      "Used by the codex CLI and the OpenAI API.",
-                      "Для codex CLI и для OpenAI API."),
-                  .text, default: "gpt-5"),
-            Entry(["summary", "ollama_model"],
-                  localised("Local model", "Местная модель"),
-                  localised("The fully-offline fallback.", "Запасной вариант, целиком без сети."),
-                  .text, default: "qwen3:8b"),
             Entry(["summary", "language"],
                   localised("Summary language", "Язык саммари"),
                   localised(
                       "Leave empty to write in whichever language the meeting was held in.",
                       "Пусто — саммари пишется на языке самой встречи."),
                   .text, default: localised("the language of the meeting", "язык встречи")),
-            Entry(["summary", "api_key_path"],
-                  localised("Anthropic key file", "Файл ключа Anthropic"),
-                  localised(
-                      "Where the Anthropic key is read from. ANTHROPIC_API_KEY wins over it.",
-                      "Откуда читается ключ Anthropic. ANTHROPIC_API_KEY важнее."),
-                  .text, default: "~/.config/meeting-copilot/keys/anthropic"),
-            Entry(["summary", "openai_api_key_path"],
-                  localised("OpenAI key file", "Файл ключа OpenAI"),
-                  localised(
-                      "Where the OpenAI key is read from. OPENAI_API_KEY wins over it.",
-                      "Откуда читается ключ OpenAI. OPENAI_API_KEY важнее."),
-                  .text, default: "~/.config/meeting-copilot/keys/openai"),
         ]),
 
         Section(title: localised("Calendar and naming", "Календарь и имена"), entries: [
@@ -356,19 +319,6 @@ enum SettingsSchema {
                   .text,
                   default: localised(
                       "the account's full name", "полное имя учётной записи")),
-            Entry(["speaker_names", "backend"],
-                  localised("Which model to ask", "У какой модели спрашивать"),
-                  localised(
-                      "Same chain as summaries. auto walks it until one answers.",
-                      "Та же цепочка, что у саммари. auto идёт по ней, пока кто-нибудь не ответит."),
-                  .choice(["auto", "claude-cli", "anthropic-api", "codex-cli", "openai-api", "ollama"]),
-                  default: "auto"),
-            Entry(["speaker_names", "model"],
-                  localised("Anthropic model for naming", "Модель Anthropic для имён"),
-                  localised(
-                      "Naming is an easier job than summarizing; empty uses the summary's model.",
-                      "Имена — работа проще саммари; пусто — та же модель, что у саммари."),
-                  .text, default: localised("the summary's model", "модель саммари")),
         ]),
 
         Section(title: localised("Interface", "Интерфейс"), entries: [
@@ -552,10 +502,25 @@ enum SettingsSchema {
     /// reported as one it ignores.
     static let unrenderedKeys = ["transcription.assemblyai.api_key"]
 
+    /// Whole subtrees another screen owns. `ai` is the AI choice per purpose,
+    /// written by Getting started (docs/config.schema.json) and read here for
+    /// summaries and naming: known, so never "not read", and not a control.
+    static let ownedSubtrees = ["ai"]
+
     /// Older releases exposed these choices. Retained audio now always becomes
     /// one compact stereo M4A, but accepting the keys keeps an old config from
     /// being reported as misspelled until its owner next edits the file.
-    static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"]
+    static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"] + legacyAIKeys
+
+    /// The summary and naming settings from before `ai.purposes`. Not offered
+    /// anywhere: the AI is chosen in one place, Getting started. Still known,
+    /// because `AIChoice.migrateLegacy` reads them once (a `summary.backend`
+    /// "none" becomes `summary.enabled: false`).
+    static let legacyAIKeys = [
+        "summary.backend", "summary.model", "summary.openai_model", "summary.ollama_model",
+        "summary.api_key_path", "summary.openai_api_key_path",
+        "speaker_names.backend", "speaker_names.model",
+    ]
 
     /// The settings above that this slice does not render, because there is no
     /// local model behind them. They stay *known*: a config carrying them on
@@ -575,6 +540,7 @@ enum SettingsSchema {
             + unrenderedLocalModelKeys
             + unrenderedKeys
             + deprecatedKeys
+            + ownedSubtrees
     }
 
     /// Keys present in a config file that nothing reads.

@@ -84,7 +84,7 @@ class LogicalServerTests(unittest.TestCase):
             release.wait(3)
             self.session.thread_id = "old-thread"
             return "synthetic old answer"
-        with patch.object(self.session, "_run_codex", side_effect=inference), patch.object(server.GOOGLE_CONTEXT, "augment", return_value=""):
+        with patch.object(self.session, "_run_ai", side_effect=inference), patch.object(server.GOOGLE_CONTEXT, "augment", return_value=""):
             worker = threading.Thread(target=lambda: self.session.ask("question", "old", "Example", "physical", {"repositories": []}))
             worker.start()
             self.assertTrue(entered.wait(2))

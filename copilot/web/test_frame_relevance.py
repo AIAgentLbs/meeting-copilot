@@ -6,23 +6,23 @@ from pathlib import Path
 from unittest.mock import patch
 
 import server
+from ai_providers import Ticket
 from frame_relevance import frame_relevance
 
 
 class FrameRelevanceTests(unittest.TestCase):
     def classify(self, answer):
-        event = {"type": "item.completed", "item": {"type": "agent_message", "text": answer}}
-        with patch("frame_relevance.subprocess.run", return_value=subprocess.CompletedProcess([], 0, json.dumps(event))):
-            return frame_relevance(Path('/tmp/frame.jpg'), {}, {}, None, 'codex', {})
+        return frame_relevance(Path('/tmp/frame.jpg'), {}, {}, None, lambda prompt: answer)
 
     def test_relevance_results_and_failures(self):
         self.assertTrue(self.classify('{"keep":true,"reason":"shared diagram"}')[0])
         self.assertFalse(self.classify('{"keep":false,"reason":"unrelated email"}')[0])
         self.assertFalse(self.classify('{"keep":"false"}')[0])
         self.assertFalse(self.classify('not JSON')[0])
-        with patch("frame_relevance.subprocess.run", side_effect=subprocess.TimeoutExpired('codex', 45)):
-            self.assertFalse(frame_relevance(Path('/tmp/frame.jpg'), {}, {}, None, 'codex', {})[0])
-        self.assertEqual(frame_relevance(None, {"image_digest": "same"}, {}, {"image_digest": "same"}, None, {}), (False, 'duplicate'))
+        def unavailable(prompt):
+            raise RuntimeError("AI_UNAVAILABLE: fixture")
+        self.assertEqual(frame_relevance(Path('/tmp/frame.jpg'), {}, {}, None, unavailable), (False, 'relevance-check-failed'))
+        self.assertEqual(frame_relevance(None, {"image_digest": "same"}, {}, {"image_digest": "same"}, None), (False, 'duplicate'))
 
     def test_discard_removes_file_and_never_indexes(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -43,7 +43,8 @@ class FrameRelevanceTests(unittest.TestCase):
                  patch.object(frames, '_speaker_from_frame', return_value=('', '')), \
                  patch.object(server, 'WINDOW_FINDER', helper), patch.object(server, 'FRAME_INSPECTOR', helper), \
                  patch.object(server.subprocess, 'run', side_effect=run), \
-                 patch.object(server, 'frame_relevance', return_value=(False, 'unrelated')):
+                 patch.object(server, 'frame_relevance', return_value=(False, 'unrelated')), \
+                 patch.object(server.AI, 'resolve', return_value=Ticket('frame_relevance', 'ready', '', {}, 'k', '/x')):
                 self.assertTrue(frames.capture({'meeting_id': 'fixture'})['discarded'])
             self.assertEqual(frames.items, [])
             self.assertEqual(list((root / 'screenshots').iterdir()), [])
