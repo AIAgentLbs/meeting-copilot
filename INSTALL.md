@@ -48,8 +48,8 @@ enabled. Finish the call and close Capture before reinstalling.
 
 ## Optional AI and context
 
-AI answers use an AI tool you already have: Codex, Claude Code, Antigravity or a
-local Ollama. In Getting started, choose the tool, model, effort and speed for
+AI answers use an AI tool you already have: Codex, Claude Code or a local
+Ollama. In Getting started, choose the tool, model, effort and speed for
 each task; the options are read from the installed tool and your plan, and
 nothing is preselected. A short functional check confirms each choice. Relevant
 conversation and connected-source excerpts are sent to the chosen AI service. Capture
