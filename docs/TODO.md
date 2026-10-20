@@ -16,6 +16,16 @@ The 2026-10-19 file migration is complete: 37 website files moved with verified
 hashes, Pages removed, and the Windows installer relocated to
 `scripts/windows/install.ps1` with packaging/CI references updated.
 
+## One macOS recorder source (2026-10-20)
+
+- [ ] There are two diverged macOS recorder sources: `capture/` here (renamed
+  `meetingcopilot`, ships in the Mac package, no shared Git history with Amanu)
+  and `Sources/amanu` in public `AIAgentLbs/meetontrack-recorder` (tracks
+  upstream `gsamat/amanu`). Reconcile into one source in
+  `meetontrack-recorder` so upstream fixes merge with `git merge master`, then
+  package the Mac recorder from it like Windows and remove `capture/` here.
+  Needs a file-by-file diff (for example `Config.swift` 639 vs 841 lines).
+
 ## One settings store and vocabulary across Mac, Windows and web (owner rule 2026-10-20)
 
 - [ ] All components already share `~/.config/meeting-copilot/config.json`, but
