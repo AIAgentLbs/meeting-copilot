@@ -37,22 +37,57 @@ hashes, Pages removed, and the Windows installer relocated to
   from Python/JS/HTML and the Windows launcher message. Spec:
   `docs/specs/2026-10-20-no-hardcoded-models.md`.
 - [ ] Release 0.1.11 with phase 1 (packaging, both platforms).
-- [ ] Antigravity read-only is not enforceable: `agy` print mode reports
-  `permission_mode: always-proceed` even with `--mode plan --sandbox`, and the
-  prompt can only go through argv (Windows 32K command-line cap). Find a
-  read-only/no-tools mode or stdin input in agy docs; until then consider not
-  offering it for `live_analysis` (`ai_providers.AntigravityAdapter.call`).
-- [ ] Shared config writers: Swift `Config.update` takes no
-  `config.json.lock`, resets the file mode on atomic write and turns a malformed
-  file into `{}` on the next save (`capture/Sources/meetingcopilot/Config.swift:508-526,
-  550-566, 617`). Add the lock, keep the mode, refuse to save over an unparsable
-  file. Verify the C# `AppSettingsStore` against `docs/config.schema.json` (not in
-  this repository).
-- [ ] Phase 2: Swift summary/speaker naming read `ai.purposes.summary` and
-  `ai.purposes.speaker_names`; remove code defaults and the fixed fallback order
-  in `Summary/LLMBackend.swift`; pass the model to Claude CLI.
-- [ ] Phase 4: Windows launcher still looks only for Codex
-  (`scripts/windows/meeting-copilot.ps1:16-26`); installer pins speech models.
+- [x] Review round 2 (2026-10-20): file boundary enforced (Claude Code
+  `--restricted` + `--add-dir` per selected root, Read/Grep/Glob only, screenshot
+  read from a folder holding only a copy; Codex permissions profile via
+  `-c default_permissions` + `permissions.<id>.filesystem`, run from the realpath
+  binary), per-invocation ticket (choice + executable identity), discovery cache
+  keyed by binary and sign-in, hard deadlines and bounded buffers, structured
+  needs_choice/unavailable for translation and screenshots, per-purpose Check AI.
+- [x] Antigravity is listed with its models but unavailable for every purpose
+  (`permission_mode: always-proceed`, read-only/no-tools not enforceable). Reopen
+  when agy offers a read-only/no-tools mode and stdin input
+  (`ai_providers.AntigravityAdapter`, `capture/.../Summary/AIChoice.swift`).
+- [x] Shared config writers (Python `ai_providers._file_lock`/`AISettings`,
+  Swift `ConfigFile.swift`): `flock` on `config.json.lock` across
+  read-modify-replace, malformed file blocks saves, 0600 temp + fsync + rename.
+  Cross-process test in `test_ai_providers.py` (Python writer vs native-style
+  `flock` writer).
+- [x] Phase 2 (2026-10-20): Swift summary and speaker naming read
+  `ai.purposes.summary` / `ai.purposes.speaker_names`; no model defaults, no
+  fallback order; `--model` (+ effort/speed when chosen) passed to Codex, Claude
+  and Ollama; one-time migration from `summary.backend/model/openai_model/
+  ollama_model` only when present in the file (provider + model, effort and speed
+  left for the person).
+- [ ] Codex 0.153.2 (Homebrew) ignores the `:slash_tmp` deny and lets writes land
+  under the temp dir when cwd is there; reads outside the roots are denied. Our
+  workdir lives in `~/.cache/meeting-copilot/ai-workdir`, so not reachable today.
+  Re-verify on every new Codex version with `codex sandbox -P`.
+- [ ] The Claude Code boundary relies on `--restricted` (Claude Code 2.1.304).
+  Add a version check or a Check AI escape probe so an older CLI without it is
+  reported unavailable rather than run unrestricted.
+- [ ] Swift summary cards in `capture/Sources/meetingcopilot/UI/SetupForm.swift`
+  now only write legacy `summary.backend` keys that feed the migration. Decide
+  whether to remove them and point to Getting started.
+- [ ] Anthropic and OpenAI API-key summary backends no longer run (phase 2
+  removed them with the fixed fallback order). Re-add as discovered providers if
+  users need them.
+- [ ] Check AI for `summary` and `speaker_names` probes through the Python
+  adapters, not the Swift invocation in `Summary/LLMBackend.swift`; the argv
+  can drift. Add a shared argv fixture both sides test against.
+- [ ] Phase 3 (speech-to-text): `capture/Sources/meetingcopilot/Config.swift:63`
+  defaults `transcription.engine` to `"auto"` and `:76` defaults the cloud
+  provider to `"assemblyai"`. `Transcription/OpenAIEngine.swift:46` now refuses
+  to run until `transcription.openai.model` is set (built-in model removed in
+  round 2; confirm the UI asks for it).
+- [ ] Phase 4 (Windows): `scripts/windows/install.ps1:67-68` writes a new
+  `config.json` with pinned engine/backends and no lock or ACL; `:80-85` does a
+  read-modify-write without `config.json.lock`; `:96-98` pins speech models.
+  `scripts/windows/meeting-copilot.ps1:16-26` looks only for Codex. C#
+  `AppSettingsStore` (not in this repository) must take `config.json.lock` with
+  `FileStream.Lock(0,1)` (same byte as Python `msvcrt.locking`), refuse
+  malformed files and restrict the file ACL to the user (the Windows equivalent of
+  0600, open on the Python side too).
 - [ ] Same rule for speech-to-text in `capture/` (Parakeet, AssemblyAI, OpenAI
   engines and their models): engine and model are user choices, extensible to
   future engines (for example Ollama-hosted), no fixed model in code.

@@ -426,10 +426,11 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(saved["ai"]["purposes"]["live_analysis"], fixture["ai"]["purposes"]["live_analysis"])
         schema = json.loads((WEB.parents[1] / "docs/config.schema.json").read_text())
         allowed = set(schema["properties"]["ai"]["properties"]["purposes"]["propertyNames"]["enum"])
-        required = schema["$defs"]["choice"]["required"]
+        keys = set(schema["$defs"]["choice"]["properties"])
+        self.assertEqual(keys, set(ai_providers.CHOICE_KEYS))
         for purpose, choice in saved["ai"]["purposes"].items():
             self.assertIn(purpose, allowed)
-            self.assertEqual(sorted(choice), sorted(required))
+            self.assertEqual(set(choice), keys)  # Python always writes a complete choice
         self.assertEqual(set(ai_providers.PURPOSES), allowed)
 
     def test_malformed_config_is_never_overwritten(self):
