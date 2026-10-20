@@ -466,6 +466,29 @@ class AntigravityAdapter:
 class OllamaAdapter:
     name, label, reads_files = "ollama", "Ollama", False
     SESSIONS, HISTORY = 8, 40  # conversations kept in memory, messages kept per conversation
+    REPLY_TOKENS = 4096  # context kept free for the answer (same as Swift LLMBackend.ollamaReplyTokens)
+
+    @staticmethod
+    def context_length(shown):
+        """model_info["<general.architecture>.context_length"] from /api/show, or None."""
+        info = shown.get("model_info") if isinstance(shown.get("model_info"), dict) else {}
+        length = info.get(f"{info.get('general.architecture')}.context_length")
+        return length if isinstance(length, int) and not isinstance(length, bool) and length > 0 else None
+
+    @classmethod
+    def fit(cls, history, prompt, context):
+        """(history to send, num_ctx): oldest turns dropped until the request fits, never cut mid-message.
+        ponytail: one character counts as at least one token (true for Latin/Cyrillic); images not
+        counted; use the tokenizer if CJK or image-heavy requests get cut."""
+        budget = context - cls.REPLY_TOKENS
+        if len(prompt) > budget:
+            raise RuntimeError(f"The text is longer than this Ollama model's context of {context} tokens. "
+                               "Choose a model with a longer context in Getting started.")
+        history = list(history)
+        while history and len(prompt) + sum(len(str(m.get("content", ""))) for m in history) > budget:
+            history = history[2:]  # one user/assistant turn at a time, oldest first
+        used = len(prompt) + sum(len(str(m.get("content", ""))) for m in history)
+        return history, min(context, used + cls.REPLY_TOKENS)
 
     def __init__(self, host=None):
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://127.0.0.1:11434").rstrip("/")
@@ -507,6 +530,14 @@ class OllamaAdapter:
             thinking = shown.get("thinking") if isinstance(shown.get("thinking"), dict) else {}
             values, capabilities = thinking.get("values"), shown.get("capabilities")
             image = ("vision" in capabilities) if isinstance(capabilities, list) else None
+            if isinstance(capabilities, list) and "completion" not in capabilities:
+                models.append(_model(name, name, image=image,
+                                     problem="this model does not generate text (no completion capability)"))
+                continue
+            if self.context_length(shown) is None:
+                models.append(_model(name, name, image=image,
+                                     problem="Ollama does not report this model's context length"))
+                continue
             advertised = "thinking" in shown or (isinstance(capabilities, list) and "thinking" in capabilities)
             if advertised and not (isinstance(values, list) and values):
                 models.append(_model(name, name, image=image,
@@ -523,9 +554,18 @@ class OllamaAdapter:
                                                "Claude Code for live analysis, or disconnect the repositories.")
         with self.lock:
             history = list(self.sessions.get(resume, ())) if resume else []
+        try:
+            context = self.context_length(self._request("/api/show", {"model": choice["model"]}, timeout=10))
+        except (OSError, ValueError) as error:
+            raise RuntimeError(ai_failure(f"connection failed: {error}")) from None
+        if context is None:
+            raise AIChoiceError("unavailable", f"Ollama does not report the context length of {choice['model']}. "
+                                               "Choose another model in Getting started.")
+        history, num_ctx = self.fit(history, prompt, context)
         message = {"role": "user", "content": prompt}
         sent = {**message, "images": [base64.b64encode(Path(image).read_bytes()).decode("ascii")]} if image else message
-        payload = {"model": choice["model"], "messages": history + [sent], "stream": False}
+        payload = {"model": choice["model"], "messages": history + [sent], "stream": False,
+                   "options": {"num_ctx": num_ctx}}
         if choice["effort"]:
             payload["think"] = {"true": True, "false": False}.get(choice["effort"], choice["effort"])
         try:

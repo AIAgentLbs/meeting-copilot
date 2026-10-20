@@ -51,7 +51,7 @@ enum Summarizer {
         do {
             log("summarizing with \(backend.name) (\(backend.model))")
             let reply = try await produce(
-                body: body, header: header, settings: settings, backend: backend
+                body: body, header: header, language: settings.language, backend: backend
             )
             let text = reply.text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { throw LLMError.emptyResponse(backend.name) }
@@ -126,16 +126,17 @@ enum Summarizer {
     Below are consecutive notes on parts of a single meeting. Combine them into one note.
     """
 
-    private static func produce(
+    static func produce(
         body: String,
         header: String,
-        settings: Config.SummarySettings,
+        language: String?,
         backend: LLMBackend
     ) async throws -> LLMReply {
-        let system = systemPrompt(language: settings.language)
+        let system = systemPrompt(language: language)
         let limit = chunkLimit(
             backendLimit: try await backend.inputLimit(),
-            overhead: system.count + header.count + chunkInstructions.count + summaryInstructions.count + 64)
+            overhead: system.count + header.count + chunkInstructions.count + mergeInstructions.count
+                + summaryInstructions.count + 64)
         if body.count <= limit {
             return try await backend.call(
                 system, "\(header)\n\(summaryInstructions)\n\n---\n\(body)"
@@ -150,11 +151,45 @@ enum Summarizer {
                 "\(header)Part \(index + 1) of \(chunks.count).\n\(chunkInstructions)\n\n---\n\(chunk)"
             ).text)
         }
+        // Notes that do not fit one merge are combined in batches that do,
+        // round after round, until they fit (or no batch can shrink them, and
+        // the backend's own "too long" error says so).
+        while notes.joined(separator: noteSeparator).count > limit {
+            let batches = mergeBatches(notes, limit: limit)
+            guard batches.count < notes.count else { break }
+            var combined: [String] = []
+            for batch in batches {
+                combined.append(batch.count == 1 ? batch[0] : try await backend.call(
+                    system,
+                    "\(header)\n\(mergeInstructions)\n\n---\n" + batch.joined(separator: noteSeparator)
+                ).text)
+            }
+            notes = combined
+        }
         return try await backend.call(
             system,
             "\(header)\n\(mergeInstructions)\n\(summaryInstructions)\n\n---\n"
-                + notes.joined(separator: "\n\n---\n\n")
+                + notes.joined(separator: noteSeparator)
         )
+    }
+
+    private static let noteSeparator = "\n\n---\n\n"
+
+    /// Consecutive notes grouped so each group's text stays within `limit`;
+    /// a note longer than that is a group of its own.
+    static func mergeBatches(_ notes: [String], limit: Int) -> [[String]] {
+        var batches: [[String]] = []
+        var current: [String] = []
+        for note in notes {
+            let size = (current + [note]).joined(separator: noteSeparator).count
+            if !current.isEmpty && size > limit {
+                batches.append(current)
+                current = []
+            }
+            current.append(note)
+        }
+        if !current.isEmpty { batches.append(current) }
+        return batches
     }
 
     /// The transcript as the summarizer sees it: one speaker-tagged line per

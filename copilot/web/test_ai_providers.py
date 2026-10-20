@@ -270,6 +270,9 @@ class BinaryLookupTests(unittest.TestCase):
             self.assertIn(os.path.expanduser(place), candidates)
 
 
+CTX = {"model_info": {"general.architecture": "a1", "a1.context_length": 8192}}
+
+
 class OllamaTests(unittest.TestCase):
     def test_not_running_is_unavailable(self):
         found = OllamaAdapter("http://127.0.0.1:9").discover()
@@ -301,8 +304,8 @@ class OllamaTests(unittest.TestCase):
             httpd.shutdown(); httpd.server_close()
 
     def test_thinking_vision_and_isolated_failures(self):
-        show = {"local-a": {"thinking": {"values": ["t1", "t2"]}, "capabilities": ["completion", "vision"]},
-                "local-b": {"thinking": {"values": [False]}, "capabilities": ["completion"]}}
+        show = {"local-a": {**CTX, "thinking": {"values": ["t1", "t2"]}, "capabilities": ["completion", "vision"]},
+                "local-b": {**CTX, "thinking": {"values": [False]}, "capabilities": ["completion"]}}
         with self.server(show) as (adapter, _):
             found = adapter.discover()
         a, b, c = found["models"]
@@ -311,9 +314,9 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(found["state"], "available")
 
     def test_thinking_without_levels_is_unknown_not_none(self):
-        show = {"local-a": {"capabilities": ["completion", "thinking"]},
-                "local-b": {"thinking": {}, "capabilities": ["completion"]},
-                "local-c": {"capabilities": ["completion"]}}
+        show = {"local-a": {**CTX, "capabilities": ["completion", "thinking"]},
+                "local-b": {**CTX, "thinking": {}, "capabilities": ["completion"]},
+                "local-c": {**CTX, "capabilities": ["completion"]}}
         with self.server(show) as (adapter, _):
             a, b, c = adapter.discover()["models"]
         self.assertIn("levels", a["problem"])
@@ -322,6 +325,36 @@ class OllamaTests(unittest.TestCase):
         state, _ = ai_providers.choice_problem({"state": "available", "models": [a]},
                                                {"provider": "ollama", "model": "local-a", "effort": "", "speed": ""})
         self.assertEqual(state, "unavailable")
+
+    def test_embedding_only_or_unknown_context_is_not_offered(self):
+        show = {"local-a": {**CTX, "capabilities": ["embedding"]},
+                "local-b": {"capabilities": ["completion"]},
+                "local-c": {**CTX, "capabilities": ["completion"]}}
+        with self.server(show) as (adapter, _):
+            a, b, c = adapter.discover()["models"]
+        self.assertIn("completion", a["problem"])
+        self.assertIn("context length", b["problem"])
+        self.assertEqual(c["problem"], "")
+        for model in (a, b):
+            state, _ = ai_providers.choice_problem({"state": "available", "models": [model]},
+                                                   {"provider": "ollama", "model": model["id"], "effort": "", "speed": ""})
+            self.assertEqual(state, "unavailable")
+
+    def test_context_is_sized_and_history_trimmed_never_cut(self):
+        small = {"model_info": {"general.architecture": "a1", "a1.context_length": 4096 + 100}}
+        choice = {"provider": "ollama", "model": "local-a", "effort": "", "speed": ""}
+        with self.server({"local-a": small, "local-b": {"capabilities": ["completion"]}}) as (adapter, chats):
+            first = adapter.call(choice, "x" * 60, timeout=5, keep_session=True)
+            adapter.call(choice, "y" * 60, timeout=5, resume=first.session, keep_session=True)
+            with self.assertRaises(RuntimeError):
+                adapter.call(choice, "z" * 101, timeout=5)
+            with self.assertRaises(AIChoiceError):
+                adapter.call({**choice, "model": "local-b"}, "p", timeout=5)
+        self.assertEqual(chats[0]["options"]["num_ctx"], 60 + 4096)
+        # the earlier turn no longer fits next to the new prompt: dropped whole, not truncated
+        self.assertEqual([m["content"] for m in chats[1]["messages"]], ["y" * 60])
+        self.assertLessEqual(chats[1]["options"]["num_ctx"], 4096 + 100)
+        self.assertEqual(len(chats), 2)
 
     def test_one_budget_for_all_model_probes(self):
         show = {name: {"capabilities": ["completion"]} for name in ("local-a", "local-b", "local-c")}
@@ -333,7 +366,7 @@ class OllamaTests(unittest.TestCase):
 
     def test_chat_keeps_its_own_history_and_reads_no_files(self):
         choice = {"provider": "ollama", "model": "local-a", "effort": "t2", "speed": ""}
-        with self.server({}) as (adapter, chats):
+        with self.server({"local-a": CTX}) as (adapter, chats):
             first = adapter.call(choice, "one", timeout=5, keep_session=True)
             second = adapter.call(choice, "two", timeout=5, resume=first.session, keep_session=True)
             fresh = adapter.call(choice, "three", timeout=5)
@@ -584,6 +617,31 @@ class SessionOwnershipTests(unittest.TestCase):
         self.assertIn('"/repos/r"="read"', profile)
         self.assertNotIn(".config/meeting-copilot", profile)
         self.assertIn("<session_rules>", prompt)
+
+
+class GitMetadataTests(unittest.TestCase):
+    def test_the_app_supplies_head_and_working_tree_state(self):
+        import server, subprocess as sp
+        with tempfile.TemporaryDirectory() as tmp, chosen_codex(tmp, server):
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+            for args in (["init", "-q"], ["-c", "user.name=t", "-c", "user.email=t@e", "commit", "-q",
+                                          "--allow-empty", "-m", "x"]):
+                sp.run(["git", "-C", str(repo), *args], check=True, env=env)
+            head = sp.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True,
+                          env=env).stdout.strip()
+            (repo / "dirty.txt").write_text("x")
+            session = server.CodexSession(Path(tmp) / "s.json")
+            seen = []
+            with patch.object(session, "_run_ai", side_effect=lambda prompt, planning=False: seen.append(prompt) or "a"), \
+                 patch.object(server.GOOGLE_CONTEXT, "augment", return_value=""), \
+                 patch.object(server.LOCAL_CONTEXT, "augment", return_value=""):
+                session.ask("q", "", "m", "", {"repositories": [{"name": "r", "path": str(repo)}]})
+        self.assertIn("<git_metadata>", seen[-1])
+        self.assertIn(f"HEAD: {head}", seen[-1])
+        self.assertIn("?? dirty.txt", seen[-1])
+        self.assertEqual(server.git_metadata([]), "")
 
 
 class StructuredStateTests(unittest.TestCase):

@@ -57,7 +57,9 @@ class AISettingsAPITests(unittest.TestCase):
     def test_panel_shows_the_check_snapshot_for_the_saved_choice(self):
         source = (Path(server.__file__).parent / "getting-started.js").read_text(encoding="utf-8")
         self.assertIn("checked = (aiState.check?.purposes || {})[purpose]", source)
-        self.assertIn('await api("/api/ai/choice", {purpose, choice: draft}); await loadAI();', source)
+        self.assertIn('await api("/api/ai/choice", {purpose, choice: draft}); await loadAI(purpose);', source)
+        # saving one purpose keeps the unsaved drafts of the others
+        self.assertIn("if (saved) delete drafts[saved]; else drafts = {};", source)
         self.assertIn("if (aiState.check) current.ai = aiState.check;", source)
 
 

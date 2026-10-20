@@ -261,6 +261,56 @@ struct AIChoiceTests {
         #expect(Summarizer.chunkLimit(backendLimit: 50, overhead: 100) == usual)
     }
 
+    @Test("Every summary request fits the backend, the final merge included")
+    func mergeIsReducedUntilItFits() async throws {
+        final class Box: @unchecked Sendable {
+            let lock = NSLock()
+            var sizes: [Int] = []
+            func add(_ size: Int) { lock.lock(); sizes.append(size); lock.unlock() }
+        }
+        let box = Box()
+        let budget = 6000
+        var backend = LLMBackend(name: "fake", model: "m") { system, prompt in
+            box.add(system.count + prompt.count)
+            return LLMReply(text: String(repeating: "n", count: 1500), model: "m")
+        }
+        backend.inputLimit = { budget }
+        let body = Array(repeating: String(repeating: "w", count: 400), count: 120)
+            .joined(separator: "\n")
+        _ = try await Summarizer.produce(body: body, header: "", language: nil, backend: backend)
+        #expect(box.sizes.count > 1)
+        #expect(box.sizes.allSatisfy { $0 <= budget }, "a request exceeded the budget: \(box.sizes)")
+
+        #expect(Summarizer.mergeBatches(["a", "b", "c"], limit: 1) == [["a"], ["b"], ["c"]])
+        #expect(Summarizer.mergeBatches(["aa", "bb", "cc"], limit: 100) == [["aa", "bb", "cc"]])
+    }
+
+    @Test("The newest installed CLI wins, as in the web server; the override comes first")
+    func newestCLIWins() throws {
+        let dir = try scratch()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func tool(_ name: String, _ version: String) throws -> String {
+            let url = dir.appendingPathComponent(name)
+            try "#!/bin/sh\necho \"\(version)\"\n".write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+            return url.path
+        }
+        let old = try tool("old", "codex-cli 0.153.2")
+        let new = try tool("new", "codex-cli 0.159.2")
+        let mute = try tool("mute", "no version")
+        let ask: (String) -> String? = { path in
+            let run = try? Subprocess.runSync(executable: path, arguments: ["--version"], timeout: 5)
+            return run.map { String(decoding: $0.stdout, as: UTF8.self) }
+        }
+        #expect(Tooling.newest([old, new], version: ask) == new)
+        #expect(Tooling.newest([new, old], version: ask) == new)
+        #expect(Tooling.newest([mute, old], version: ask) == old)
+        #expect(Tooling.newest([dir.appendingPathComponent("absent").path, mute], version: ask) == mute)
+        #expect(Tooling.newest([], version: ask) == nil)
+        #expect(Tooling.versionNumbers("codex-cli 0.159.2") == [0, 159, 2])
+        #expect(Tooling.overrideVariable("codex") == "MEETING_COPILOT_CODEX")
+    }
+
     @Test("The app and the web server look for CLIs in the same places")
     func toolLocationsMatchTheWebServer() throws {
         let file = URL(fileURLWithPath: #filePath)

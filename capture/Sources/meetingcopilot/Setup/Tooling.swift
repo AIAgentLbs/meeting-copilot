@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 /// Finding the command-line tools meetingcopilot borrows — `claude`, `codex`, `ollama`
@@ -53,7 +54,7 @@ enum Tooling {
         "ollama": ["~/.local/bin/ollama", "/opt/homebrew/bin/ollama", "/usr/local/bin/ollama"],
     ]
 
-    private static func locations(for name: String) -> [String] {
+    fileprivate static func locations(for name: String) -> [String] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         return (listedLocations[name] ?? []).map {
             $0.hasPrefix("~/") ? home + $0.dropFirst() : $0
@@ -100,28 +101,52 @@ enum Tooling {
     /// dictionaries would spread through the summarizer for nothing.
     private final class Cache: @unchecked Sendable {
         private let lock = NSLock()
-        private var paths: [String: String?] = [:]
+        /// The pick, with the state of every candidate file it was made from:
+        /// an update, reinstall or removal makes it pick again (as the web
+        /// server's `_Binary` does).
+        private var paths: [String: (signature: String, path: String?)] = [:]
+        private var shellPaths: [String: String?] = [:]
         private var versions: [String: String?] = [:]
 
         func clear() {
             lock.lock()
             defer { lock.unlock() }
             paths = [:]
+            shellPaths = [:]
             versions = [:]
         }
 
         func path(for name: String) -> String? {
+            let environment = ProcessInfo.processInfo.environment
+            if let override = environment[Tooling.overrideVariable(name)], !override.isEmpty {
+                return override
+            }
             lock.lock()
-            if let known = paths[name] {
+            let fromShell: String?
+            if let known = shellPaths[name] {
+                fromShell = known
                 lock.unlock()
-                return known
+            } else {
+                lock.unlock()
+                fromShell = Tooling.fromLoginShell(name)
+                lock.lock()
+                shellPaths[name] = fromShell
+                lock.unlock()
+            }
+            let candidates = Tooling.locations(for: name) + [fromShell].compactMap { $0 }
+            let signature = candidates.map(Tooling.stamp).joined(separator: "|")
+            lock.lock()
+            if let known = paths[name], known.signature == signature {
+                lock.unlock()
+                return known.path
             }
             lock.unlock()
 
-            let found = Tooling.search(for: name)
+            let found = Tooling.newest(candidates) { Tooling.askVersion(of: $0) }
 
             lock.lock()
-            paths[name] = found
+            paths[name] = (signature, found)
+            versions[name] = nil
             lock.unlock()
             return found
         }
@@ -145,13 +170,50 @@ enum Tooling {
 
     // MARK: - the search itself
 
-    private static func search(for name: String) -> String? {
-        let fm = FileManager.default
-        if let found = locations(for: name)
-            .first(where: { fm.isExecutableFile(atPath: $0) }) {
-            return found
+    /// `MEETING_COPILOT_CODEX` and friends: the same override the web server
+    /// honours, checked before any search.
+    static func overrideVariable(_ name: String) -> String {
+        "MEETING_COPILOT_" + name.uppercased()
+    }
+
+    /// One rule for the app and the web server (`first_run.pick_codex`): of the
+    /// executable candidates, the one whose `--version` is highest; the first
+    /// one when none answers with a version.
+    static func newest(_ candidates: [String], version: (String) -> String?) -> String? {
+        var seen = Set<String>()
+        let existing = candidates.filter {
+            FileManager.default.isExecutableFile(atPath: $0) && seen.insert(realPath($0)).inserted
         }
-        return fromLoginShell(name)
+        var best = existing.first
+        var bestVersion: [Int] = []
+        for candidate in existing {
+            let parsed = versionNumbers(version(candidate))
+            if parsed.lexicographicallyPrecedes(bestVersion) || parsed == bestVersion { continue }
+            best = candidate
+            bestVersion = parsed
+        }
+        return best
+    }
+
+    /// The first dotted number in a `--version` line, e.g. "codex-cli 0.159.2" → [0, 159, 2].
+    static func versionNumbers(_ line: String?) -> [Int] {
+        guard let line, let range = line.range(of: #"\d+(\.\d+)+"#, options: .regularExpression)
+        else { return [] }
+        return line[range].split(separator: ".").compactMap { Int($0) }
+    }
+
+    private static func realPath(_ path: String) -> String {
+        guard let pointer = realpath(path, nil) else { return path }
+        defer { free(pointer) }
+        return String(cString: pointer)
+    }
+
+    /// Resolved path, modification time and size: what changes on an update.
+    fileprivate static func stamp(_ path: String) -> String {
+        let real = realPath(path)
+        guard let info = try? FileManager.default.attributesOfItem(atPath: real) else { return "" }
+        let modified = (info[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(real):\(modified):\(info[.size] as? Int ?? 0)"
     }
 
     /// Ask the user's login shell where the tool is, because that shell is the
@@ -162,7 +224,7 @@ enum Tooling {
     ///
     /// Failures here are silent and expected: a shell with a prompt that waits
     /// for something, a shell that isn't zsh or bash, no shell at all.
-    private static func fromLoginShell(_ name: String) -> String? {
+    fileprivate static func fromLoginShell(_ name: String) -> String? {
         let shell: String = {
             if let fromEnvironment = ProcessInfo.processInfo.environment["SHELL"],
                !fromEnvironment.isEmpty {
@@ -192,7 +254,7 @@ enum Tooling {
 
     /// Run it. Not "does the file exist" — the whole point of this pass is the
     /// machine where the file exists and running it from here doesn't work.
-    private static func askVersion(of path: String) -> String? {
+    fileprivate static func askVersion(of path: String) -> String? {
         guard let output = run(path, ["--version"], timeout: 20) else { return nil }
         let line = output
             .split(separator: "\n")

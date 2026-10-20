@@ -74,6 +74,16 @@ hashes, Pages removed, and the Windows installer relocated to
   locations come from one list, `copilot/web/tool_locations.json`, mirrored by
   `Tooling.listedLocations` (equality test); Ollama thinking without levels is
   unavailable; the panel shows the check snapshot of the saved choice.
+- [x] Review round 4 (2026-10-20): live analysis gets HEAD, status and diff stat
+  of each selected repository from the app (`server.git_metadata`), since git
+  cannot start inside the read-only Codex profile; the profile is not widened.
+  Swift `Tooling` picks the newest `--version` with the `MEETING_COPILOT_<TOOL>`
+  override first and re-picks when a candidate file changes (same rule as
+  `first_run.pick_codex`). Python Ollama sends `num_ctx`, drops whole old turns
+  of chat history to fit and rejects a prompt that cannot fit; models without
+  `completion` or without a reported context length are unavailable. Summary
+  merges are reduced in batches until they fit. Saving one purpose keeps the
+  other purposes' drafts.
 - [ ] Bring back the Anthropic and OpenAI API-key summary backends as discovered
   providers (owner decision 2026-10-20: left out of phase 2). They need an adapter
   in `copilot/web/ai_providers.py` and `capture/.../Summary/LLMBackend.swift` that
@@ -81,7 +91,8 @@ hashes, Pages removed, and the Windows installer relocated to
   fixed model; `SummaryKeyProbe` in `Setup/SetupSelection.swift` already checks
   keys.
 - [ ] Ollama context sizing counts one character as at least one token
-  (`LLMBackend.ollamaInputLimit`) and keeps a fixed 4096-token reply allowance.
+  (`LLMBackend.ollamaInputLimit`, Python `OllamaAdapter.fit`; images are not
+  counted) and keeps a fixed 4096-token reply allowance.
   Use the tokenizer (or `prompt_eval_count`) if CJK transcripts get cut or long
   answers are truncated.
 - [ ] Check AI for `summary` and `speaker_names` probes through the Python
