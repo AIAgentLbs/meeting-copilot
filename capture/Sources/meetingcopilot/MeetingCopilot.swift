@@ -987,15 +987,15 @@ final class AppController {
     private func resumeAfterConfigChange() {
         guard automaticFeaturesStarted else { return }
         let modified = Self.configModified()
-        var becameReady = false
-        if Date().timeIntervalSince(speechCheckedAt) >= 10 {
-            speechCheckedAt = Date()
-            let ready: Bool
-            if case .ready = Config.speechRecognition() { ready = true } else { ready = false }
-            becameReady = ready && !speechReady
-            speechReady = ready
-        }
-        guard modified != configChangedAt || becameReady else { return }
+        let changed = modified != configChangedAt
+        // A changed choice restarts the readiness watch from its own state.
+        guard changed || Date().timeIntervalSince(speechCheckedAt) >= 10 else { return }
+        speechCheckedAt = Date()
+        let ready: Bool
+        if case .ready = Config.speechRecognition() { ready = true } else { ready = false }
+        let becameReady = ready && !speechReady
+        speechReady = ready
+        guard changed || becameReady else { return }
         configChangedAt = modified
         Task { [transcription, root] in await transcription.resumePending(root: root) }
     }

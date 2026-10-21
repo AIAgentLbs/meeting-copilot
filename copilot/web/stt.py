@@ -406,7 +406,8 @@ class STTService:
         # ponytail: no timeout, a long meeting can take a long time to transcribe
         try:
             run = self.runner(args, capture_output=True, text=True)
-            code, stderr = run.returncode, _tail(run.stderr)
+            # `process` explains a refusal or failure on stdout, often with stderr empty.
+            code, stderr = run.returncode, _tail(run.stderr) or ("" if run.returncode == 0 else _tail(run.stdout))
         except OSError as error:
             code, stderr = -1, f"cannot run the recorder ({self.binary}): {error.strerror or error}"
         with self.lock:

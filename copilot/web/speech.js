@@ -127,10 +127,11 @@
       box.append(save);
     }
     if (!engine.available) return box;
+    // A failed listing (bad key, network) is told apart from an empty list.
+    if (engine.listing?.error) box.append(node("p", engine.listing.error));
     let facts;
     if (engine.model_entry === "free_text") {
       facts = engine.model_template || {};
-      if (engine.listing?.error) box.append(node("p", engine.listing.error));
       box.append(field(word("Model id", "Идентификатор модели"), draft.model, value => {draft.model = value;}, "text",
         () => choose({language: draft.language || implied(facts)})));
     } else {
@@ -215,7 +216,7 @@
     if ([...(state.downloads || []), ...(state.retranscribe || [])].some(item => item.state === "running")) poll();
     // A migrated choice may lack only the language the model implies; its
     // picker is hidden for such a model, so complete it here.
-    const missing = draft.engine && draft.model && !draft.language && implied(factsOf(draft.engine, draft.model));
+    const missing = draft.engine && draft.model && !draft.language && implied(factsOf(engineOf(draft.engine), draft.model));
     if (missing) await choose({language: missing});
   }
   function poll() {
