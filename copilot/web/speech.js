@@ -69,17 +69,16 @@
   }
   // The recorder's name for a model (`name_parts`), composed in the page's
   // language the way the Mac windows compose it. Language names come from
-  // Intl.DisplayNames. The picker leaves the languages to describe().
-  function modelName(parts, languages = true) {
+  // Intl.DisplayNames. The picker leaves the count to describe(), not the one language.
+  function modelName(parts, count = true) {
     if (!parts?.base) return "";
     const name = parts.variant ? `${parts.base}, ${parts.variant}` : parts.base;
-    if (!languages) return name;
     if (parts.language) {
       let spoken = parts.language;
       try {spoken = new Intl.DisplayNames([document.documentElement.lang || "en"], {type: "language"}).of(parts.language) || spoken;} catch {}
       return `${name} (${spoken})`;
     }
-    return parts.language_count > 1 ? `${name} (${word(`${parts.language_count} languages`, `языков: ${parts.language_count}`)})` : name;
+    return count && parts.language_count > 1 ? `${name} (${word(`${parts.language_count} languages`, `языков: ${parts.language_count}`)})` : name;
   }
   function describe(model) {
     const parts = (model.best_for || []).map(tag => word(...(tags[tag] || [tag, tag])));
