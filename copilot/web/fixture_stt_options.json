@@ -1,0 +1,260 @@
+{
+  "contract": "meetontrack.stt-options/1",
+  "generated_at": "2026-10-21T10:00:00Z",
+  "platform": {
+    "os": "macos",
+    "arch": "arm64",
+    "local_models": true
+  },
+  "choice": {
+    "stored": null,
+    "state": "needs_choice",
+    "reason": "choose speech recognition in Getting started"
+  },
+  "engines": [
+    {
+      "id": "fluidaudio",
+      "label": "On this Mac (FluidAudio)",
+      "kind": "local",
+      "available": true,
+      "reason": "",
+      "needs_key": false,
+      "has_key": null,
+      "model_entry": "list",
+      "listing": {
+        "source": "fixture",
+        "error": ""
+      },
+      "models": [
+        {
+          "id": "fixture-batch-model",
+          "label": "Fixture batch model",
+          "family": "parakeet-tdt",
+          "final": true,
+          "live": "sliding_window",
+          "live_latency_ms": 13000,
+          "live_reason": "",
+          "languages": [
+            "de",
+            "en",
+            "ru"
+          ],
+          "language_entry": "list",
+          "auto_detect": true,
+          "speakers": false,
+          "size_bytes": 480000000,
+          "size_is_estimate": false,
+          "downloaded": true,
+          "on_disk_bytes": 482000000,
+          "available": true,
+          "reason": "",
+          "source_url": "https://huggingface.co/fixture/batch",
+          "benchmarks": [],
+          "download_bytes": 0,
+          "found_elsewhere": []
+        },
+        {
+          "id": "fixture-stream-model/latin/1120ms",
+          "label": "Fixture streaming model, latin, 1120 ms",
+          "family": "nemotron-multilingual",
+          "final": true,
+          "live": "streaming",
+          "live_latency_ms": 1120,
+          "live_reason": "",
+          "languages": [
+            "en-US",
+            "es-ES"
+          ],
+          "language_entry": "list",
+          "auto_detect": false,
+          "speakers": false,
+          "size_bytes": 700000000,
+          "size_is_estimate": false,
+          "downloaded": false,
+          "on_disk_bytes": null,
+          "available": true,
+          "reason": "",
+          "source_url": "https://huggingface.co/fixture/stream",
+          "benchmarks": [
+            {
+              "language": "en",
+              "metric": "WER",
+              "value": 8.89,
+              "test_set": "FLEURS en_us"
+            }
+          ],
+          "download_bytes": 700000000,
+          "found_elsewhere": []
+        },
+        {
+          "id": "fixture-unknown-languages",
+          "label": "Fixture model with unknown languages",
+          "family": "parakeet-tdt",
+          "final": true,
+          "live": "sliding_window",
+          "live_latency_ms": 13000,
+          "live_reason": "",
+          "languages": [],
+          "language_entry": "list",
+          "auto_detect": null,
+          "speakers": false,
+          "size_bytes": null,
+          "size_is_estimate": false,
+          "downloaded": false,
+          "on_disk_bytes": null,
+          "available": false,
+          "reason": "could not read the model's languages: offline and nothing cached",
+          "source_url": "https://huggingface.co/fixture/unknown",
+          "benchmarks": [],
+          "download_bytes": null,
+          "found_elsewhere": []
+        },
+        {
+          "id": "fixture-reused-model",
+          "label": "Fixture model found in an older folder",
+          "family": "parakeet-tdt",
+          "final": true,
+          "live": "sliding_window",
+          "live_latency_ms": 13000,
+          "live_reason": "",
+          "languages": [
+            "de"
+          ],
+          "language_entry": "list",
+          "auto_detect": false,
+          "speakers": false,
+          "size_bytes": 480000000,
+          "size_is_estimate": false,
+          "downloaded": false,
+          "on_disk_bytes": null,
+          "available": true,
+          "reason": "",
+          "source_url": "https://huggingface.co/fixture/batch",
+          "benchmarks": [],
+          "download_bytes": 40000000,
+          "found_elsewhere": [
+            {
+              "path": "/Users/fixture/Library/Application Support/FluidAudio/Models/fixture-batch-coreml",
+              "bytes": 440000000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "assemblyai",
+      "label": "AssemblyAI",
+      "kind": "cloud",
+      "available": true,
+      "reason": "",
+      "needs_key": true,
+      "has_key": true,
+      "model_entry": "free_text",
+      "listing": {
+        "source": "none",
+        "error": "AssemblyAI publishes no model list endpoint; type the model id and press Check"
+      },
+      "models": [],
+      "model_template": {
+        "id": "",
+        "label": "",
+        "family": "",
+        "final": true,
+        "live": "",
+        "live_latency_ms": null,
+        "live_reason": "no live transcript for this engine yet",
+        "languages": [],
+        "language_entry": "free_text",
+        "auto_detect": true,
+        "speakers": true,
+        "size_bytes": null,
+        "size_is_estimate": false,
+        "downloaded": null,
+        "on_disk_bytes": null,
+        "available": true,
+        "reason": "",
+        "source_url": "",
+        "benchmarks": [],
+        "download_bytes": null,
+        "found_elsewhere": []
+      }
+    },
+    {
+      "id": "openai",
+      "label": "OpenAI",
+      "kind": "cloud",
+      "available": true,
+      "reason": "",
+      "needs_key": true,
+      "has_key": true,
+      "model_entry": "list",
+      "listing": {
+        "source": "GET https://api.openai.com/v1/models",
+        "error": ""
+      },
+      "models": [
+        {
+          "id": "fixture-openai-a",
+          "label": "fixture-openai-a",
+          "family": "",
+          "final": null,
+          "live": "",
+          "live_latency_ms": null,
+          "live_reason": "no live transcript for this engine yet",
+          "languages": [],
+          "language_entry": "free_text",
+          "auto_detect": true,
+          "speakers": null,
+          "size_bytes": null,
+          "size_is_estimate": false,
+          "downloaded": null,
+          "on_disk_bytes": null,
+          "available": true,
+          "reason": "",
+          "source_url": "",
+          "benchmarks": [],
+          "download_bytes": null,
+          "found_elsewhere": []
+        },
+        {
+          "id": "fixture-openai-b",
+          "label": "fixture-openai-b",
+          "family": "",
+          "final": null,
+          "live": "",
+          "live_latency_ms": null,
+          "live_reason": "no live transcript for this engine yet",
+          "languages": [],
+          "language_entry": "free_text",
+          "auto_detect": true,
+          "speakers": null,
+          "size_bytes": null,
+          "size_is_estimate": false,
+          "downloaded": null,
+          "on_disk_bytes": null,
+          "available": true,
+          "reason": "",
+          "source_url": "",
+          "benchmarks": [],
+          "download_bytes": null,
+          "found_elsewhere": []
+        }
+      ]
+    },
+    {
+      "id": "fixture-no-key",
+      "label": "Fixture cloud without key",
+      "kind": "cloud",
+      "available": false,
+      "reason": "no API key",
+      "needs_key": true,
+      "has_key": false,
+      "model_entry": "list",
+      "listing": {
+        "source": "fixture",
+        "error": "no API key"
+      },
+      "models": []
+    }
+  ]
+}

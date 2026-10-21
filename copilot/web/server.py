@@ -42,6 +42,7 @@ from meet_participants import meet_active_speaker, meet_participant_labels
 from teams_participants import teams_one_to_one_name, teams_participant_labels
 from first_run import AIReadiness
 from ai_providers import AIChoiceError, AIService
+from stt import STTService
 from local_context import LocalContext
 
 
@@ -131,6 +132,7 @@ ENTITY_MENTIONS = (
 PROCESS_ENV = os.environ | ({"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"} if os.name != "nt" else {})
 AI = AIService(CAPTURE_CONFIG_FILE, PROCESS_ENV)  # lazy: no discovery until asked
 AI_READINESS = AIReadiness(AI)
+STT = STTService(CAPTURE_CONFIG_FILE, RECOGNITION_GUARD.binary, RECORDING_LOCATIONS.roots)  # lazy, like AI
 
 SELF_INTRO_PATTERNS = (
     re.compile(r"(?iu)\bменя\s+зовут\s+([^\s,.;:!?]{2,40})"),
@@ -1163,6 +1165,7 @@ class TranscriptState:
         self.meeting_link = ""
         self.recording_dir = ""
         self.recognition_progress_at = ""
+        self.status_reason = ""
         self._input_signature = None
         self.revision = 0
 
@@ -1188,6 +1191,7 @@ class TranscriptState:
                 "meeting_link": self.meeting_link,
                 "recording_dir": self.recording_dir,
                 "recognition_progress_at": self.recognition_progress_at,
+                "status_reason": self.status_reason,
                 "source": "meeting-copilot",
                 "status": self.status,
                 "started_at": self.started_at,
@@ -1319,6 +1323,7 @@ class TranscriptState:
                 self.updated_at = str(payload.get("updated_at") or "")
                 self.recording_dir = str(payload.get("recording_dir") or "")
                 self.recognition_progress_at = str(payload.get("recognition_progress_at") or "")
+                self.status_reason = str(payload.get("status_reason") or "")
                 self.latest_at = segments[-1]["timestamp"] if segments else ""
                 self.error = ""
                 self.revision += 1
@@ -2404,6 +2409,15 @@ class Handler(BaseHTTPRequestHandler):
             self._static("updates.js", "text/javascript; charset=utf-8")
         elif path == "/getting-started.js":
             self._static("getting-started.js", "text/javascript; charset=utf-8")
+        elif path == "/speech.js":
+            self._static("speech.js", "text/javascript; charset=utf-8")
+        elif path == "/api/stt":
+            self._json({"ok": True, "choice": STT.status(), "downloads": STT.downloads(), "retranscribe": STT.jobs(),
+                        "check": STT.last_check()})
+        elif path == "/api/stt/options":
+            self._json(STT.options(refresh=parse_qs(urlparse(self.path).query).get("refresh", [""])[0] == "1"))
+        elif path == "/api/stt/download":
+            self._json({"ok": True, "downloads": STT.downloads()})
         elif path == "/api/getting-started":
             try:
                 config = json.loads(CAPTURE_CONFIG_FILE.read_text())
@@ -2523,6 +2537,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "ai": AI_READINESS.check()})
             elif path == "/api/ai/choice":
                 self._json({"ok": True, "status": AI.save(payload.get("choice"))})
+            elif path == "/api/stt/choice":
+                self._json({"ok": True, "status": STT.save_choice(payload.get("choice"))})
+            elif path == "/api/stt/download":
+                self._json({"ok": True, "job": STT.start_download(payload.get("model"))})
+            elif path == "/api/stt/check":
+                self._json({"ok": True, "check": STT.check(payload.get("choice"))})
+            elif path == "/api/stt/key":
+                STT.save_key(str(payload.get("engine") or ""), payload.get("key"))
+                self._json({"ok": True})
+            elif path == "/api/stt/retranscribe":
+                self._json({"ok": True, "job": STT.retranscribe(payload.get("session"), payload.get("choice"))})
             elif path == "/api/getting-started/open-recorder":
                 binary = RECOGNITION_GUARD.binary
                 if not binary.is_file():

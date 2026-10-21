@@ -1,0 +1,15 @@
+{
+  "description": "Shared speech recognition vocabulary. Swift (STTChoice, STTCatalog) and Python (stt.py) both test against this file; see docs/specs/2026-10-20-no-hardcoded-models.md, Phase 3.",
+  "options_contract": "meetontrack.stt-options/1",
+  "check_contract": "meetontrack.stt-check/1",
+  "config_path": ["stt", "choice"],
+  "choice_keys": ["engine", "language", "model"],
+  "engines": ["assemblyai", "fluidaudio", "openai"],
+  "states": ["needs_choice", "ready", "unavailable"],
+  "live_modes": ["", "sliding_window", "streaming"],
+  "model_entry": ["free_text", "list"],
+  "auto_language": "auto",
+  "deferred_key": "transcription_deferred",
+  "deferred_kinds": ["needs_choice", "network", "unavailable"],
+  "download_events": ["done", "error", "finished", "progress"]
+}

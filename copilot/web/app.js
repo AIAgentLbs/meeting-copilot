@@ -220,7 +220,7 @@ const translations = {
     "status.live": "Расшифровка идёт",
     "status.finished": "Созвон завершён · контекст сохранён",
     "status.model_loading": "Загрузка модели",
-    "status.model_missing": "Нет live-модели",
+    "status.unavailable": "Live-расшифровка выключена",
     "status.overloaded": "Live-расшифровка перегружена",
     "status.no_fresh": "Нет свежих реплик",
     "transcript.overloaded_meta": "Расшифровка отстаёт. Последняя реплика: {age}",
@@ -448,7 +448,7 @@ const translations = {
     "status.live": "Transcription live",
     "status.finished": "Meeting ended · context retained",
     "status.model_loading": "Loading model",
-    "status.model_missing": "Live model missing",
+    "status.unavailable": "Live transcript off",
     "status.overloaded": "Live transcription overloaded",
     "status.no_fresh": "No recent utterances",
     "transcript.overloaded_meta": "Transcription is behind. Latest utterance: {age}",
@@ -1226,6 +1226,7 @@ function renderTranscript(transcript) {
   elements.meetingTitle.textContent = transcript.display_meeting || transcript.meeting || "Встреча";
   elements.liveStatus.classList.toggle("live", Boolean(transcript.live));
   elements.liveStatus.classList.toggle("error", Boolean(transcript.error || transcript.status === "error"));
+  elements.liveStatus.title = ["unavailable", "error"].includes(transcript.status) ? transcript.status_reason || "" : "";
   if (transcript.error) {
     elements.liveStatus.lastChild.textContent = t("status.waiting");
   } else if (transcript.live) {
@@ -1234,8 +1235,8 @@ function renderTranscript(transcript) {
     elements.liveStatus.lastChild.textContent = t("status.finished");
   } else if (transcript.status === "loading") {
     elements.liveStatus.lastChild.textContent = t("status.model_loading");
-  } else if (transcript.status === "model_missing") {
-    elements.liveStatus.lastChild.textContent = t("status.model_missing");
+  } else if (transcript.status === "unavailable") {
+    elements.liveStatus.lastChild.textContent = t("status.unavailable");
   } else if (transcript.status === "overloaded") {
     elements.liveStatus.lastChild.textContent = t("status.overloaded");
   } else if (transcript.status === "paused") {
