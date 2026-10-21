@@ -2,8 +2,9 @@
 
 Owner rule 2026-10-20 (see `AGENTS.md`). Status: phase 1 implemented 2026-10-20
 (Python layer `copilot/web/ai_providers.py`), review fixes and phase 2 (Swift
-summary and speaker naming) implemented 2026-10-20; phases 3-4 planned. Backlog:
-`docs/TODO.md`.
+summary and speaker naming) implemented 2026-10-20; phase 3 (one speech
+recognition choice on the Mac, owner decision 2026-10-21) implemented on branch
+`feat/stt-user-choice`; phase 4 planned. Backlog: `docs/TODO.md`.
 
 ## Single AI choice (owner decision 2026-10-21, supersedes per-purpose selection)
 
@@ -89,8 +90,7 @@ Options are read from the exact binary or service the app will call.
 - Ollama: `GET /api/tags` for models; `POST /api/show` `thinking.values` /
   `default` for levels (`[false]` = no thinking; omitted = no metadata).
   https://docs.ollama.com/capabilities/thinking
-- STT discovery per engine: to be researched before phase 3 (FluidAudio
-  model variants, AssemblyAI speech models, OpenAI transcription models).
+- STT discovery per engine: see "Phase 3" below.
 
 ## Design
 
@@ -154,8 +154,8 @@ Options are read from the exact binary or service the app will call.
   for translation and summaries, a generated image for screenshots, a temporary
   file inside a temporary root for live analysis. A result belongs to the exact
   choice and executable it tested; any change shows the purpose as unchecked.
-- STT: an engine registry for final, live, retranscription and diarization,
-  engine and model chosen by the user, options discovered from the engine.
+- STT: one speech recognition choice (engine, model, language, speaker model)
+  used for live and final transcripts; see "Phase 3" below.
 
 ## Phases
 
@@ -167,7 +167,9 @@ Options are read from the exact binary or service the app will call.
    from `config.json`; remove code defaults and the fixed order; pass the model,
    effort and speed to every CLI. Done 2026-10-20. Superseded 2026-10-21: Swift
    reads `ai.choice` (section above).
-3. STT engine registry on Mac (live, final, retranscription, diarization).
+3. One speech recognition choice on the Mac (live, final, re-transcription,
+   speakers), options discovered from the engine. Done 2026-10-21 on
+   `feat/stt-user-choice` (not merged).
 4. Windows: launcher, installer and the C# recorder follow the same rule.
 
 ## Phase 1 implementation notes (2026-10-20)
@@ -207,3 +209,238 @@ Options are read from the exact binary or service the app will call.
 - Translation and screenshots surface `needs_choice` / `unavailable` with the
   reason (`AIChoiceError`); a screenshot is not taken without a usable choice,
   so nothing is discarded as irrelevant for a missing setting.
+
+## Phase 3: one speech recognition choice (owner decision 2026-10-21)
+
+Owner: "one model for speech-to-text (it usually covers language and speaker
+detection too) and a second model for analysis, like FluidVoice". FluidVoice
+(GPLv3) is a behavioural reference only; none of its code is used (this
+repository is MIT).
+
+### The setting
+
+`stt.choice` in `config.json`, owner: Python web server (Getting started card);
+the Swift app reads it and writes it only for the one-time migration below.
+
+    {"stt": {"choice": {"engine": "...", "model": "...", "language": "..."}}}
+
+- All three keys are required. A missing key, or an empty `engine`, `model` or
+  `language`, means not chosen (`needs_choice`). Nothing is ever filled in by
+  code and the UI preselects nothing.
+- `engine`: `fluidaudio` (local, Apple Silicon only), `assemblyai`, `openai`.
+- `model`: an id exactly as the engine's discovery lists it (free text for an
+  engine whose discovery has no list, see `model_entry`).
+- `language`: `auto` only when the model reports `auto_detect`; otherwise one
+  of the model's `languages` (free text when `language_entry` is `free_text`).
+- There is no speaker setting (owner decision 2026-10-21, see "Live and
+  speakers").
+- One model serves live and final transcripts. There is no fallback model and
+  no per-purpose choice: a failure defers the session with its reason, and the
+  person may pick another model.
+- Kept as they were: `transcription.enabled` (transcribe automatically),
+  `live_transcription.enabled` (live transcript on/off), API key locations.
+  Read only by the migration: `transcription.engine`, `.cloud`, `.model`,
+  `.language`, `.openai.model`, `.assemblyai.speech_model`.
+
+Migration (Swift `STTChoice.migrateLegacy`, runs while `stt.choice` is absent,
+writes only from keys present in the file, never from a former code default):
+`transcription.engine` `parakeet` -> `{engine: fluidaudio}` plus `model` = the
+FluidAudio repository name when `transcription.model` is `v3` or `v2`;
+`openai` -> `{engine: openai}` plus `model` from `transcription.openai.model`;
+`assemblyai` -> `{engine: assemblyai}` plus `model` from
+`transcription.assemblyai.speech_model`; `auto` or absent -> nothing.
+`language` is copied from a non-empty `transcription.language`, otherwise it is
+the language the chosen local model implies (below).
+
+The installer's model (owner decision 2026-10-21): a speech model the installer
+downloaded is the person's own install-time choice, not a code default. When
+`stt.choice` is absent (or the legacy engine was `auto`) and exactly one local
+model is in our models folder (`LocalSTTModel.installed`: downloaded Parakeet
+versions and Nemotron ships), the migration writes
+`{engine: fluidaudio, model: <it>, language: <implied>}` with no prompt.
+The implied language is `auto` when the model detects languages, its one
+language when it lists one, and unknown otherwise; an unknown language adopts
+nothing. Parakeet's languages come from the cached model card and Nemotron's
+from the ship's own prompt dictionary, so adoption works offline; when the
+card is not cached yet, the first `stt-options` run (it reads the card)
+completes the adoption, and the app runs it once at start for that case. Zero
+or several candidates keep `needs_choice`; a model the installer did not
+download is never picked, and a stored choice is never replaced. The web card
+saves the same implied language itself, so a person who picks such a model
+makes no further choice.
+
+### Discovery contract `meetontrack.stt-options/1`
+
+`meetingcopilot stt-options --json [--refresh]` prints one JSON object. The
+Windows recorder implements the same contract in phase 4. Python caches it
+(5 min when it succeeded, 30 s when not) and adds `best_for` tags derived only
+from the facts below (`live`, `multilingual`, `offline`, `speakers`,
+`lowest_latency`).
+
+    {
+      "contract": "meetontrack.stt-options/1",
+      "generated_at": "ISO 8601",
+      "platform": {"os": "macos", "arch": "arm64|x86_64", "local_models": true},
+      "choice": {"stored": {...} | null, "state": "ready|needs_choice|unavailable", "reason": ""},
+      "engines": [{
+        "id": "fluidaudio", "label": "...", "kind": "local|cloud",
+        "available": true, "reason": "",
+        "needs_key": false, "has_key": null | true | false,
+        "model_entry": "list|free_text",
+        "listing": {"source": "...", "error": ""},
+        "models": [{
+          "id": "...", "label": "...", "family": "...",
+          "final": true | false | null,
+          "live": "streaming|sliding_window|", "live_latency_ms": 1120 | null, "live_reason": "",
+          "languages": ["en", ...], "language_entry": "list|free_text", "auto_detect": true | false | null,
+          "speakers": true | false | null,
+          "size_bytes": 123 | null, "size_is_estimate": false,
+          "downloaded": true | false | null, "on_disk_bytes": 123 | null,
+          "download_bytes": 123 | 0 | null,
+          "found_elsewhere": [{"path": "/Users/.../FluidAudio/Models/parakeet-tdt-0.6b-v3-coreml", "bytes": 123}],
+          "available": true, "reason": "",
+          "source_url": "https://...",
+          "benchmarks": [{"language": "en", "metric": "WER", "value": 8.9, "test_set": "FLEURS en_us"}]
+        }],
+        "model_template": {...}
+      }]
+    }
+
+`model_template` appears only when `model_entry` is `free_text`: the facts
+(same keys as a model, `id` empty) that hold for any id the person types.
+
+`null` means unknown (for example OpenAI does not say which of its models
+transcribe or diarize until a check runs); the UI shows it as unknown, never as
+yes or no. Sources:
+
+- `fluidaudio`: the model families this app has adapters for, enumerated from
+  FluidAudio itself. Parakeet TDT batch models: every `AsrModelVersion` the
+  adapter maps (enum cases, ids are FluidAudio's `Repo.name`), final + live by
+  FluidAudio's sliding window. Nemotron multilingual streaming: one model per
+  entry of the Hugging Face `manifest.json` `ships[]` (id
+  `<Repo.name>/<ship path>`), live streaming at the ship's `chunk_ms`, final by
+  feeding the file through the same streaming decoder with token timings.
+  Languages: Parakeet from the Hugging Face model card `language` list;
+  Nemotron from the ship's `metadata.json` `prompt_dictionary` keys, filtered
+  by the ship's `languages_served` when that is a list of language codes;
+  `auto_detect` = Parakeet with more than one language, Nemotron with an
+  `auto` prompt. Sizes: Hugging Face tree listing, Parakeet limited to the
+  file names FluidAudio's public `ModelNames` says it downloads. Downloaded
+  state and on-disk size: FluidAudio's own cache layout. Hugging Face answers are cached on disk
+  (`~/Library/Caches/MeetOnTrack/stt-discovery/`) so the list works offline;
+  a model whose languages are unknown is listed unavailable with the reason.
+- `openai`: `GET /v1/models` with the person's key, every id listed in the
+  order returned, no name filtering; `final`, `speakers` are `null` until
+  `stt-check` runs. Live is not offered (no live adapter yet).
+- `assemblyai`: no model list endpoint, so `model_entry` is `free_text`; the
+  id is sent as `speech_models: [id]` and the transcript records the
+  provider's `speech_model_used`. Live is not offered (no live adapter yet).
+
+Sizes (MEETONTRACK-39): `size_bytes` is the model's total size,
+`download_bytes` what `stt-download` would still fetch (0 when downloaded,
+`null` when no file listing is known). The UI always labels a number with what
+it is ("download size 460 MB") and shows no download for a model already here.
+
+### Models already on this Mac (MEETONTRACK-45)
+
+FluidAudio 0.15.5 loads a model only from its current folder name
+(`Repo.folderName`, for example `parakeet-tdt-0.6b-v3`); it has no fallback to
+the older `-coreml` name (`Repo.name`) that earlier FluidAudio releases, and
+apps built on them such as FluidVoice, wrote to the same
+`~/Library/Application Support/FluidAudio/Models` root. On the owner's Mac both
+folders held Parakeet v3: identical encoder and decoder weights, a different
+joint module (`JointDecision` vs `JointDecisionv3`) and `config.json`.
+
+Discovery (`STTReuse.describe`) therefore looks, for every file the pinned
+FluidAudio needs (from the Hugging Face tree listing), in the other folders:
+both folder names under the default root and under `~/.cache/fluidaudio/Models`.
+A file of the right size there counts towards `found_elsewhere`; only the rest
+counts towards `download_bytes`. `stt-download` (`STTReuse.adopt`) verifies each
+such file against the listing's content hash (sha256 for LFS files, git blob
+sha1 otherwise) and copies it into our folder with `FileManager.copyItem`, which
+clones on APFS (no extra disk); FluidAudio's downloader then skips files that
+exist and fetches only what is missing. The other folder is only read: nothing
+in it is changed or deleted. Sandboxed apps' containers are not scanned.
+The UI shows such a model as "already on this Mac (from FluidVoice / an older
+version): ready" when nothing is left to fetch, or "needs a small update
+(download N MB)".
+
+### Web API (Python, mirrors `/api/ai`)
+
+- `GET /api/stt`: `{"ok", "choice": {"choice": stored|null, "state", "reason", "deferred": [{session, kind, reason, at}]}, "downloads": [...], "retranscribe": [...], "check": last check|null}`.
+- `GET /api/stt/options[?refresh=1]`: the discovery contract above plus `best_for`.
+- `POST /api/stt/choice {"choice": {...}}` (validated against the options),
+  `POST /api/stt/download {"model"}` and `GET /api/stt/download`
+  (job progress from `stt-download` events), `POST /api/stt/check {"choice"?}`,
+  `POST /api/stt/key {"engine", "key"}`, `POST /api/stt/retranscribe {"session", "choice"?}`.
+
+### Other commands
+
+- `meetingcopilot stt-download --model ID --json`: the
+  only code path that downloads speech models (the app otherwise runs FluidAudio
+  with `ModelHub.offlineMode`). One JSON object per line:
+  `{"event": "progress", "item": "model", "id": "...", "fraction": 0.4, "phase": "listing|downloading|compiling", "completed_files": 3, "total_files": 9}`,
+  `{"event": "done", "item": "...", "id": "..."}`, then
+  `{"event": "finished", "ok": true}` or `{"event": "error", "item": "...", "id": "...", "message": "..."}`
+  (exit 1). Installers download no speech models.
+- `meetingcopilot stt-check --json [--engine E --model M --language L]`
+  (default: the stored choice): loads a local model and transcribes one second
+  of generated audio, or sends that second to the cloud engine. Prints
+  `{"contract": "meetontrack.stt-check/1", "choice": {...}, "ok": true, "steps": [{"name": "...", "ok": true, "detail": "..."}], "model_used": "...", "error": ""}`.
+  Only an explicit Check runs it.
+- `meetingcopilot process DIR --again [--engine E --model M --language L]`:
+  re-transcribes with the stored choice, or with the given choice for this one
+  run (nothing is stored).
+
+### Deferred sessions
+
+When there is no ready choice, the chosen model is not downloaded, the engine
+is unavailable or the network fails, the session's `meta.json` gets
+`transcription_deferred: {"kind": "needs_choice|unavailable|network", "reason": "...", "at": "ISO 8601"}`.
+A deferred session keeps its uncompressed audio, does not consume one of the
+three transcription attempts and is retried when the choice becomes ready (the
+app watches `config.json`), the network returns, or the app starts. A finished
+transcript clears the key. Recording never depends on the choice: without a
+live-capable choice the recording runs without a live transcript and shows why.
+
+### Live and speakers
+
+- Live uses the chosen model: Nemotron streams; Parakeet runs FluidAudio's
+  sliding window (about 13 s behind, so a pause ends an utterance only after
+  one window); cloud engines show "no live transcript for this engine yet" and
+  the recording continues. Live never downloads: a choice that cannot run live
+  is the live status `unavailable` with its reason, exported to the assistant
+  as `status: "unavailable"` and `status_reason` in the live transcript file.
+- Speakers (owner decision 2026-10-21): no setting and no prompt. Cloud
+  engines identify speakers themselves. Otherwise transcripts are labelled by
+  channel: microphone is you, call audio is the others. Speaker diarization
+  is unchanged from main: the live `RemoteSpeakerDiarizer` voice slots, the
+  `--voices` path of `transcribe-audio` and the post-call `SpeakerNamer` run as
+  before. Which diarizer files they use is not a person's choice: the first
+  LS-EEND model present on this Mac (`LocalSpeakerModel.installed`, FluidAudio's
+  variant and step order). With none present they are skipped and the channel
+  labels stand. The one difference from main: main's live diarizer downloaded
+  LS-EEND `dihard3`/500 ms implicitly on first use; now nothing downloads
+  outside `stt-download` and the installer, so it uses only files already
+  here. LS-EEND timeline thresholds stay adapter constants
+  (`RemoteSpeakerDiarizer`): tuning of one adapter, not a model choice. A
+  finer split of the far end in the final transcript is a separate future
+  task; its hook is marked in `TranscriptionCoordinator` (`.perTrack`).
+- Provenance: `transcript.json` `engine`, `model` (AssemblyAI: the provider's
+  `speech_model_used`) and `language` that actually ran.
+
+### Open questions for the owner
+
+- Existing cloud installs without `transcription.language`: the migration
+  keeps engine and model but leaves `language` for the person (a cloud model's
+  languages are not known offline), so their transcripts defer until the card
+  is finished. Local models get their implied language (above).
+- Call audio is still labelled "Them" / "Они" as on main; the owner's wording
+  was "Others". Changing the label is left to the first-run redesign.
+- Nothing downloads a speaker model any more (main's live diarizer fetched
+  LS-EEND on first use). Should the installer or `stt-download` fetch one so
+  that live voice separation keeps working on new installs?
+- OpenAI's model list is long and unfiltered (no name heuristics allowed);
+  the redesigned UI may want a search box.
+- Parakeet encoder precision (int8 or int4) is left at FluidAudio's own
+  default rather than offered as a choice.

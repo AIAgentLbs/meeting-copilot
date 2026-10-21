@@ -21,8 +21,14 @@
       }
     },
     "recordings_dir": { "description": "Owner: Swift Mac app / C# recorder." },
-    "transcription": { "description": "Owner: Swift Mac app / C# recorder. Speech-to-text; the engine registry is phase 3." },
-    "live_transcription": { "description": "Owner: Swift Mac app / C# recorder." },
+    "stt": {
+      "description": "Owner: Python web server (copilot/web/stt.py, Getting started); the Swift Mac app reads it and writes it once only to carry over old transcription settings (Transcription/STTChoice.swift migrateLegacy). One speech recognition choice used for live and final transcripts. Values come from the engine's own discovery (meetingcopilot stt-options --json); no component may hold or fill in a default engine, model or language.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": { "choice": { "$ref": "#/$defs/sttChoice" } }
+    },
+    "transcription": { "description": "Owner: Swift Mac app / C# recorder. `enabled` (transcribe automatically) and API key locations stay here; `engine`, `cloud`, `model`, `language`, `openai.model` and `assemblyai.speech_model` are read only by the one-time migration to stt.choice." },
+    "live_transcription": { "description": "Owner: Swift Mac app / C# recorder. `enabled` turns the live transcript on or off; the model is stt.choice." },
     "summary": { "description": "Owner: Swift Mac app. Its old backend/model keys feed ai.choice once (see ai.purposes)." },
     "speaker_names": { "description": "Owner: Swift Mac app. Its old backend/model keys feed ai.choice once (see ai.purposes)." },
     "auto_record": { "description": "Owner: Swift Mac app / C# recorder. Also read by the Python web server." },
@@ -44,6 +50,17 @@
     "task": {
       "description": "The AI tasks, all run on ai.choice. Python runs the first four; Swift runs summary and speaker_names. A task the choice cannot do (frame_relevance needs a model discovery reports as accepting images; live_analysis with selected repositories needs Codex or Claude Code) is unavailable with its reason; no other task is affected and nothing falls back to another model.",
       "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names"]
+    },
+    "sttChoice": {
+      "type": "object",
+      "required": ["engine"],
+      "description": "Complete only with all three keys; a missing key, or an empty engine, model or language, means not chosen (needs_choice) and sessions are deferred, never transcribed with a guessed value.",
+      "additionalProperties": false,
+      "properties": {
+        "engine": { "type": "string", "minLength": 1, "description": "Adapter: fluidaudio (local, Apple Silicon), assemblyai, openai." },
+        "model": { "type": "string", "minLength": 1, "description": "Model id exactly as the engine's discovery lists it, or typed by the person when the engine has no list." },
+        "language": { "type": "string", "minLength": 1, "description": "\"auto\" only when the model reports auto_detect; otherwise a language the model lists (free text for engines without a list)." }
+      }
     },
     "choice": {
       "type": "object",

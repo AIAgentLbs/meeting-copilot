@@ -133,11 +133,37 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-9: Check AI for `summary` and `speaker_names` probes through the Python
   adapters, not the Swift invocation in `Summary/LLMBackend.swift`; the argv
   can drift. Add a shared argv fixture both sides test against.
-- [ ] MEETONTRACK-10: Phase 3 (speech-to-text): `capture/Sources/meetingcopilot/Config.swift:63`
-  defaults `transcription.engine` to `"auto"` and `:76` defaults the cloud
-  provider to `"assemblyai"`. `Transcription/OpenAIEngine.swift:46` refuses
-  to run until `transcription.openai.model` is set (built-in model removed; owner
-  decision 2026-10-20 keeps it so until phase 3 asks for the choice).
+- [x] MEETONTRACK-10, MEETONTRACK-12: Phase 3 (speech-to-text on the Mac, 2026-10-21,
+  branch `feat/stt-user-choice`): one `stt.choice` {engine, model, language}
+  chosen in Getting started (or adopted from the one model the installer
+  downloaded); options discovered from FluidAudio,
+  Hugging Face listings and the providers (`stt-options`), downloads only on
+  request (`stt-download`), sessions deferred (no attempt consumed) until the
+  choice is ready; live and final use the same model. Also covers
+  MEETONTRACK-39 (labelled sizes), MEETONTRACK-40 (one active model) and
+  MEETONTRACK-45 (reuse of models already on this Mac). Spec section "Phase 3".
+- [ ] Phase 4 (Windows speech): the C# recorder implements `meetontrack.stt-options/1`,
+  `stt-download` and `stt-check` (spec "Phase 3"), reads `stt.choice`, and drops its
+  built-in `gpt-4o-transcribe-diarize` default; `install.ps1` stops pinning speech
+  models; the launcher check reads the same choice.
+- [ ] LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
+  transcription) is still a fixed model; offer it through discovery like the speech
+  models or record why it is an adapter constant.
+- [ ] transcribe.cpp (whisper.cpp family) as a second local Mac adapter in
+  `stt-options`, so local choices are not FluidAudio-only.
+- [ ] Cloud speech pricing: no prices in the UI; link each cloud engine to the
+  provider's own pricing page (`source_url`-style field in `stt-options`).
+- [ ] Speech engines offered by FluidAudio but not yet adapted: Sortformer speaker
+  models, `StreamingModelVariant` (Parakeet EOU) streaming, Parakeet int4 encoder
+  precision; cloud live adapters (AssemblyAI streaming, OpenAI realtime). Each is
+  missing from `stt-options` until an adapter exists.
+- [ ] Model reuse scans only `~/Library/Application Support/FluidAudio/Models` and
+  `~/.cache/fluidaudio/Models` (`STTReuse.roots`); sandboxed FluidAudio apps keep
+  models in their own containers, which are not read. Add a container root only
+  with a user-granted folder.
+- [ ] Verify against the real services once: AssemblyAI `speech_models` +
+  `speech_model_used` and OpenAI transcription models through `stt-check` with a
+  real key (not exercised in tests).
 - [ ] MEETONTRACK-11: Phase 4 (Windows): `scripts/windows/install.ps1:67-68` writes a new
   `config.json` with pinned engine/backends and no lock or ACL; `:80-85` does a
   read-modify-write without `config.json.lock`; `:96-98` pins speech models.
@@ -146,9 +172,6 @@ hashes, Pages removed, and the Windows installer relocated to
   `FileStream.Lock(0,1)` (same byte as Python `msvcrt.locking`), refuse
   malformed files and restrict the file ACL to the user (the Windows equivalent of
   0600, open on the Python side too).
-- [ ] MEETONTRACK-12: Same rule for speech-to-text in `capture/` (Parakeet, AssemblyAI, OpenAI
-  engines and their models): engine and model are user choices, extensible to
-  future engines (for example Ollama-hosted), no fixed model in code.
 
 ## Friendly-user release gate — 2026-10-19
 
