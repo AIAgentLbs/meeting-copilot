@@ -26,6 +26,23 @@ class AIFailureTests(unittest.TestCase):
         self.assertTrue(ai_failure(str(error)).startswith("AI_MISSING:"))
         self.assertTrue(ai_failure("zsh: command not found: codex").startswith("AI_MISSING:"))
 
+    def test_windows_sandbox_refusal_says_why_and_what_to_do(self):
+        # MEETONTRACK-86: Codex's own words, as Windows printed them without its elevated sandbox.
+        refusal = ("failed to prepare windows sandbox wrapper: windows unelevated restricted-token sandbox cannot "
+                   "enforce split filesystem read restrictions directly; refusing to run unsandboxed (code -32603)")
+        message = ai_failure(refusal)
+        self.assertTrue(message.startswith("AI_SANDBOX:"))
+        self.assertIn("/setup-default-sandbox", message)
+
+    def test_probe_image_is_larger_than_a_vision_patch(self):
+        # MEETONTRACK-87: a 16 px probe was seen as salmon, pink or white; the probe is a solid 256 px fill.
+        import struct
+        from first_run import probe_png
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "probe.png"
+            probe_png(path)
+            self.assertEqual(struct.unpack(">II", path.read_bytes()[16:24]), (256, 256))
+
     def test_bare_not_found_is_not_missing(self):
         self.assertFalse(ai_failure("resource not found").startswith("AI_MISSING:"))
 
@@ -64,7 +81,7 @@ class CheckAITests(unittest.TestCase):
             self.assertEqual(len(adapter.calls), 3)  # one text, one image, one file probe shared by six tasks
             self.assertEqual({call[0]["model"] for call in adapter.calls}, {"m1"})
             self.assertIn("roots", next(o for p, o in options.items() if p.startswith("Read the file")))
-            self.assertTrue(next(o for p, o in options.items() if p.startswith("What single")).get("image"))
+            self.assertTrue(next(o for p, o in options.items() if p.startswith("Which colour")).get("image"))
             self.assertEqual(set(result["purposes"]), {"live_analysis", "live_translation", "frame_relevance",
                                                        "summary_rewrite", "summary", "speaker_names"})
             for purpose in ("summary_rewrite", "live_translation", "summary", "speaker_names"):

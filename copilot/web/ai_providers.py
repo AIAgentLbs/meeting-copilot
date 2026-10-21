@@ -40,6 +40,7 @@ PURPOSES = ("live_analysis", "live_translation", "frame_relevance", "summary_rew
 NEEDS_IMAGE = {"frame_relevance"}
 CHOICE_KEYS = ("provider", "model", "effort", "speed")
 STANDARD = "standard"  # an explicit "no speed tier" when a model offers tiers
+WINDOWS = os.name == "nt"
 DISCOVERY_TIMEOUT = 20
 OUTPUT_LIMIT = 8 << 20  # characters kept per stream; the rest is read and dropped
 LINE_LIMIT = 1 << 20
@@ -318,6 +319,22 @@ class CodexAdapter:
                       image=("image" in inputs) if isinstance(inputs, list) else None,
                       problem="" if isinstance(efforts, list) else "Codex did not report its effort levels")
 
+    @staticmethod
+    def _windows_sandbox(env):
+        """The Windows sandbox set up in Codex itself (`[windows] sandbox`). The rest of the person's
+        Codex config is ignored, but on Windows only the elevated sandbox can keep reads to the
+        profile's folders; without it Codex refuses to read files (MEETONTRACK-86)."""
+        if not WINDOWS:
+            return []
+        import tomllib  # bundled Windows Python; macOS may run an older system Python
+        home = Path((env or os.environ).get("CODEX_HOME") or Path.home() / ".codex")
+        try:
+            windows = tomllib.loads((home / "config.toml").read_text(encoding="utf-8")).get("windows")
+        except (OSError, ValueError):
+            return []
+        mode = windows.get("sandbox") if isinstance(windows, dict) else None
+        return ["-c", f"windows.sandbox={_toml(mode)}"] if isinstance(mode, str) and mode else []
+
     def call(self, choice, prompt, *, executable, env, timeout, roots=(), image=None, resume="", keep_session=False):
         workdir, executable = _workdir(), os.path.realpath(executable)
         # Read-only everywhere it is allowed to look; Codex must also read its own package
@@ -330,6 +347,7 @@ class CodexAdapter:
         argv += ["-c", f"model_reasoning_effort={_toml(choice['effort'])}"] if choice["effort"] else []
         argv += ["-c", f"service_tier={_toml(choice['speed'])}"] if choice["speed"] not in ("", STANDARD) else []
         argv += ["-c", 'default_permissions="meetontrack"', "-c", "permissions.meetontrack.filesystem=" + profile]
+        argv += self._windows_sandbox(env)
         argv += ["exec", "resume"] if resume else ["exec"]
         argv += ["--ignore-user-config", "--skip-git-repo-check"]
         argv += [] if roots else CODEX_ISOLATION  # every turn, first or resumed

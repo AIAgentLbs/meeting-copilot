@@ -161,6 +161,27 @@ class CodexCallTests(unittest.TestCase):
         self.assertNotIn("--ephemeral", args)
         self.assertLess(args.index("-m"), args.index("exec"))
 
+    def test_windows_uses_the_sandbox_set_up_in_codex(self):
+        # MEETONTRACK-86: user config is ignored, but only Codex's elevated Windows sandbox can keep
+        # reads to the profile; without it Codex refuses to read files at all.
+        choice = {"provider": "codex", "model": "fixture-a", "effort": "", "speed": ""}
+        with tempfile.TemporaryDirectory() as home, patch.object(ai_providers, "WINDOWS", True), \
+                patch.dict(os.environ, {"CODEX_HOME": home}):
+            _, args = codex_call(choice, roots=["/repos/one"])
+            self.assertFalse(any(a.startswith("windows.sandbox") for a in args))  # nothing set up: Codex decides
+            Path(home, "config.toml").write_text('model = "x"\n[windows]\nsandbox = "elevated"\n', encoding="utf-8")
+            _, args = codex_call(choice, roots=["/repos/one"])
+            self.assertIn('windows.sandbox="elevated"', args)
+            self.assertLess(args.index('windows.sandbox="elevated"'), args.index("exec"))
+            Path(home, "config.toml").write_text("not = [toml", encoding="utf-8")
+            _, args = codex_call(choice)
+            self.assertFalse(any(a.startswith("windows.sandbox") for a in args))
+        with tempfile.TemporaryDirectory() as home, patch.object(ai_providers, "WINDOWS", False), \
+                patch.dict(os.environ, {"CODEX_HOME": home}):
+            Path(home, "config.toml").write_text('[windows]\nsandbox = "elevated"\n', encoding="utf-8")
+            _, args = codex_call(choice)
+            self.assertFalse(any(a.startswith("windows.sandbox") for a in args))  # other systems: unchanged
+
     def test_roots_are_the_only_extra_readable_paths_and_standard_sends_no_tier(self):
         _, args = codex_call({"provider": "codex", "model": "fixture-a", "effort": "e1", "speed": "standard"},
                              roots=["/repos/one", "/repos/two"])

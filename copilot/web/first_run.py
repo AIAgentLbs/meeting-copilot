@@ -36,6 +36,10 @@ def ai_failure(detail: str) -> str:
         return 'AI_LIMIT: The AI account limit is reached. Check your plan or wait for the limit to reset, then retry. Audio recording is independent.'
     if any(word in text for word in ('unauthorized', '401', 'login', 'log in', 'authentication', 'sign in', 'token expired')):
         return 'AI_LOGIN: Sign in to the chosen AI provider, then run Check AI again. Audio recording is independent.'
+    if 'refusing to run unsandboxed' in text:
+        return ('AI_SANDBOX: Codex refused to read files because it cannot limit reading to your selected '
+                'folders on this Windows account. Open Codex in a terminal, type /setup-default-sandbox and '
+                'approve the administrator prompt once, then run Check AI again. Other AI tasks work without it.')
     if 'model metadata' in text:
         return 'AI_UPDATE: The AI tool is too old for the chosen model. Update it or choose another model, then run Check AI again. Audio recording is independent.'
     if any(word in text for word in ('model is not supported', 'not supported when using', 'unsupported model')):
@@ -51,8 +55,9 @@ PROBE = 'Reply with exactly READY. Do not inspect files or use tools.'
 UNCHECKED = 'Installed tools do not prove account access. Check AI to send a short test request without meeting data.'
 
 
-def probe_png(path, rgb=(220, 30, 30), size=16):
-    """A solid-colour PNG for the image probe, written with the standard library."""
+def probe_png(path, rgb=(220, 30, 30), size=256):
+    """A solid-colour PNG for the image probe, written with the standard library. Large enough to
+    fill several vision patches: at 16 px models saw a pale blend (salmon, pink, white)."""
     row = b'\x00' + bytes(rgb) * size
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
@@ -127,7 +132,7 @@ class AIReadiness:
             if kind == 'image':
                 options['image'] = Path(directory) / 'probe.png'
                 probe_png(options['image'])
-                prompt, expect = 'What single colour fills this image? Reply with one lowercase English word.', 'red'
+                prompt, expect = 'Which colour fills this image: red, green or blue? Reply with that one lowercase word.', 'red'
             elif kind == 'files':
                 expect = 'probe' + uuid.uuid4().hex[:8]
                 (Path(directory) / 'probe.txt').write_text(expect, encoding='utf-8')
