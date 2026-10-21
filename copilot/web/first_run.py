@@ -126,8 +126,11 @@ class AIReadiness:
         return 'files' if purpose == 'live_analysis' and getattr(adapter, 'reads_files', False) else 'text'
 
     def _probe(self, kind, ticket):
-        """Text probe, an image probe for screenshots, a file probe for repository reading."""
-        with tempfile.TemporaryDirectory(prefix='meetontrack-check-') as directory:
+        """Text probe, an image probe for screenshots, a file probe for repository reading. The probe
+        folder sits beside the AI working directory, as a repository would, not in the temp folder:
+        Codex's profile denies the temp folders, and the model then refused to read the file."""
+        from ai_providers import _workdir  # imported late: ai_providers imports this module
+        with tempfile.TemporaryDirectory(prefix='meetontrack-check-', dir=Path(_workdir()).parent) as directory:
             prompt, expect, options = PROBE, 'READY', {}
             if kind == 'image':
                 options['image'] = Path(directory) / 'probe.png'

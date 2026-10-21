@@ -121,8 +121,8 @@ struct InterfaceLanguageTests {
     @Test("Nothing in the setup form is left in English when the form is Russian")
     @MainActor
     func theFormIsAllInOneLanguage() {
-        let english = Self.inLanguage(.english) { Self.readable(SetupForm()) }
-        let russian = Self.inLanguage(.russian) { Self.readable(SetupForm()) }
+        let english = Self.inLanguage(.english) { Self.readable(Self.formWithScratchSpeech()) }
+        let russian = Self.inLanguage(.russian) { Self.readable(Self.formWithScratchSpeech()) }
 
         #expect(english.count == russian.count, "the two forms are not the same form")
         #expect(Self.untranslated(english, russian).isEmpty,
@@ -553,6 +553,21 @@ struct InterfaceLanguageTests {
         return body()
     }
 
+    /// The speech choice the walk reads comes from a config of its own, not
+    /// the Mac's: a real one made the walk pass or fail by what was chosen.
+    static let scratchModel = LocalSTTModel.parakeet(LocalSTTModel.parakeetVersions[0]).id
+
+    @MainActor
+    private static func formWithScratchSpeech() -> SetupForm {
+        let scratchSpeech: [String: Any] = ["stt": ["choice": [
+            "engine": STTChoice.localEngine, "model": scratchModel, "language": "auto"]]]
+        let form = SetupForm()
+        let choice = STTChoice.parse(STTChoice.stored(in: scratchSpeech)).0
+        form.speechResolution = { choice.map { .ready($0) } ?? .needsChoice(STTChoice.needsChoiceMessage) }
+        form.refresh()
+        return form
+    }
+
     /// Everything in the form a person can read, in the order the views are
     /// in — which is the same order in both languages, because it is the same
     /// form built twice.
@@ -610,6 +625,7 @@ struct InterfaceLanguageTests {
             ProductBrand.name, "by \(ProductBrand.company)", "\(ProductBrand.company) ↗",
             "AssemblyAI", "OpenAI", "Anthropic", "Claude Code", "Codex", "Ollama",
             "sk-ant-…", "sk-…", "meetingcopilot",
+            STTCatalog.engineName(STTChoice.localEngine), scratchModel,
         ]
         if names.contains(text) { return true }
         // The models on disk, named by their ids.

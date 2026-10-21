@@ -13,6 +13,18 @@ enum STTCatalog {
     static let contract = "meetontrack.stt-options/1"
     static let liveUnavailable = "no live transcript for this engine yet"
 
+    /// An engine's own name, for every place a person reads the choice:
+    /// Getting started gets it in `label`, the setup form beside the model.
+    /// The stored id (`fluidaudio`) is a key, never shown.
+    static func engineName(_ id: String) -> String {
+        switch id {
+        case STTChoice.localEngine: return "FluidAudio"
+        case "assemblyai": return "AssemblyAI"
+        case "openai": return "OpenAI"
+        default: return id
+        }
+    }
+
     struct Inputs {
         var stored: [String: Any]?
         var resolution: STTResolution
@@ -81,7 +93,7 @@ enum STTCatalog {
 
     static func fluidAudio(_ inputs: Inputs) async -> [String: Any] {
         var engine = engineBase(
-            id: STTChoice.localEngine, label: "FluidAudio (on this Mac)", kind: "local",
+            id: STTChoice.localEngine, label: "\(engineName(STTChoice.localEngine)) (on this Mac)", kind: "local",
             available: inputs.localModels,
             reason: inputs.localModels ? "" : "local speech models need a Mac with Apple Silicon",
             needsKey: false, hasKey: nil, modelEntry: "list")
@@ -317,7 +329,7 @@ enum STTCatalog {
     static func assemblyAI(_ inputs: Inputs) -> [String: Any] {
         let hasKey = inputs.assemblyAIKey != nil
         var engine = engineBase(
-            id: "assemblyai", label: "AssemblyAI", kind: "cloud",
+            id: "assemblyai", label: engineName("assemblyai"), kind: "cloud",
             available: hasKey, reason: hasKey ? "" : "no AssemblyAI API key",
             needsKey: true, hasKey: hasKey, modelEntry: "free_text")
         engine["listing"] = [
@@ -335,13 +347,13 @@ enum STTCatalog {
     static func openAI(_ inputs: Inputs) async -> [String: Any] {
         guard let key = inputs.openAIKey else {
             var engine = engineBase(
-                id: "openai", label: "OpenAI", kind: "cloud", available: false,
+                id: "openai", label: engineName("openai"), kind: "cloud", available: false,
                 reason: "no OpenAI API key", needsKey: true, hasKey: false, modelEntry: "list")
             engine["listing"] = ["source": "GET https://api.openai.com/v1/models", "error": "no OpenAI API key"]
             return engine
         }
         var engine = engineBase(
-            id: "openai", label: "OpenAI", kind: "cloud", available: true, reason: "",
+            id: "openai", label: engineName("openai"), kind: "cloud", available: true, reason: "",
             needsKey: true, hasKey: true, modelEntry: "list")
         let (ids, error) = await inputs.fetch.openAIModels(key: key)
         var listed = ids ?? []

@@ -329,12 +329,14 @@ struct SetupTests {
         #expect(form.outstanding.contains(.speechChoice))
 
         form.speechResolution = {
-            .ready(STTChoice(engine: "assemblyai", model: "test-model", language: "ru"))
+            .ready(STTChoice(engine: STTChoice.localEngine, model: "test-model", language: "ru"))
         }
         form.refresh()
         #expect(!form.outstanding.contains(.speechChoice))
-        #expect(form.view.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue }
-            .contains { $0.hasPrefix("assemblyai · test-model.") })
+        // The engine by its name, never by the id stored in the config.
+        let shown = form.view.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue }
+        #expect(shown.contains { $0.hasPrefix("FluidAudio · test-model.") })
+        #expect(!shown.contains { $0.contains(STTChoice.localEngine) })
     }
 
     /// A switch nobody wired is the defect this file exists because of.

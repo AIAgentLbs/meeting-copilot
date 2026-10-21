@@ -91,6 +91,22 @@ class CheckAITests(unittest.TestCase):
             service.save({**M1, "speed": "standard"})
             self.assertEqual(readiness.snapshot()["purposes"]["summary_rewrite"]["state"], "unchecked")
 
+    def test_file_probe_folder_is_outside_the_temp_folder(self):
+        # Codex's profile denies the temp folders; with the probe file there gpt-6.1-sol replied
+        # "I can't read that file because its location is restricted" in 4 of 5 checks on macOS.
+        # The probe folder is a sibling of the AI working directory, like a real repository.
+        import os
+        from test_ai_providers import FakeAdapter, M1
+        with tempfile.TemporaryDirectory() as root:
+            adapter = FakeAdapter()
+            service = AIService(Path(root) / "config.json", {}, adapters=[adapter])
+            service.save(M1)
+            with patch.dict(os.environ, {"MEETING_COPILOT_AI_WORKDIR": str(Path(root) / "ai-workdir")}):
+                AIReadiness(service).check()
+            probe = Path(next(call[2]["roots"][0] for call in adapter.calls if "roots" in call[2]))
+            self.assertEqual(probe.parent, Path(root))
+            self.assertFalse(probe.exists())
+
     def test_a_task_the_choice_cannot_do_is_listed_unavailable_and_others_still_pass(self):
         from test_ai_providers import FakeAdapter, M2
         with tempfile.TemporaryDirectory() as root:
