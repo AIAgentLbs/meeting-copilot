@@ -24,6 +24,8 @@ struct SystemCaptureHealthTests {
         #expect(!decision(audible: 10))
         #expect(!decision(retry: 10))
         #expect(!decision(attempts: 3))
+        #expect(decision(route: true, attempts: 3))
+        #expect(decision(buffer: 25, attempts: 3))
     }
 
     /// The 2026-10-21 call: the tap kept delivering a −92 dBFS floor, which
