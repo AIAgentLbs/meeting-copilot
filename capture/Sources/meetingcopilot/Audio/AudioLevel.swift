@@ -42,6 +42,13 @@ enum AudioLevel {
     /// after measuring empty rooms.
     static let speechThreshold: Float = 0.01
 
+    /// −60 dBFS: the line between a call track that carries sound and one
+    /// that doesn't. A process tap that stops delivering the call app's audio
+    /// does not always go to digital zero — on 2026-10-21 a 53-minute Zoom
+    /// call spent 39 minutes at a −92 dBFS floor while the earbuds played the
+    /// speaker at −20 dB RMS. Anything that faint is no evidence the tap works.
+    static let audibleFloor: Float = 0.001
+
     /// Absolute peak across all channels, or nil when the buffer's sample
     /// format isn't one we can read.
     ///

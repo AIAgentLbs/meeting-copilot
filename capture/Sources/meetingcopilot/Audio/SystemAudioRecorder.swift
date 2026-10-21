@@ -73,7 +73,7 @@ final class SystemAudioRecorder {
         var bufferCount = 0
         var highestPeak: Float = 0
         var lastBufferAt: Date?
-        var lastNonzeroAt: Date?
+        var lastAudibleAt: Date?
         var muted = false
     }
     private let state = OSAllocatedUnfairLock(initialState: LockedState())
@@ -158,21 +158,22 @@ final class SystemAudioRecorder {
         outputDevice = AudioDevices.defaultOutput()
     }
 
-    /// File growth is not proof of capture: a dead tap can keep writing zeroes.
-    /// Rebuild on an output-route change, stalled callbacks, or sustained
-    /// digital silence while a call process is still playing. Preserve the
+    /// File growth is not proof of capture: a dead tap can keep writing zeroes
+    /// or a faint floor. Rebuild on an output-route change, stalled callbacks,
+    /// or 20 s below `AudioLevel.audibleFloor` while a call process is still
+    /// playing — a fresh tap brought the call back at once every time. Preserve the
     /// open file, installed live sink and clock; never truncate earlier audio.
     func checkHealth(now: Date = Date(), callHasOutput: Bool) {
         guard isRecording, let outputFile = file else { return }
         let currentOutput = AudioDevices.defaultOutput()
-        let signal = state.withLock { ($0.lastBufferAt, $0.lastNonzeroAt, $0.muted) }
+        let signal = state.withLock { ($0.lastBufferAt, $0.lastAudibleAt, $0.muted) }
         guard !signal.2 else { return }
-        if let recovered = lastRecoveryAt, let nonzero = signal.1, nonzero > recovered {
+        if let recovered = lastRecoveryAt, let audible = signal.1, audible > recovered {
             recoveryAttempts = 0
         }
         guard Self.shouldRecover(
             now: now, firstBufferAt: firstBufferAt, lastBufferAt: signal.0,
-            lastNonzeroAt: signal.1, outputChanged: currentOutput != outputDevice,
+            lastAudibleAt: signal.1, outputChanged: currentOutput != outputDevice,
             callHasOutput: callHasOutput, lastRecoveryAt: lastRecoveryAt,
             attempts: recoveryAttempts
         ) else { return }
@@ -215,12 +216,12 @@ final class SystemAudioRecorder {
     }
 
     static func shouldRecover(
-        now: Date, firstBufferAt: Date?, lastBufferAt: Date?, lastNonzeroAt: Date?,
+        now: Date, firstBufferAt: Date?, lastBufferAt: Date?, lastAudibleAt: Date?,
         outputChanged: Bool, callHasOutput: Bool, lastRecoveryAt: Date?, attempts: Int
     ) -> Bool {
         CaptureRecoveryPolicy.shouldRecover(
             now: now, firstBufferAt: firstBufferAt, lastBufferAt: lastBufferAt,
-            lastNonzeroAt: lastNonzeroAt, outputChanged: outputChanged,
+            lastAudibleAt: lastAudibleAt, outputChanged: outputChanged,
             callHasOutput: callHasOutput, lastRecoveryAt: lastRecoveryAt, attempts: attempts
         )
     }
@@ -404,7 +405,7 @@ final class SystemAudioRecorder {
             s.bufferCount += 1
             s.lastBufferAt = Date()
             if let peak {
-                if peak > 0.00001 { s.lastNonzeroAt = Date() }
+                if peak >= AudioLevel.audibleFloor { s.lastAudibleAt = Date() }
                 s.highestPeak = max(s.highestPeak, peak)
                 if peak >= AudioLevel.speechThreshold { s.lastSoundAt = Date() }
             } else {
