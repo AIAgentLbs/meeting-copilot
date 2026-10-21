@@ -335,7 +335,7 @@ struct SetupTests {
         #expect(!form.outstanding.contains(.speechChoice))
         // The engine by its name, never by the id stored in the config.
         let shown = form.view.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue }
-        #expect(shown.contains { $0.hasPrefix("FluidAudio · Test model.") })
+        #expect(shown.contains { $0.hasPrefix("FluidAudio · test model.") })
         #expect(!shown.contains { $0.contains(STTChoice.localEngine) })
     }
 

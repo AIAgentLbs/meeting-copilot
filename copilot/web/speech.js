@@ -67,6 +67,20 @@
     if (!engine || !model) return null;  // free-text engines: the template's facts hold for any typed id
     return engine.model_entry === "free_text" ? engine.model_template || {} : (engine.models || []).find(item => item.id === model) || null;
   }
+  // The recorder's name for a model (`name_parts`), composed in the page's
+  // language the way the Mac windows compose it. Language names come from
+  // Intl.DisplayNames. The picker leaves the languages to describe().
+  function modelName(parts, languages = true) {
+    if (!parts?.base) return "";
+    const name = parts.variant ? `${parts.base}, ${parts.variant}` : parts.base;
+    if (!languages) return name;
+    if (parts.language) {
+      let spoken = parts.language;
+      try {spoken = new Intl.DisplayNames([document.documentElement.lang || "en"], {type: "language"}).of(parts.language) || spoken;} catch {}
+      return `${name} (${spoken})`;
+    }
+    return parts.language_count > 1 ? `${name} (${word(`${parts.language_count} languages`, `языков: ${parts.language_count}`)})` : name;
+  }
   function describe(model) {
     const parts = (model.best_for || []).map(tag => word(...(tags[tag] || [tag, tag])));
     parts.push(model.language_entry === "free_text" ? word("any language code", "любой код языка") : word(`${(model.languages || []).length} languages`, `языков: ${(model.languages || []).length}`));
@@ -136,7 +150,7 @@
         () => choose({language: draft.language || implied(facts)})));
     } else {
       const usable = (engine.models || []).find(item => item.id === draft.model && item.available);
-      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...(engine.models || []).map(item => [item.id, item.available ? `${item.display_name || item.label} · ${describe(item)}` : `${item.display_name || item.label} (${item.reason})`, !item.available])],
+      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...(engine.models || []).map(item => [item.id, item.available ? `${modelName(item.name_parts, false) || item.label} · ${describe(item)}` : `${modelName(item.name_parts) || item.label} (${item.reason})`, !item.available])],
         usable ? draft.model : "", value => choose({model: value, language: implied(factsOf(engine, value))})));
       facts = usable || null;
     }
@@ -160,7 +174,7 @@
     const choice = state.choice;
     // The recorder's names for the engine and the model, never their ids.
     const engine = choice && engineOf(choice.engine);
-    const named = choice ? [engine?.label, state.display_name, choice.language].filter(Boolean).join(", ") : "";
+    const named = choice ? [engine?.label, modelName(state.name_parts), choice.language].filter(Boolean).join(", ") : "";
     if (state.state === "ready") return word("Ready: ", "Готово: ") + named;
     if (state.state === "unavailable") return word("Saved choice is unavailable: ", "Сохраненный выбор недоступен: ") + state.reason;
     if (state.state === "needs_choice") return choice ? word("Choice is not complete: ", "Выбор не закончен: ") + state.reason
@@ -170,7 +184,7 @@
   function checkText() {
     const check = lastCheck || state.check;  // the reply to Check (maybe an unsaved draft), else the stored choice's
     if (!check) return "";
-    if (check.ok) return word("Check passed, model used: ", "Проверка пройдена, модель: ") + (check.model_used_name || "");
+    if (check.ok) return word("Check passed, model used: ", "Проверка пройдена, модель: ") + (modelName(check.model_used_name_parts) || check.model_used_name || "");
     const failed = (check.steps || []).find(step => !step.ok);
     return word("Check failed: ", "Проверка не пройдена: ") + plainError(check.error || failed?.detail);
   }

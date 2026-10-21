@@ -225,10 +225,10 @@ class SaveChoiceTests(STTTestCase):
         with service.adopting:  # the discovery that read started has finished
             pass
         options = json.loads(FIXTURE)
-        options["choice"] = {"stored": choice, "state": "ready", "reason": "", "display_name": "Fixture batch model"}
+        options["choice"] = {"stored": choice, "state": "ready", "reason": "", "name_parts": {"base": "Fixture batch model"}}
         service.cache = (time.monotonic(), {**options, "ok": True})
         self.assertEqual(service.status()["state"], "ready")
-        self.assertEqual(service.status()["display_name"], "Fixture batch model")  # the recorder's name, not the id
+        self.assertEqual(service.status()["name_parts"], {"base": "Fixture batch model"})  # the recorder's name, not the id
 
 
     def test_needs_choice_runs_discovery_which_adopts_a_downloaded_model(self):

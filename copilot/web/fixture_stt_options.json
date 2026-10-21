@@ -31,6 +31,8 @@
           "label": "Fixture batch model",
 
           "display_name": "Fixture batch model",
+
+          "name_parts": {"base": "Fixture batch model", "variant": "", "language_count": 3, "language": null},
           "family": "parakeet-tdt",
           "final": true,
           "live": "sliding_window",
@@ -60,6 +62,8 @@
           "label": "Fixture streaming model, latin, 1120 ms",
 
           "display_name": "Fixture streaming model, latin, 1120 ms",
+
+          "name_parts": {"base": "Fixture streaming model, latin, 1120 ms", "variant": "", "language_count": 2, "language": null},
           "family": "nemotron-multilingual",
           "final": true,
           "live": "streaming",
@@ -95,6 +99,8 @@
           "label": "Fixture model with unknown languages",
 
           "display_name": "Fixture model with unknown languages",
+
+          "name_parts": {"base": "Fixture model with unknown languages", "variant": "", "language_count": null, "language": null},
           "family": "parakeet-tdt",
           "final": true,
           "live": "sliding_window",
@@ -120,6 +126,8 @@
           "label": "Fixture model found in an older folder",
 
           "display_name": "Fixture model found in an older folder",
+
+          "name_parts": {"base": "Fixture model found in an older folder", "variant": "", "language_count": 1, "language": "de"},
           "family": "parakeet-tdt",
           "final": true,
           "live": "sliding_window",
@@ -205,7 +213,9 @@
           "id": "fixture-openai-a",
           "label": "fixture-openai-a",
 
-          "display_name": "Fixture openai a",
+          "display_name": "fixture openai a",
+
+          "name_parts": {"base": "fixture openai a", "variant": "", "language_count": null, "language": null},
           "family": "",
           "final": null,
           "live": "",
@@ -230,7 +240,9 @@
           "id": "fixture-openai-b",
           "label": "fixture-openai-b",
 
-          "display_name": "Fixture openai b",
+          "display_name": "fixture openai b",
+
+          "name_parts": {"base": "fixture openai b", "variant": "", "language_count": null, "language": null},
           "family": "",
           "final": null,
           "live": "",

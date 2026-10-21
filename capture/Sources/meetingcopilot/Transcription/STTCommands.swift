@@ -173,7 +173,9 @@ struct STTCheck: ParsableCommand {
             }
             let used = await engine.modelUsed()
             out["model_used"] = used
-            out["model_used_name"] = STTCatalog.displayName(used, in: .english)
+            let parts = STTCatalog.nameParts(used, languages: LocalSTTModel.parse(used)?.offlineLanguages)
+            out["model_used_name"] = parts.composed(in: .english)
+            out["model_used_name_parts"] = parts.json
             await engine.release()
             out["ok"] = true
         } catch {

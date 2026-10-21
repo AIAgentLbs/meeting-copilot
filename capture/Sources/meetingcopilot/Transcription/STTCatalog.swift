@@ -25,38 +25,75 @@ enum STTCatalog {
         }
     }
 
-    /// The name a person reads for a model, derived from the model's own
-    /// metadata, never from a table of names: a FluidAudio repository name
-    /// gives its family and version (or size, when it has no version), a
-    /// ship its own path, and the languages the model lists their count (or
-    /// the one language). Any other id (a cloud model, a speaker model) is
-    /// spelled out by a generic rule: its separators become spaces.
-    /// `parakeet-tdt-0.6b-v3-coreml` with 25 languages: "Parakeet v3 (25 languages)".
-    /// stt-options carries the English one as `display_name`.
-    static func displayName(_ id: String, languages: [String]?, in language: InterfaceLanguage = .english) -> String {
-        func capitalised(_ word: String) -> String { word.prefix(1).uppercased() + word.dropFirst() }
+    /// The name a person reads for a model, in parts, so each window composes
+    /// it in its own language: the base ("Parakeet v3"), a variant (a ship's
+    /// path, "latin, 1120 ms") and the languages the model lists (their count,
+    /// and the code when there is only one). Derived from the model's own
+    /// metadata, never from a table of names.
+    struct NameParts: Equatable {
+        let base: String
+        let variant: String
+        let languageCount: Int?
+        let language: String?
+
+        var json: [String: Any] {
+            ["base": base, "variant": variant,
+             "language_count": languageCount ?? NSNull(), "language": language ?? NSNull()]
+        }
+
+        /// The same composition speech.js makes for the web page.
+        func composed(in interface: InterfaceLanguage) -> String {
+            let name = variant.isEmpty ? base : "\(base), \(variant)"
+            if let language {
+                let spoken = Locale(identifier: interface.rawValue).localizedString(forLanguageCode: language)
+                return "\(name) (\(spoken ?? language))"
+            }
+            guard let count = languageCount, count > 1 else { return name }
+            return name + (interface == .russian ? " (языков: \(count))" : " (\(count) languages)")
+        }
+    }
+
+    /// A FluidAudio repository name gives its family and version (or size,
+    /// when it has no version) and a ship its path. A name the provider's own
+    /// API returns (`provided`) is used as it is. Any other id (a cloud model,
+    /// a speaker model) keeps its own casing with separators as spaces:
+    /// `some-Model_v2` reads "some Model v2".
+    static func nameParts(_ id: String, languages: [String]?, provided: String? = nil) -> NameParts {
         func matches(_ word: String, _ pattern: String) -> Bool {
             word.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
         }
-        var name: String
+        var base: String, variant: [String] = []
         let path = id.split(separator: "/").map(String.init)
-        if LocalSTTModel.parse(id) != nil, let repo = path.first {
+        if let provided, !provided.isEmpty {
+            base = provided
+        } else if LocalSTTModel.parse(id) != nil, let repo = path.first {
             let words = repo.split(separator: "-").map(String.init).filter { $0.lowercased() != "coreml" }
             let version = words.dropFirst().first { matches($0, #"^(v\d+(\.\d+)*|\d+(\.\d+)+)$"#) }
             let size = words.first { matches($0, #"^\d+(\.\d+)?[mb]$"#) }?.uppercased()
-            name = ([capitalised(words.first ?? repo)] + [version ?? size].compactMap { $0 }).joined(separator: " ")
+            let family = words.first ?? repo
+            base = ([family.prefix(1).uppercased() + family.dropFirst()] + [version ?? size].compactMap { $0 })
+                .joined(separator: " ")
             // A ship's own path: `latin/1120ms` reads "latin, 1120 ms".
-            for part in path.dropFirst() {
-                name += ", " + part.replacingOccurrences(of: #"^(\d+)ms$"#, with: "$1 ms", options: .regularExpression)
+            variant = path.dropFirst().map {
+                $0.replacingOccurrences(of: #"^(\d+)ms$"#, with: "$1 ms", options: .regularExpression)
             }
         } else {
-            name = capitalised(id.replacingOccurrences(of: "[-_/]+", with: " ", options: .regularExpression))
+            base = id.replacingOccurrences(of: "[-_/]+", with: " ", options: .regularExpression)
         }
-        guard let languages, !languages.isEmpty else { return name }
-        if languages.count == 1, let code = languages[0].split(separator: "-").first.map(String.init) {
-            return name + " (\(Locale(identifier: language.rawValue).localizedString(forLanguageCode: code) ?? code))"
-        }
-        return name + (language == .russian ? " (языков: \(languages.count))" : " (\(languages.count) languages)")
+        let known = languages.flatMap { $0.isEmpty ? nil : $0 }
+        let one = known?.count == 1 ? known?[0].split(separator: "-").first.map(String.init) : nil
+        return NameParts(base: base, variant: variant.joined(separator: ", "), languageCount: known?.count, language: one)
+    }
+
+    /// The composed name; stt-options carries the English one as `display_name`.
+    /// `parakeet-tdt-0.6b-v3-coreml` with 25 languages: "Parakeet v3 (25 languages)".
+    static func displayName(_ id: String, languages: [String]?, in language: InterfaceLanguage = .english) -> String {
+        nameParts(id, languages: languages).composed(in: language)
+    }
+
+    /// `display_name` and `name_parts` for a model entry.
+    static func named(_ parts: NameParts) -> [String: Any] {
+        ["display_name": parts.composed(in: .english), "name_parts": parts.json]
     }
 
     /// The same name for a stored model id, with the languages this Mac knows
@@ -92,7 +129,7 @@ enum STTCatalog {
         if let adopted = STTChoice.stored(in: Config.current()) {
             let resolution = STTRuntime.resolve(stored: adopted)
             result["choice"] = ["stored": adopted, "state": resolution.state, "reason": resolution.reason,
-                                "display_name": choiceName(adopted, engines: result["engines"] as? [[String: Any]] ?? [])]
+                                "name_parts": choiceName(adopted, engines: result["engines"] as? [[String: Any]] ?? [])]
         }
         return result
     }
@@ -125,20 +162,20 @@ enum STTCatalog {
                 "stored": inputs.stored.map { $0 as Any } ?? NSNull(),
                 "state": inputs.resolution.state,
                 "reason": inputs.resolution.reason,
-                "display_name": choiceName(inputs.stored, engines: [local, openAI]),
+                "name_parts": choiceName(inputs.stored, engines: [local, openAI]),
             ],
             "engines": [local, assemblyAI(inputs), openAI],
         ]
     }
 
-    /// The stored choice's model by the name its engine entry lists, or by
-    /// the generic rule for a model no listing has (a typed cloud model id).
-    static func choiceName(_ stored: [String: Any]?, engines: [[String: Any]]) -> String {
-        guard let model = stored?["model"] as? String, !model.isEmpty else { return "" }
+    /// The stored choice's model by the name parts its engine entry lists, or
+    /// by the generic rule for a model no listing has (a typed cloud model id).
+    static func choiceName(_ stored: [String: Any]?, engines: [[String: Any]]) -> Any {
+        guard let model = stored?["model"] as? String, !model.isEmpty else { return NSNull() }
         let listed = engines.filter { $0["id"] as? String == stored?["engine"] as? String }
             .flatMap { $0["models"] as? [[String: Any]] ?? [] }
             .first { $0["id"] as? String == model }
-        return listed?["display_name"] as? String ?? displayName(model, languages: nil)
+        return listed?["name_parts"] as? [String: Any] ?? nameParts(model, languages: nil).json
     }
 
     // MARK: - FluidAudio
@@ -189,7 +226,7 @@ enum STTCatalog {
         entry["live"] = "sliding_window"
         entry["live_latency_ms"] = Int((config.chunkSeconds + config.rightContextSeconds) * 1000)
         entry["languages"] = languages ?? []
-        entry["display_name"] = displayName(model.id, languages: languages)
+        entry.merge(named(nameParts(model.id, languages: languages))) { $1 }
         entry["auto_detect"] = languages.map { $0.count > 1 } ?? NSNull()
         entry["size_bytes"] = size.bytes ?? NSNull()
         entry["size_is_estimate"] = size.estimate
@@ -314,7 +351,7 @@ enum STTCatalog {
         entry["live"] = "streaming"
         entry["live_latency_ms"] = (ship["chunk_ms"] as? Int) ?? model.chunkMilliseconds ?? NSNull()
         entry["languages"] = languages ?? []
-        entry["display_name"] = displayName(model.id, languages: languages)
+        entry.merge(named(nameParts(model.id, languages: languages))) { $1 }
         entry["auto_detect"] = prompts.map { $0.contains(STTChoice.autoLanguage) } ?? NSNull()
         if let tree {
             entry["size_bytes"] = tree.filter { $0["type"] as? String == "file" }
@@ -358,8 +395,7 @@ enum STTCatalog {
 
     private static func modelBase(_ model: LocalSTTModel) -> [String: Any] {
         [
-            "id": model.id, "label": model.id, "display_name": displayName(model.id, languages: nil),
-            "family": model.family,
+            "id": model.id, "label": model.id, "family": model.family,
             "final": NSNull(), "live": "", "live_latency_ms": NSNull(), "live_reason": "",
             "languages": [String](), "language_entry": "list", "auto_detect": NSNull(),
             "speakers": false,
@@ -370,7 +406,7 @@ enum STTCatalog {
             "available": true, "reason": "",
             "source_url": model.sourceURL,
             "benchmarks": [[String: Any]](),
-        ]
+        ].merging(named(nameParts(model.id, languages: nil))) { $1 }
     }
 
     private static func onDisk(_ url: URL) -> Int? {
@@ -380,9 +416,9 @@ enum STTCatalog {
 
     // MARK: - cloud
 
-    static func cloudModel(id: String, final: Any, speakers: Any) -> [String: Any] {
+    static func cloudModel(id: String, final: Any, speakers: Any, provided: String? = nil) -> [String: Any] {
         [
-            "id": id, "label": id, "display_name": id.isEmpty ? "" : displayName(id, languages: nil), "family": "",
+            "id": id, "label": id, "family": "",
             "final": final, "live": "", "live_latency_ms": NSNull(), "live_reason": liveUnavailable,
             "languages": [String](), "language_entry": "free_text", "auto_detect": true,
             "speakers": speakers,
@@ -391,7 +427,7 @@ enum STTCatalog {
             "on_disk_bytes": NSNull(),
             "available": true, "reason": "", "source_url": "",
             "benchmarks": [[String: Any]](),
-        ]
+        ].merging(named(nameParts(id, languages: nil, provided: provided))) { $1 }
     }
 
     static func assemblyAI(_ inputs: Inputs) -> [String: Any] {
@@ -423,12 +459,14 @@ enum STTCatalog {
         var engine = engineBase(
             id: "openai", label: engineName("openai"), kind: "cloud", available: true, reason: "",
             needsKey: true, hasKey: true, modelEntry: "list")
-        let (ids, error) = await inputs.fetch.openAIModels(key: key)
-        var listed = ids ?? []
-        if let stored = storedModel(for: "openai", inputs), !listed.contains(stored) { listed.append(stored) }
+        let (found, error) = await inputs.fetch.openAIModels(key: key)
+        var listed = found ?? []
+        if let stored = storedModel(for: "openai", inputs), !listed.contains(where: { $0.id == stored }) {
+            listed.append((stored, nil))
+        }
         // Which of these transcribe, and with speakers, OpenAI does not say
         // until a request is made: unknown (null) until Check runs.
-        engine["models"] = listed.map { cloudModel(id: $0, final: NSNull(), speakers: NSNull()) }
+        engine["models"] = listed.map { cloudModel(id: $0.id, final: NSNull(), speakers: NSNull(), provided: $0.name) }
         engine["listing"] = ["source": "GET https://api.openai.com/v1/models", "error": error ?? ""]
         return engine
     }
@@ -518,7 +556,8 @@ enum STTCatalog {
         /// OpenAI's model ids in the order returned. Not cached on disk: the
         /// list depends on the key, and the key is not something to key a
         /// cache file by.
-        func openAIModels(key: String) async -> ([String]?, String?) {
+        /// Model ids, with the name OpenAI gives one when its listing has one.
+        func openAIModels(key: String) async -> ([(id: String, name: String?)]?, String?) {
             var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
             request.setValue("Bearer \(key)", forHTTPHeaderField: "authorization")
             request.timeoutInterval = timeout
@@ -528,7 +567,9 @@ enum STTCatalog {
                 guard (200..<300).contains(code) else { return (nil, "HTTP \(code) from OpenAI") }
                 let list = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["data"]
                     as? [[String: Any]]
-                return (list?.compactMap { $0["id"] as? String } ?? [], nil)
+                return (list?.compactMap { item in
+                    (item["id"] as? String).map { ($0, (item["display_name"] ?? item["name"]) as? String) }
+                } ?? [], nil)
             } catch {
                 return (nil, error.localizedDescription)
             }
