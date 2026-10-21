@@ -268,7 +268,8 @@ enum DoctorReport {
                 remediation: "open Getting started in the assistant"
             )
         }
-        return Check(name: "transcription (\(choice.engine) \(choice.model))", status: .ok, remediation: nil)
+        let name = "\(STTCatalog.engineName(choice.engine)) \(STTCatalog.displayName(choice.model, in: .english))"
+        return Check(name: "transcription (\(name))", status: .ok, remediation: nil)
     }
 
     static func print(_ checks: [Check]) {

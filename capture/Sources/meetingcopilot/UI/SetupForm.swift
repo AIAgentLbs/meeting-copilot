@@ -559,11 +559,12 @@ final class SetupForm: NSObject {
     }
 
     /// The speech row, in the form's language around the engine's own words:
-    /// the engine's name and the model's label as discovery lists them.
+    /// the engine's name and the model's name (`STTCatalog.displayName`).
     private func refreshSpeech(_ resolution: STTResolution) {
         switch resolution {
         case .ready(let choice):
-            speechStatus.stringValue = "\(STTCatalog.engineName(choice.engine)) · \(choice.model). " + localised(
+            speechStatus.stringValue = "\(STTCatalog.engineName(choice.engine)) · "
+                + "\(STTCatalog.displayName(choice.model)). " + localised(
                 "Change it in Getting started, in the assistant.",
                 "Изменить можно в разделе «Начать работу» в помощнике.")
             speechStatus.textColor = .secondaryLabelColor

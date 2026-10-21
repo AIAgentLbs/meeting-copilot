@@ -625,11 +625,13 @@ struct InterfaceLanguageTests {
             ProductBrand.name, "by \(ProductBrand.company)", "\(ProductBrand.company) ↗",
             "AssemblyAI", "OpenAI", "Anthropic", "Claude Code", "Codex", "Ollama",
             "sk-ant-…", "sk-…", "meetingcopilot",
-            STTCatalog.engineName(STTChoice.localEngine), scratchModel,
+            STTCatalog.engineName(STTChoice.localEngine),
         ]
         if names.contains(text) { return true }
         // The models on disk, named by their ids.
-        if ModelStorage().all().contains(where: { $0.name == text }) { return true }
+        if ModelStorage().all().contains(where: { model in
+            [InterfaceLanguage.english, .russian].contains { STTCatalog.displayName(model.name, in: $0) == text }
+        }) { return true }
         // The meeting languages are named in themselves — English, Русский,
         // Deutsch — because that answers "what is spoken here", not "what is
         // this window in". See `MeetingLanguages`.

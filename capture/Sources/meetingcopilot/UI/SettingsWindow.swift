@@ -342,7 +342,7 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
     }
 
     private func modelRow(_ model: ModelStorage.Model, tag: Int) -> NSView {
-        let name = NSTextField(labelWithString: model.name)
+        let name = NSTextField(labelWithString: STTCatalog.displayName(model.name))
         name.lineBreakMode = .byTruncatingTail
 
         let size = NSTextField(labelWithString: ModelStorage.describe(bytes: model.bytes))

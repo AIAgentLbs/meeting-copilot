@@ -29,6 +29,8 @@
         {
           "id": "fixture-batch-model",
           "label": "Fixture batch model",
+
+          "display_name": "Fixture batch model",
           "family": "parakeet-tdt",
           "final": true,
           "live": "sliding_window",
@@ -56,6 +58,8 @@
         {
           "id": "fixture-stream-model/latin/1120ms",
           "label": "Fixture streaming model, latin, 1120 ms",
+
+          "display_name": "Fixture streaming model, latin, 1120 ms",
           "family": "nemotron-multilingual",
           "final": true,
           "live": "streaming",
@@ -89,6 +93,8 @@
         {
           "id": "fixture-unknown-languages",
           "label": "Fixture model with unknown languages",
+
+          "display_name": "Fixture model with unknown languages",
           "family": "parakeet-tdt",
           "final": true,
           "live": "sliding_window",
@@ -112,6 +118,8 @@
         {
           "id": "fixture-reused-model",
           "label": "Fixture model found in an older folder",
+
+          "display_name": "Fixture model found in an older folder",
           "family": "parakeet-tdt",
           "final": true,
           "live": "sliding_window",
@@ -196,6 +204,8 @@
         {
           "id": "fixture-openai-a",
           "label": "fixture-openai-a",
+
+          "display_name": "Fixture openai a",
           "family": "",
           "final": null,
           "live": "",
@@ -219,6 +229,8 @@
         {
           "id": "fixture-openai-b",
           "label": "fixture-openai-b",
+
+          "display_name": "Fixture openai b",
           "family": "",
           "final": null,
           "live": "",

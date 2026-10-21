@@ -209,6 +209,7 @@ class STTService:
         choice = complete_choice({key: stored.get(key) for key in CHOICE_KEYS} if stored else None)  # extra keys ignored
         cached = self.cache[1] if self.cache else None
         block = (cached or {}).get("choice") or {}
+        display_name = ""
         if self.windows:
             state, reason = "", WINDOWS_REASON
         elif choice is None or not all(choice[key] for key in ("engine", "model", "language")):
@@ -216,12 +217,14 @@ class STTService:
             self._adopt_in_background()
         elif cached and cached.get("ok") and block.get("stored") == stored and block.get("state") in STATES:
             state, reason = block["state"], str(block.get("reason") or "")
+            display_name = str(block.get("display_name") or "")  # the recorder's name for the model
             if state == "unavailable":
                 self._adopt_in_background()  # a model downloaded since then clears it within 30 s
         else:
             state, reason = "", "Reading what the recorder offers…"
             self._adopt_in_background()  # also resolves a saved choice nobody opened Getting started for
-        return {"choice": stored, "state": state, "reason": reason, "deferred": self.deferred()}
+        return {"choice": stored, "state": state, "reason": reason, "display_name": display_name,
+                "deferred": self.deferred()}
 
     def _adopt_in_background(self):
         """`stt-options` adopts the model downloaded last when there is no choice yet (the capture

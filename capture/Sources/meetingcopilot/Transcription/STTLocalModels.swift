@@ -190,6 +190,16 @@ enum LocalSTTModel: Equatable, Sendable {
         return prompts.keys.sorted()
     }
 
+    /// The languages this Mac knows the model takes without the network: a
+    /// ship's own prompt list on disk, or the cached model card. nil when
+    /// neither is here.
+    var offlineLanguages: [String]? {
+        switch self {
+        case .nemotron: return localNemotronPrompts?.filter { $0 != STTChoice.autoLanguage }
+        case .parakeet: return STTCatalog.cachedCardLanguages(self)
+        }
+    }
+
     /// When this model's folder last changed: its download or update, the
     /// person's own last action with it.
     var modified: Date? {

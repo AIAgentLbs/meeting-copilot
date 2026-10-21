@@ -151,7 +151,8 @@ struct STTCheck: ParsableCommand {
             out["steps"] = steps
             return out
         }
-        step("choice", true, "\(choice.engine) \(choice.model), language \(choice.language)")
+        step("choice", true, "\(STTCatalog.engineName(choice.engine)) \(STTCatalog.displayName(choice.model, in: .english)), "
+             + "language \(choice.language)")
 
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("meetontrack-stt-check-\(UUID().uuidString)", isDirectory: true)
@@ -170,7 +171,9 @@ struct STTCheck: ParsableCommand {
                 // the provider took the model and the key.
                 step("transcribe", true, "\(failure)")
             }
-            out["model_used"] = await engine.modelUsed()
+            let used = await engine.modelUsed()
+            out["model_used"] = used
+            out["model_used_name"] = STTCatalog.displayName(used, in: .english)
             await engine.release()
             out["ok"] = true
         } catch {

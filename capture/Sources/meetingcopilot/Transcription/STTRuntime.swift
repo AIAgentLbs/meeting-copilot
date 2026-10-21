@@ -30,17 +30,17 @@ enum STTRuntime {
                 return .unavailable("local speech models need a Mac with Apple Silicon")
             }
             guard let model = LocalSTTModel.parse(choice.model) else {
-                return .unavailable("\(choice.model) is not a model the FluidAudio adapter can run")
+                return .unavailable("\(STTCatalog.displayName(choice.model, in: .english)) is not a model the FluidAudio adapter can run")
             }
             guard model.isDownloaded else {
-                return .unavailable("\(choice.model) is not downloaded; download it in Getting started")
+                return .unavailable("\(STTCatalog.displayName(choice.model, in: .english)) is not downloaded; download it in Getting started")
             }
             if let problem = languageProblem(choice.language, for: model) {
                 return .unavailable(problem)
             }
         case "openai", "assemblyai":
             guard key(for: choice.engine) != nil else {
-                return .unavailable("no \(choice.engine) API key; add one in Getting started")
+                return .unavailable("no \(STTCatalog.engineName(choice.engine)) API key; add one in Getting started")
             }
         default:
             return .unavailable("\(choice.engine) is not a speech engine this app can run")
@@ -53,22 +53,23 @@ enum STTRuntime {
     /// dictionary, or the cached model card for Parakeet. Nothing is checked
     /// when nothing is known: the Getting started card validated it on save.
     static func languageProblem(_ language: String, for model: LocalSTTModel) -> String? {
+        let name = STTCatalog.displayName(model.id, in: .english)
         switch model {
         case .nemotron:
             guard let prompts = model.localNemotronPrompts else { return nil }
             guard prompts.contains(language) else {
                 return language == STTChoice.autoLanguage
-                    ? "\(model.id) cannot detect the language; choose one in Getting started"
-                    : "\(model.id) does not list the language \(language)"
+                    ? "\(name) cannot detect the language; choose one in Getting started"
+                    : "\(name) does not list the language \(language)"
             }
             return nil
         case .parakeet:
             guard let languages = STTCatalog.cachedCardLanguages(model) else { return nil }
             if language == STTChoice.autoLanguage {
                 return languages.count > 1
-                    ? nil : "\(model.id) cannot detect the language; choose one in Getting started"
+                    ? nil : "\(name) cannot detect the language; choose one in Getting started"
             }
-            return languages.contains(language) ? nil : "\(model.id) does not list the language \(language)"
+            return languages.contains(language) ? nil : "\(name) does not list the language \(language)"
         }
     }
 

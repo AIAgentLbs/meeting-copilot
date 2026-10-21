@@ -136,7 +136,7 @@
         () => choose({language: draft.language || implied(facts)})));
     } else {
       const usable = (engine.models || []).find(item => item.id === draft.model && item.available);
-      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...(engine.models || []).map(item => [item.id, item.available ? `${item.label} · ${describe(item)}` : `${item.label} (${item.reason})`, !item.available])],
+      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...(engine.models || []).map(item => [item.id, item.available ? `${item.display_name || item.label} · ${describe(item)}` : `${item.display_name || item.label} (${item.reason})`, !item.available])],
         usable ? draft.model : "", value => choose({model: value, language: implied(factsOf(engine, value))})));
       facts = usable || null;
     }
@@ -158,7 +158,9 @@
   }
   function statusText() {
     const choice = state.choice;
-    const named = choice ? [choice.engine, choice.model, choice.language].filter(Boolean).join(", ") : "";
+    // The recorder's names for the engine and the model, never their ids.
+    const engine = choice && engineOf(choice.engine);
+    const named = choice ? [engine?.label, state.display_name, choice.language].filter(Boolean).join(", ") : "";
     if (state.state === "ready") return word("Ready: ", "Готово: ") + named;
     if (state.state === "unavailable") return word("Saved choice is unavailable: ", "Сохраненный выбор недоступен: ") + state.reason;
     if (state.state === "needs_choice") return choice ? word("Choice is not complete: ", "Выбор не закончен: ") + state.reason
@@ -168,7 +170,7 @@
   function checkText() {
     const check = lastCheck || state.check;  // the reply to Check (maybe an unsaved draft), else the stored choice's
     if (!check) return "";
-    if (check.ok) return word("Check passed, model used: ", "Проверка пройдена, модель: ") + (check.model_used || "");
+    if (check.ok) return word("Check passed, model used: ", "Проверка пройдена, модель: ") + (check.model_used_name || "");
     const failed = (check.steps || []).find(step => !step.ok);
     return word("Check failed: ", "Проверка не пройдена: ") + plainError(check.error || failed?.detail);
   }
