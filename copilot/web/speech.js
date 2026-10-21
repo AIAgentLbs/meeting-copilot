@@ -25,7 +25,7 @@
   async function api(path, data) {
     const response = await fetch(path, data === undefined ? {cache: "no-store"} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(data)});
     const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    if (!response.ok || !result.ok) throw apiError(result, response);
     return result;
   }
   function picker(label, choices, value, change) {
@@ -76,7 +76,7 @@
   function job(model) {return (state.downloads || []).find(item => item.model === model);}
   function progress(item) {
     if (!item) return "";
-    if (item.state === "error") return word("Download failed: ", "Загрузка не удалась: ") + item.message;
+    if (item.state === "error") return word("Download failed: ", "Загрузка не удалась: ") + plainError(item.message);
     if (item.state === "done") return word("Downloaded.", "Загружено.");
     const files = item.total_files ? ` (${item.completed_files}/${item.total_files})` : "";
     return word("Downloading ", "Загрузка ") + `${Math.round((item.fraction || 0) * 100)}%${files}`;
@@ -88,7 +88,7 @@
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {await api("/api/stt/download", {model}); await refreshState(); poll();}
-      catch (error) {message = error.message; render();}
+      catch (error) {message = plainError(error); render();}
     });
     return button;
   }
@@ -104,12 +104,12 @@
     Object.assign(draft, changes); render();
     if (!draft.engine || !draft.model || !draft.language) return;
     try {await api("/api/stt/choice", {choice: {engine: draft.engine, model: draft.model, language: draft.language}}); message = ""; lastCheck = null; await load(false, true);}
-    catch (error) {message = error.message; render();}
+    catch (error) {message = plainError(error); render();}
   }
   function choiceBox() {
     const box = node("fieldset"); box.className = "ai-purpose"; box.append(node("legend", word("Speech model", "Модель распознавания")));
     if (!options) {box.append(node("p", loading ? word("Reading what the recorder offers…", "Читаю, что предлагает приложение записи…") : "")); return box;}
-    if (!options.ok) {box.append(node("p", word("Unavailable: ", "Недоступно: ") + options.error)); return box;}
+    if (!options.ok) {box.append(node("p", word("Unavailable: ", "Недоступно: ") + plainError(options.error))); return box;}
     // An engine that only lacks its key stays selectable, so the key can be entered.
     const selectable = item => item.available || (item.needs_key && item.has_key === false);
     box.append(picker(word("Engine", "Движок"), [["", word("Choose…", "Выберите…")], ...options.engines.map(item => [item.id, item.available ? item.label : `${item.label} (${item.reason})`, !selectable(item)])],
@@ -122,13 +122,13 @@
       const save = node("button", word("Save key", "Сохранить ключ")); save.type = "button"; save.className = "quiet-button";
       save.addEventListener("click", async () => {
         try {await api("/api/stt/key", {engine: engine.id, key}); message = ""; await load(true);}
-        catch (error) {message = error.message; render();}
+        catch (error) {message = plainError(error); render();}
       });
       box.append(save);
     }
     if (!engine.available) return box;
     // A failed listing (bad key, network) is told apart from an empty list.
-    if (engine.listing?.error) box.append(node("p", engine.listing.error));
+    if (engine.listing?.error) box.append(node("p", plainError(engine.listing.error)));
     let facts;
     if (engine.model_entry === "free_text") {
       facts = engine.model_template || {};
@@ -170,7 +170,7 @@
     if (!check) return "";
     if (check.ok) return word("Check passed, model used: ", "Проверка пройдена, модель: ") + (check.model_used || "");
     const failed = (check.steps || []).find(step => !step.ok);
-    return word("Check failed: ", "Проверка не пройдена: ") + (check.error || (failed ? `${failed.name}: ${failed.detail}` : ""));
+    return word("Check failed: ", "Проверка не пройдена: ") + plainError(check.error || failed?.detail);
   }
   function deferredItem(item) {
     const li = node("li", `${item.session} · ${word(...(kinds[item.kind] || [item.kind, item.kind]))}${item.reason ? ": " + item.reason : ""} `);
@@ -180,7 +180,7 @@
     button.addEventListener("click", async () => {
       button.disabled = true;
       try {await api("/api/stt/retranscribe", {session: item.session}); await refreshState(); poll();}
-      catch (error) {message = error.message; render();}
+      catch (error) {message = plainError(error); render();}
     });
     li.append(button);
     if (run) li.append(node("span", " " + (run.state === "running" ? word("Transcribing…", "Расшифровка…") : run.state === "done" ? word("Done.", "Готово.") : word("Failed: ", "Ошибка: ") + (run.stderr || run.exit_code))));
@@ -199,12 +199,12 @@
     try {
       const reply = await api("/api/stt");  // status nested under "choice", like /api/ai
       state = {...reply.choice, downloads: reply.downloads, retranscribe: reply.retranscribe, check: reply.check};
-    } catch (error) {message = error.message;}
+    } catch (error) {message = plainError(error);}
     render();
   }
   async function load(refresh = false, resetDraft = false) {
     loading = true; render();
-    try {options = await api(`/api/stt/options${refresh ? "?refresh=1" : ""}`);} catch (error) {options = {ok: false, error: error.message};}
+    try {options = await api(`/api/stt/options${refresh ? "?refresh=1" : ""}`);} catch (error) {options = {ok: false, error: plainError(error)};}
     loading = false;
     await refreshState();
     if (!draft || resetDraft) {
@@ -233,7 +233,7 @@
     $("speech-check").disabled = true; message = word("Checking…", "Проверяю…"); render();
     const complete = draft && draft.engine && draft.model && draft.language;
     try {lastCheck = (await api("/api/stt/check", complete ? {choice: {engine: draft.engine, model: draft.model, language: draft.language}} : {})).check; message = "";}
-    catch (error) {message = error.message;}
+    catch (error) {message = plainError(error);}
     $("speech-check").disabled = false;
     await refreshState();
   });

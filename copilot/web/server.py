@@ -2599,8 +2599,10 @@ class Handler(BaseHTTPRequestHandler):
                 capture = RECOGNITION_GUARD.health.sample(physical)
                 if not capture.get("audio_recording"):
                     raise BoundaryUnavailable("Audio recording is not confirmed active; wait for the recording indicator")
+                # Audio is the authority here: a call recorded without live transcription
+                # (status "unavailable", "paused", "error") can still be split.
                 with TRANSCRIPT.lock:
-                    if TRANSCRIPT.meeting_id != physical["meeting_id"] or TRANSCRIPT.status not in {"recording", "overloaded", "loading"}:
+                    if TRANSCRIPT.meeting_id != physical["meeting_id"] or TRANSCRIPT.status == "finished":
                         raise BoundaryConflict("Recording changed; refresh and confirm again")
                     result = BOUNDARIES.split({**physical, "status": "recording"},
                                               str(payload.get("expected_meeting_id") or ""),

@@ -174,16 +174,8 @@ actor LiveTranscriptionCoordinator {
     private func startPipeline(epoch: Int) {
         pipelineStartedAt = Date()
         inputTimes.withLock { $0.removeAll() }
-        let choice: STTChoice
-        switch resolve() {
-        case .ready(let ready):
-            if let reason = LiveModels.unavailableReason(ready) {
-                status = .unavailable(reason)
-                publish()
-                return
-            }
-            choice = ready
-        case .needsChoice(let reason), .unavailable(let reason):
+        let (resolved, reason) = liveChoice()
+        guard let choice = resolved else {
             status = .unavailable(reason)
             publish()
             return
@@ -219,6 +211,17 @@ actor LiveTranscriptionCoordinator {
                 choice: choice,
                 epoch: epoch
             )
+        }
+    }
+
+    /// The chosen model when it can run live now, or why it cannot.
+    private func liveChoice() -> (STTChoice?, String) {
+        switch resolve() {
+        case .ready(let ready):
+            if let reason = LiveModels.unavailableReason(ready) { return (nil, reason) }
+            return (ready, "")
+        case .needsChoice(let reason), .unavailable(let reason):
+            return (nil, reason)
         }
     }
 
@@ -520,8 +523,24 @@ actor LiveTranscriptionCoordinator {
         }
     }
 
-    private func checkHealth() {
+    func checkHealth() {
         guard isRecording, transcript.isEnabled else { return }
+        // The choice is read when recording starts. While it cannot run live,
+        // every tick reads it again, so a model saved or adopted mid-call starts
+        // live text within seconds without restarting the recording (MEETONTRACK-76).
+        if case .unavailable = status {
+            let (choice, reason) = liveChoice()
+            if choice == nil {
+                status = .unavailable(reason)
+            } else {
+                transcript.setEnabled(false)
+                let epoch = transcript.setEnabled(true)
+                status = .loading
+                startPipeline(epoch: epoch)
+            }
+            publish()
+            return
+        }
         let now = Date()
         let inputs = inputTimes.withLock { $0 }
         let needsRecovery: Bool

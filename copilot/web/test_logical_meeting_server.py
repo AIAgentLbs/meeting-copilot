@@ -70,6 +70,16 @@ class LogicalServerTests(unittest.TestCase):
         self.assertEqual(self.post(origin="https://example.com")[0], 403)
         self.assertFalse(self.boundaries.path.exists())
 
+    def test_split_works_while_audio_records_without_live_transcript(self):
+        expected = "physical"
+        for status in ("unavailable", "paused", "error"):
+            self.transcript.status = status
+            code, result = self.post(expected=expected, token=status)
+            self.assertEqual(code, 200, (status, result))
+            expected = result["meeting_id"]
+        self.guard.health.sample = lambda snapshot: {"audio_recording": False}
+        self.assertEqual(self.post(token="silent")[0], 409)
+
     def test_success_retry_returns_same_result_after_recording_stops(self):
         status, result = self.post()
         self.assertEqual(status, 200)

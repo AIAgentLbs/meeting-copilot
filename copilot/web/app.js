@@ -223,13 +223,11 @@ const translations = {
     "message.latest": "К последнему ответу",
     "speaker.voice": "Собеседник {value}",
     "speaker.voice_hint": "Голос различён локально по аудио; имя появится, когда Zoom покажет активного участника",
-    "copilot.error": "Ошибка: {error}",
     "copilot.active": "Контекст ИИ активен, репозитории доступны только для чтения",
     "copilot.disconnected": "ИИ подключится после первого вопроса",
     "analysis.no_signal": "Проверено{when}: новых значимых сигналов нет",
     "analysis.signal": "Проверено{when}: новые сигналы добавлены в Журнал",
     "analysis.error": "Автоанализ не выполнен{when}: {error}",
-    "analysis.error_default": "ошибка",
     "provider.other": "Другой Git remote",
     "repos.selected": "Выбраны · {count}",
     "repos.empty": "Ничего не найдено в локальном каталоге",
@@ -273,6 +271,18 @@ const translations = {
     "project.edit_repos": "Изменить набор репозиториев",
     "project.saving": "Сохраняю выбор…",
     "ui.disconnected": "UI отключён",
+    "error.unreachable": "MeetOnTrack не отвечает. Проверьте, что приложение запущено, и обновите страницу.",
+    "error.generic": "Не получилось. Повторите через минуту; если не помогает, перезапустите MeetOnTrack.",
+    "error.transcript": "Расшифровка пока недоступна. MeetOnTrack пробует снова автоматически.",
+    "error.AI_LIMIT": "Лимит аккаунта ИИ исчерпан. Проверьте тариф или дождитесь сброса лимита, затем повторите запрос. Запись звука работает независимо.",
+    "error.AI_LOGIN": "Нужно войти в выбранный инструмент ИИ и повторить проверку. Запись звука работает независимо.",
+    "error.AI_UPDATE": "Инструмент ИИ устарел для выбранной модели. Обновите его или выберите другую модель, затем снова проверьте ИИ. Запись звука работает независимо.",
+    "error.AI_MODEL": "Провайдер ИИ отклонил выбранную модель. Возможно, ваш тариф ее не включает. Выберите другую модель в разделе «Начать работу». Запись звука работает независимо.",
+    "error.AI_MISSING": "Выбранный инструмент ИИ не установлен. Установите его и войдите или выберите другой. Для локальной записи и расшифровки ИИ не нужен.",
+    "error.AI_CHOICE": "Для этой задачи не выбраны инструмент и модель ИИ. Выберите их в разделе «Начать работу» и повторите. Запись звука работает независимо.",
+    "error.AI_NETWORK": "ИИ не ответил. Проверьте интернет и повторите запрос. Запись звука работает независимо.",
+    "error.AI_FAILED": "Запрос к ИИ завершился ошибкой. Проверьте доступ в разделе «Начать работу», затем повторите вопрос.",
+    "error.AI_UNAVAILABLE": "Выбранный ИИ сейчас недоступен. Откройте «Начать работу» и проверьте ИИ.",
     "help.ai": "ИИ проверяет стенограмму и локальные источники",
     "note.saving": "Сохраняю заметку локально",
     "note.current": "текущий момент",
@@ -442,13 +452,11 @@ const translations = {
     "message.latest": "Jump to latest",
     "speaker.voice": "Participant {value}",
     "speaker.voice_hint": "The voice was separated locally from audio; a name appears when Zoom shows the active participant",
-    "copilot.error": "Error: {error}",
     "copilot.active": "AI context is active; repositories are read-only",
     "copilot.disconnected": "AI will connect after the first question",
     "analysis.no_signal": "Checked{when}: no new significant signals",
     "analysis.signal": "Checked{when}: new signals added to the Journal",
     "analysis.error": "Auto-analysis failed{when}: {error}",
-    "analysis.error_default": "error",
     "provider.other": "Other Git remote",
     "repos.selected": "Selected · {count}",
     "repos.empty": "Nothing found in the local catalog",
@@ -492,6 +500,10 @@ const translations = {
     "project.edit_repos": "Change repository set",
     "project.saving": "Saving selection…",
     "ui.disconnected": "UI disconnected",
+    "error.unreachable": "MeetOnTrack is not responding. Make sure the app is running, then reload this page.",
+    "error.generic": "That did not work. Try again in a minute; if it keeps failing, restart MeetOnTrack.",
+    "error.transcript": "The live transcript is not available yet. MeetOnTrack keeps trying automatically.",
+    "error.AI_UNAVAILABLE": "The chosen AI is unavailable right now. Open Getting started and check AI.",
     "help.ai": "AI is checking the transcript and local sources",
     "note.saving": "Saving the note locally",
     "note.current": "current moment",
@@ -557,6 +569,42 @@ function t(key, variables = {}) {
   );
 }
 
+// Every failure shown to a person goes through plainError. Raw text (exception class names,
+// tracebacks, HTTP codes) never reaches the screen: a dropped connection or a timeout becomes
+// "check the app is running", a server fault becomes "try again", AI codes become instructions,
+// and only a plain sentence the server wrote for people is passed through.
+function apiError(data, response) {
+  return Object.assign(new Error(String(data?.error || "")), { status: response.status });
+}
+
+function plainError(error) {
+  const text = String(error?.message ?? error ?? "").replace(/^Error:\s*/, "").trim();
+  const [, code, detail] = text.match(/^(AI_[A-Z]+):\s*([\s\S]*)$/) || [];
+  const technical = value => !value || /\w(?:Error|Exception)\b|Traceback|Errno|\bHTTP\b|[{}<>[\]]|\.(?:py|js|swift)\b/.test(value);
+  if (code) {
+    const known = translations[uiLanguage][`error.${code}`];
+    if (known && (uiLanguage === "ru" || technical(detail))) return known;
+    return technical(detail) ? t("error.generic") : detail;
+  }
+  if (!error?.status && ["TypeError", "TimeoutError", "AbortError"].includes(error?.name)) return t("error.unreachable");
+  return error?.status >= 500 || technical(text) ? t("error.generic") : text;
+}
+
+// GETs retry quietly: a timeout or a dropped connection is usually gone a second later.
+async function getJSON(path, { signal, timeout } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const response = await fetch(path, { cache: "no-store", signal: signal || (timeout ? AbortSignal.timeout(timeout) : undefined) });
+      const data = await response.json();
+      if (!response.ok || data.ok === false) throw apiError(data, response);
+      return data;
+    } catch (error) {
+      if (attempt === 3 || error?.status || signal?.aborted) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+}
+
 function repositoryCountLabel(count) {
   if (uiLanguage === "en") return `${count} ${count === 1 ? "repository" : "repositories"}`;
   const remainder = count % 100;
@@ -604,6 +652,7 @@ let transcriptView = "transcript";
 let frameSignature = "";
 let stateRequestInFlight = false;
 let stateConnectionFailed = false;
+let stateFailures = 0;
 let activeTranscript = null;
 let recordingHealth = {};
 let recognitionResumeBusy = false;
@@ -741,7 +790,7 @@ elements.newMeetingConfirm.addEventListener("click", async () => {
     elements.newMeetingDialog.close();
     await state();
   } catch (error) {
-    elements.newMeetingError.textContent = error.message === t("meeting.new_conflict") ? error.message : t("meeting.new_retry");
+    elements.newMeetingError.textContent = plainError(error);
   } finally {
     boundaryBusy = false;
     elements.newMeetingConfirm.disabled = false;
@@ -1160,7 +1209,7 @@ async function saveSpeakerEdit(payload, button) {
     }
     if (selectedArchiveMeeting === meetingId && !elements.archiveDialog.hidden) await loadArchiveMeeting(meetingId);
   } catch (error) {
-    elements.speakerEditStatus.textContent = String(error);
+    elements.speakerEditStatus.textContent = plainError(error);
   } finally {
     button.disabled = false;
   }
@@ -1193,14 +1242,14 @@ function renderTranscript(transcript) {
     // Translation waits for an AI choice; say so instead of silently not translating.
     elements.translationJump.hidden = false;
     elements.translationJump.textContent = t("transcript.translation_needs_ai");
-    elements.translationJump.title = transcript.translation_error || "";
+    elements.translationJump.title = transcript.translation_error ? plainError(transcript.translation_error) : "";
   }
   elements.note.textContent = t("note.button", { time: timecodeLabel(transcript) });
   document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(transcript) });
   elements.meetingTitle.textContent = transcript.display_meeting || transcript.meeting || "Встреча";
   elements.liveStatus.classList.toggle("live", Boolean(transcript.live));
   elements.liveStatus.classList.toggle("error", Boolean(transcript.error || transcript.status === "error"));
-  elements.liveStatus.title = ["unavailable", "error"].includes(transcript.status) ? transcript.status_reason || "" : "";
+  elements.liveStatus.title = ["unavailable", "error"].includes(transcript.status) ? plainError(transcript.status_reason) : "";
   if (transcript.error) {
     elements.liveStatus.lastChild.textContent = t("status.waiting");
   } else if (transcript.live) {
@@ -1227,7 +1276,7 @@ function renderTranscript(transcript) {
 
   const audioDropoutActive = transcript.capture_warnings?.some((warning) => !warning.ended_at);
   elements.transcriptMeta.textContent = transcript.error
-    ? transcript.error
+    ? t("error.transcript")
     : audioDropoutActive
       ? t("transcript.capture_lost")
     : transcript.status === "overloaded"
@@ -1248,7 +1297,7 @@ function renderTranscript(transcript) {
       textNode(
         "span",
         "",
-        transcript.error || t("transcript.empty_text"),
+        transcript.error ? t("error.transcript") : t("transcript.empty_text"),
       ),
     );
     fragment.append(empty);
@@ -1342,7 +1391,7 @@ function renderFrameStatus(status) {
   const value = status || {};
   elements.frameStatus.classList.toggle("error", Boolean(value.last_error));
   if (value.last_error) {
-    elements.frameStatus.textContent = t("frames.error", { error: value.last_error });
+    elements.frameStatus.textContent = t("frames.error", { error: plainError(value.last_error) });
   } else if (value.last_success_at) {
     elements.frameStatus.textContent = t("frames.ok", { time: localTime(value.last_success_at) });
   } else {
@@ -1399,7 +1448,7 @@ function renderMessages(copilot) {
   elements.chat.dataset.initialized = "true";
   updateChatLatestButton();
   elements.copilotMeta.textContent = copilot.error
-    ? t("copilot.error", { error: copilot.error })
+    ? plainError(copilot.error)
     : copilot.connected
       ? t("copilot.active")
       : t("copilot.disconnected");
@@ -1413,7 +1462,7 @@ function renderMessages(copilot) {
   } else if (analysis.state === "error") {
     elements.analysisStatus.textContent = t("analysis.error", {
       when,
-      error: analysis.message || t("analysis.error_default"),
+      error: plainError(analysis.message),
     });
   } else {
     elements.analysisStatus.textContent = "";
@@ -1545,9 +1594,7 @@ async function openProjectDialog() {
   elements.projectHelp.classList.remove("error");
   elements.projectDialog.showModal();
   try {
-    const response = await fetch("/api/projects", { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const data = await getJSON("/api/projects");
     projectMeetingId = data.meeting_id || "";
     projectChoices = data.choices || [];
     projectSelection = data.selection || "auto";
@@ -1557,7 +1604,7 @@ async function openProjectDialog() {
       : t("project.no_meeting");
     renderProjectOptions();
   } catch (error) {
-    elements.projectHelp.textContent = String(error);
+    elements.projectHelp.textContent = plainError(error);
     elements.projectHelp.classList.add("error");
   }
 }
@@ -1572,7 +1619,7 @@ async function chooseProject(selection) {
     autoAnalysisPrimed = "";
     await state();
   } catch (error) {
-    elements.projectHelp.textContent = String(error);
+    elements.projectHelp.textContent = plainError(error);
     elements.projectHelp.classList.add("error");
     renderProjectOptions();
   }
@@ -1583,9 +1630,7 @@ async function openRepositoryDialog() {
   elements.repoHelp.classList.remove("error");
   elements.repoDialog.showModal();
   try {
-    const response = await fetch("/api/repositories", { cache: "no-store" });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+    const data = await getJSON("/api/repositories");
     repositoryCatalog = data.repositories || [];
     selectedRepositoryPaths = new Set(data.active_paths || []);
     maxActiveRepositories = data.max_active || 15;
@@ -1597,7 +1642,7 @@ async function openRepositoryDialog() {
     renderRepositoryCatalog();
     elements.repoSearch.focus();
   } catch (error) {
-    elements.repoHelp.textContent = String(error);
+    elements.repoHelp.textContent = plainError(error);
     elements.repoHelp.classList.add("error");
   }
 }
@@ -1611,7 +1656,7 @@ async function saveRepositorySelection() {
     elements.repoDialog.close();
     await state();
   } catch (error) {
-    elements.repoHelp.textContent = String(error);
+    elements.repoHelp.textContent = plainError(error);
     elements.repoHelp.classList.add("error");
     elements.repoSave.disabled = false;
   }
@@ -1699,7 +1744,7 @@ function renderCallPlan(plan) {
             renderCallBoard(result.call_plan, currentJournal);
           } catch (error) {
             select.value = item.status;
-            elements.help.textContent = String(error);
+            elements.help.textContent = plainError(error);
             elements.help.classList.add("error");
           } finally {
             select.disabled = false;
@@ -1807,7 +1852,7 @@ function renderCallBoard(plan, journal) {
           renderCallBoard(result.call_plan || currentCallPlan, result.journal || currentJournal);
         } catch (error) {
           select.value = item.status;
-          elements.help.textContent = String(error);
+          elements.help.textContent = plainError(error);
           elements.help.classList.add("error");
         } finally { select.disabled = false; }
       });
@@ -2138,10 +2183,8 @@ async function refreshArchive() {
   archiveAbort = new AbortController();
   elements.archiveList.replaceChildren(textNode("div", "archive-loading", "…"));
   try {
-    const response = await fetch(`/api/archive?q=${encodeURIComponent(elements.archiveSearch.value.trim())}`, { cache: "no-store", signal: archiveAbort.signal });
-    const data = await response.json();
+    const data = await getJSON(`/api/archive?q=${encodeURIComponent(elements.archiveSearch.value.trim())}`, { signal: archiveAbort.signal });
     if (request !== archiveRequest || elements.archiveDialog.hidden) return;
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     archiveMeetings = data.meetings || [];
     if (data.delivery) renderDeliveryHealth(data.delivery);
     renderArchiveList();
@@ -2149,7 +2192,7 @@ async function refreshArchive() {
     if (preferred) await loadArchiveMeeting(preferred);
     else { archiveDetailRequest += 1; elements.archiveDetail.replaceChildren(textNode("p", "archive-empty", t("archive.select_text"))); }
   } catch (error) {
-    if (request === archiveRequest && error.name !== "AbortError") elements.archiveList.replaceChildren(textNode("div", "archive-error", String(error)));
+    if (request === archiveRequest && !archiveAbort.signal.aborted) elements.archiveList.replaceChildren(textNode("div", "archive-error", plainError(error)));
   }
 }
 
@@ -2248,7 +2291,7 @@ function renderArchiveDetail(meeting) {
         await refreshArchive();
         if (restoreFocus && selectedArchiveMeeting === meeting.meeting_id && !elements.archiveDialog.hidden && document.activeElement === document.body) document.querySelector("#archive-rename-button")?.focus();
       }
-    } catch (error) { titleStatus.textContent = String(error); }
+    } catch (error) { titleStatus.textContent = plainError(error); }
     finally { saveTitle.disabled = false; }
   });
   root.append(renameButton, rename);
@@ -2309,7 +2352,7 @@ function renderArchiveDetail(meeting) {
     try {
       await post("/api/archive/rewrite", {meeting_id: meeting.meeting_id, instructions: instructions.value});
       await watchRewrite(true);
-    } catch (error) { if (stillHere()) { rewriteButton.disabled = !canRewrite; rewriteStatus.textContent = String(error); } }
+    } catch (error) { if (stillHere()) { rewriteButton.disabled = !canRewrite; rewriteStatus.textContent = plainError(error); } }
   });
   feedback.append(feedbackLabel, instructions, feedbackHelp, rewriteButton, rewriteStatus);
   overview.append(feedback);
@@ -2326,7 +2369,7 @@ function renderArchiveDetail(meeting) {
     open.addEventListener("click", async () => {
       open.disabled = true;
       try { await post("/api/archive/open-local", {meeting_id: meeting.meeting_id, kind}); }
-      catch (error) { open.textContent = String(error); }
+      catch (error) { open.textContent = plainError(error); }
       finally { open.disabled = false; }
     });
     reportActions.append(open);
@@ -2504,13 +2547,11 @@ async function loadArchiveMeeting(meetingId) {
   renderArchiveList();
   elements.archiveDetail.replaceChildren(textNode("div", "archive-loading", "…"));
   try {
-    const response = await fetch(`/api/archive/${encodeURIComponent(meetingId)}`, { cache: "no-store" });
-    const data = await response.json();
+    const data = await getJSON(`/api/archive/${encodeURIComponent(meetingId)}`);
     if (request !== archiveDetailRequest || elements.archiveDialog.hidden) return;
-    if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
     renderArchiveDetail(data.meeting);
   } catch (error) {
-    if (request === archiveDetailRequest && !elements.archiveDialog.hidden) elements.archiveDetail.replaceChildren(textNode("div", "archive-error", String(error)));
+    if (request === archiveDetailRequest && !elements.archiveDialog.hidden) elements.archiveDetail.replaceChildren(textNode("div", "archive-error", plainError(error)));
   }
 }
 
@@ -2521,7 +2562,7 @@ async function generateArchiveReport(meetingId, button) {
     await post("/api/archive/report", { meeting_id: meetingId });
     await refreshArchive();
   } catch (error) {
-    button.textContent = String(error).replace(/^Error:\s*/, "");
+    button.textContent = plainError(error);
   } finally {
     button.disabled = false;
   }
@@ -2532,8 +2573,9 @@ async function state() {
   stateRequestInFlight = true;
   try {
     const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(8000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw apiError({}, response);
     const data = await response.json();
+    stateFailures = 0;
     const defaultLanguage = data.preferences?.interface_language;
     if (!hasExplicitUiLanguage && !inheritedUiLanguage && ["en", "ru"].includes(defaultLanguage)) {
       uiLanguage = defaultLanguage;
@@ -2593,6 +2635,8 @@ async function state() {
       void analyze(finishedWithoutAnalysis);
     }
   } catch (error) {
+    // The poll runs every 2.5 s, so one missed answer fixes itself. Say something only when it keeps failing.
+    if (++stateFailures < 3) return;
     stateConnectionFailed = true;
     elements.liveStatus.classList.add("error");
     elements.liveStatus.lastChild.textContent = t("ui.disconnected");
@@ -2602,7 +2646,7 @@ async function state() {
       elements.captureStatus.classList.add("error");
       elements.captureStatus.lastChild.textContent = t("capture.disconnected");
     }
-    elements.help.textContent = String(error);
+    elements.help.textContent = plainError(error);
     elements.help.classList.add("error");
   } finally {
     stateRequestInFlight = false;
@@ -2618,7 +2662,7 @@ async function post(path, payload) {
       : path.startsWith("/api/google-context/") ? {signal: AbortSignal.timeout(25000)} : {}),
   });
   const data = await response.json();
-  if (!response.ok || !data.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (!response.ok || !data.ok) throw apiError(data, response);
   return data;
 }
 
@@ -2642,7 +2686,7 @@ async function ask(question) {
   try {
     await post("/api/chat", { question: clean });
   } catch (error) {
-    elements.help.textContent = String(error);
+    elements.help.textContent = plainError(error);
     elements.help.classList.add("error");
   } finally {
     requestBusy = false;
@@ -2665,7 +2709,7 @@ async function saveNote() {
     journalSignature = "";
     await state();
   } catch (error) {
-    elements.help.textContent = String(error);
+    elements.help.textContent = plainError(error);
     elements.help.classList.add("error");
   } finally {
     noteBusy = false;
@@ -2681,7 +2725,7 @@ async function analyze(force) {
   try {
     await post("/api/analyze", { force });
   } catch (error) {
-    elements.help.textContent = String(error);
+    elements.help.textContent = plainError(error);
     elements.help.classList.add("error");
   } finally {
     requestBusy = false;
@@ -2757,11 +2801,11 @@ document.querySelector("#chat-import-input").addEventListener("change", async ev
     const response = await fetch("/api/meeting-chat/import", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ meeting_id: meetingId, text: await file.text() }) });
     const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || "Import failed");
+    if (!response.ok || !data.ok) throw apiError(data, response);
     result.textContent = `${uiLanguage === "ru" ? "Добавлено" : "Added"}: ${data.added}`;
     renderMeetingChat(data.meeting_chat);
     if (data.added) void analyze(true);
-  } catch (error) { result.textContent = error.message; }
+  } catch (error) { result.textContent = plainError(error); }
   event.target.value = "";
 });
 
@@ -2811,7 +2855,7 @@ elements.captureFrame.addEventListener("click", async () => {
     frameSignature = "";
     await state();
   } catch (error) {
-    elements.captureFrame.textContent = String(error).replace(/^Error:\s*/, "");
+    elements.captureFrame.textContent = plainError(error);
     setTimeout(() => { elements.captureFrame.textContent = t("frames.capture"); }, 3000);
   } finally {
     elements.captureFrame.disabled = false;
@@ -2927,15 +2971,13 @@ async function loadGoogleContext() {
   const account = document.querySelector("#google-account");
   account.textContent = t("google.loading");
   try {
-    const response = await fetch("/api/google-context", {cache: "no-store", signal: AbortSignal.timeout(10000)});
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await getJSON("/api/google-context", {timeout: 10000});
     document.querySelectorAll("#google-sources input").forEach(input => { input.checked = data.sources?.[input.value] === true; });
     googleConnected = data.connected === true;
     account.dataset.auth = googleConnected ? "connected" : "not_connected";
     account.dataset.account = data.account || "";
     account.textContent = googleConnected ? t("google.account", {account: data.account || "gws"}) : data.login_pending ? t("google.pending") : t("google.auth");
-  } catch (error) { account.textContent = String(error); }
+  } catch (error) { account.textContent = plainError(error); }
   finally { googleControls(false); }
 }
 const googleSettings = document.querySelector("#google-context-settings");
@@ -2960,7 +3002,7 @@ for (const action of ["connect", "disconnect"]) document.querySelector(`#google-
     googleConnected = data.connected === true;
     googleResults.replaceChildren();
     googleMessage.textContent = data.login_pending ? t("google.pending") : action === "disconnect" ? t("google.disconnected") : "";
-  } catch (error) { googleMessage.textContent = String(error); }
+  } catch (error) { googleMessage.textContent = plainError(error); }
   finally { googleControls(false); await loadGoogleContext(); }
 });
 document.querySelector("#google-save").addEventListener("click", async () => {
@@ -2971,7 +3013,7 @@ document.querySelector("#google-save").addEventListener("click", async () => {
     await post("/api/google-context/settings", {sources});
     googleResults.replaceChildren();
     googleMessage.textContent = t("google.saved");
-  } catch (error) { googleMessage.textContent = String(error); }
+  } catch (error) { googleMessage.textContent = plainError(error); }
   finally { googleControls(false); }
 });
 document.querySelector("#google-search-form").addEventListener("submit", async event => {
@@ -2982,7 +3024,7 @@ document.querySelector("#google-search-form").addEventListener("submit", async e
   googleResults.replaceChildren();
   googleMessage.textContent = t("google.searching");
   try {
-    const snapshot = await fetch("/api/projects", {cache: "no-store"}).then(response => response.json());
+    const snapshot = await getJSON("/api/projects");
     if (!snapshot.meeting_id) throw new Error(t("google.no_meeting"));
     const data = await post("/api/google-context/search", {meeting_id: snapshot.meeting_id, query});
     let count = 0;
@@ -3016,7 +3058,7 @@ document.querySelector("#google-search-form").addEventListener("submit", async e
       googleResults.append(section);
     }
     googleMessage.textContent = t("google.result", {count});
-  } catch (error) { googleMessage.textContent = String(error); }
+  } catch (error) { googleMessage.textContent = plainError(error); }
   finally { googleControls(false); }
 });
 

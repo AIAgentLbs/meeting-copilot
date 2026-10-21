@@ -351,6 +351,25 @@ struct LiveTranscriptTests {
         #expect(snapshot.entries.isEmpty)
     }
 
+    @Test("A speech choice that changes mid-recording is read again without restarting it")
+    func unavailableChoiceIsReadAgainWhileRecording() async {
+        let reason = OSAllocatedUnfairLock(initialState: STTChoice.needsChoiceMessage)
+        let coordinator = LiveTranscriptionCoordinator(resolve: { .unavailable(reason.withLock { $0 }) })
+        let attached = OSAllocatedUnfairLock<Bool>(initialState: false)
+        await coordinator.beginRecording(
+            enabled: true,
+            update: { _ in },
+            attach: { sinks in attached.withLock { $0 = $0 || sinks != nil } })
+        reason.withLock { $0 = "the chosen model is still downloading" }
+        await coordinator.checkHealth()
+        let snapshot = await coordinator.snapshot
+
+        #expect(snapshot.isRecording)
+        #expect(snapshot.status == .unavailable("the chosen model is still downloading"))
+        #expect(attached.withLock { $0 } == false)
+        await coordinator.finishRecording()
+    }
+
     @Test("Ending the recording releases everything the closures captured")
     func finishRecordingReleasesTheCapturedSession() async {
         // AppController's closures capture the recording session. The live

@@ -267,6 +267,8 @@ global.document = {getElementById: id => (elements[id] ||= stub()), createElemen
 global.window = {addEventListener: (name, fn) => { listeners[name] = fn; }};
 global.localStorage = {getItem: () => "1", setItem() {}};
 global.MutationObserver = class { observe() {} };
+global.plainError = error => String(error?.message ?? error ?? "");
+global.apiError = data => new Error(data?.error || "");
 global.setInterval = () => 0;
 global.setTimeout = () => 0;
 global.fetch = async path => ({ok: true, json: async () => responses[path.split("?")[0]] || {ok: true}});
