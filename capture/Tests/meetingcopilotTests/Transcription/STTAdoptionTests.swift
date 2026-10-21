@@ -14,10 +14,11 @@ struct STTAdoptionTests {
 
     private static func migrated(
         _ json: [String: Any], installed: [LocalSTTModel] = [],
+        modified: (LocalSTTModel) -> Date? = { _ in nil },
         language: (LocalSTTModel) -> String? = { _ in nil }
     ) -> [String: Any]? {
         var json = json
-        STTChoice.migrateLegacy(&json, installed: installed, language: language)
+        STTChoice.migrateLegacy(&json, installed: installed, modified: modified, language: language)
         return STTChoice.stored(in: json)
     }
 
@@ -31,10 +32,25 @@ struct STTAdoptionTests {
         #expect(STTChoice.parse(choice).0 == STTChoice(engine: "fluidaudio", model: Self.v3.id, language: "auto"))
     }
 
-    @Test("Zero or several installed models leave the choice to the person")
-    func zeroOrSeveralAreNotAdopted() {
+    @Test("With several installed models the one downloaded last is adopted")
+    func severalAdoptTheNewest() {
+        let dates: [String: Date] = [
+            Self.v3.id: Date(timeIntervalSince1970: 100), Self.ship.id: Date(timeIntervalSince1970: 300),
+            Self.v2.id: Date(timeIntervalSince1970: 200),
+        ]
+        let modified: (LocalSTTModel) -> Date? = { dates[$0.id] }
+        // List order does not matter, only the person's last download.
+        for installed in [[Self.v3, Self.ship, Self.v2], [Self.ship, Self.v2, Self.v3]] {
+            let choice = Self.migrated([:], installed: installed, modified: modified, language: { _ in "auto" })
+            #expect(choice as? [String: String]
+                == ["engine": "fluidaudio", "model": Self.ship.id, "language": "auto"])
+        }
+        // The newest one whose language is not known yet is passed over.
+        let next = Self.migrated(
+            [:], installed: [Self.v3, Self.ship, Self.v2], modified: modified,
+            language: { $0 == Self.ship ? nil : "en" })
+        #expect(next?["model"] as? String == Self.v2.id)
         #expect(Self.migrated([:], installed: [], language: { _ in "auto" }) == nil)
-        #expect(Self.migrated([:], installed: [Self.v3, Self.ship], language: { _ in "auto" }) == nil)
     }
 
     @Test("An installed model whose language is not known yet is not half-adopted")

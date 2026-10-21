@@ -9,7 +9,7 @@ import Foundation
 ///
 /// No code default ever fills one in. It comes from the person: chosen in
 /// Getting started, carried over from the settings that came before it, or
-/// the one model the installer downloaded (owner decision 2026-10-21). A
+/// the model the person downloaded last (owner decision 2026-10-21). A
 /// choice that is not all there does not run: sessions wait, deferred, until
 /// it is finished (docs/specs/2026-10-20-no-hardcoded-models.md, Phase 3).
 struct STTChoice: Equatable, Sendable {
@@ -94,16 +94,19 @@ struct STTChoice: Equatable, Sendable {
     ///    in the file count, never a value that used to be a code default:
     ///    `auto` (or no engine) carries nothing over. A language comes from
     ///    the file, or from the local model itself (`impliedLanguage`).
-    /// 2. otherwise the one local model the installer downloaded (`installed`:
-    ///    the speech models in our own model folders). Zero or several leave
-    ///    the choice to the person. Several is a real choice; guessing one
-    ///    would be a code default.
+    /// 2. otherwise a local model already downloaded into our own model
+    ///    folders (`installed`). With several, the one the person downloaded
+    ///    or updated last (`modified`, the bundle folder's date) wins: their
+    ///    own last action, never a name or a list order (owner decision
+    ///    2026-10-21: a downloaded model always runs, nobody is asked).
     ///
     /// `language` answers `impliedLanguage` for a local model, or nil while
-    /// its facts are not known on this Mac yet (the choice then waits).
+    /// its facts are not known on this Mac yet; such a model is passed over
+    /// for the next newest one, and nothing is adopted when none is known.
     static func migrateLegacy(
         _ json: inout [String: Any],
         installed: [LocalSTTModel],
+        modified: (LocalSTTModel) -> Date? = { _ in nil },
         language: (LocalSTTModel) -> String?
     ) {
         guard stored(in: json) == nil else { return }
@@ -129,8 +132,11 @@ struct STTChoice: Equatable, Sendable {
             choice["engine"] = "assemblyai"
             choice["model"] = text(transcription["assemblyai"] as? [String: Any], "speech_model")
         default:
-            guard installed.count == 1, let only = installed.first, let implied = language(only) else { return }
-            choice = ["engine": localEngine, "model": only.id, "language": implied]
+            let newestFirst = installed.sorted { (modified($0) ?? .distantPast) > (modified($1) ?? .distantPast) }
+            guard let model = newestFirst.first(where: { language($0) != nil }),
+                  let implied = language(model)
+            else { return }
+            choice = ["engine": localEngine, "model": model.id, "language": implied]
         }
         if choice["language"] == nil {
             choice["language"] = text(transcription, "language")
@@ -210,6 +216,7 @@ extension Config {
     static func migrateLegacySpeechChoice(
         file: URL = Config.path,
         installed: @autoclosure () -> [LocalSTTModel] = LocalSTTModel.installed,
+        modified: (LocalSTTModel) -> Date? = { $0.modified },
         language: (LocalSTTModel) -> String? = { $0.offlineImpliedLanguage }
     ) {
         let json: [String: Any]
@@ -223,11 +230,11 @@ extension Config {
         guard STTChoice.stored(in: json) == nil else { return }
         let installed = installed()
         var probe = json
-        STTChoice.migrateLegacy(&probe, installed: installed, language: language)
+        STTChoice.migrateLegacy(&probe, installed: installed, modified: modified, language: language)
         guard !NSDictionary(dictionary: probe).isEqual(to: json) else { return }
         do {
             let written = try ConfigFile.update(file) {
-                STTChoice.migrateLegacy(&$0, installed: installed, language: language)
+                STTChoice.migrateLegacy(&$0, installed: installed, modified: modified, language: language)
             }
             if written { NotificationCenter.default.post(name: didChange, object: nil) }
         } catch {

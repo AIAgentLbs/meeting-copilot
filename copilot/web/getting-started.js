@@ -29,30 +29,12 @@
     "context-folder-add": ["Connect folder (read-only)", "Подключить папку (только чтение)"],
     "context-folder-choose": ["Choose folder…", "Выбрать папку…"],
     "context-folder-path-label": ["Or enter its absolute path", "Или укажите полный путь"],
-    "context-google-open": ["Google Drive · connect / manage", "Google Drive · подключить / настроить"],
-    "assistant-problem-fix": ["Check AI / fix access", "Проверить ИИ / восстановить доступ"]
-  };
-  const errorText = text => {
-    if (en()) return String(text).replace(/^AI_(?:LIMIT|LOGIN|UPDATE|MODEL|MISSING|NETWORK|SANDBOX|FAILED|CHOICE|UNAVAILABLE):\s*/, "");
-    const messages = {
-      AI_LIMIT: "Лимит аккаунта ИИ исчерпан. Проверьте тариф или дождитесь сброса лимита, затем повторите запрос. Запись звука работает независимо.",
-      AI_LOGIN: "Нужно войти в выбранный инструмент ИИ и повторить проверку. Запись звука работает независимо.",
-      AI_UPDATE: "Инструмент ИИ устарел для выбранной модели. Обновите его или выберите другую модель, затем снова проверьте ИИ. Запись звука работает независимо.",
-      AI_MODEL: "Провайдер ИИ отклонил выбранную модель. Возможно, ваш тариф ее не включает. Выберите другую модель в разделе «Начать работу». Запись звука работает независимо.",
-      AI_MISSING: "Выбранный инструмент ИИ не установлен. Установите его и войдите или выберите другой. Для локальной записи и расшифровки ИИ не нужен.",
-      AI_CHOICE: "Для этой задачи не выбраны инструмент и модель ИИ. Выберите их в разделе «Начать работу» и повторите. Запись звука работает независимо.",
-      AI_NETWORK: "ИИ не ответил. Проверьте интернет и повторите запрос. Запись звука работает независимо.",
-      AI_SANDBOX: "Codex отказался читать файлы: в этой учетной записи Windows он не может ограничить чтение выбранными папками. Откройте Codex в терминале, введите /setup-default-sandbox и один раз подтвердите запрос администратора, затем снова проверьте ИИ. Остальные задачи ИИ работают и без этого.",
-      AI_FAILED: "Запрос к ИИ завершился ошибкой. Проверьте доступ в разделе «Начать работу», затем повторите вопрос."
-    };
-    const code = String(text).split(":")[0];
-    if (code === "AI_UNAVAILABLE") return "Выбранный ИИ сейчас недоступен: " + String(text).slice(code.length + 1).trim();
-    return messages[code] || text;
+    "context-google-open": ["Google Drive · connect / manage", "Google Drive · подключить / настроить"]
   };
   async function api(path, data) {
     const response = await fetch(path, data === undefined ? {cache:"no-store"} : {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});
     const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(errorText(result.error || `HTTP ${response.status}`));
+    if (!response.ok || !result.ok) throw apiError(result, response);
     return result;
   }
   function show() {
@@ -74,7 +56,7 @@
       : ai.state === "checking" ? word("Checking account and model access…", "Проверяю аккаунт и доступ к модели…")
       : ai.state === "partial" ? word("AI answered. Some tasks are unavailable with this choice; see the list below.", "ИИ ответил. Некоторые задачи недоступны с этим выбором, см. список ниже.")
       : ai.state === "needs_choice" ? word("Choose the AI tool and model, then check again.", "Выберите инструмент и модель ИИ и повторите проверку.")
-      : ai.state === "error" ? errorText(ai.message) : word("Access has not been checked yet.", "Доступ еще не проверен.");
+      : ai.state === "error" ? plainError(ai.message) : word("Access has not been checked yet.", "Доступ еще не проверен.");
     renderAI();
     $("context-folder-list").replaceChildren(...(current.folders || []).map(doc => {
       const li = document.createElement("li"), remove = document.createElement("button");
@@ -83,7 +65,7 @@
       remove.addEventListener("click", async () => {
         remove.disabled = true;
         try {current.folders = (await api("/api/context-folders/remove", {id:doc.id})).folders; render();}
-        catch(error) {$("context-folder-message").textContent = error.message; remove.disabled = false;}
+        catch(error) {$("context-folder-message").textContent = plainError(error); remove.disabled = false;}
       }); li.append(remove); return li;
     }));
   }
@@ -108,7 +90,7 @@
     if (refresh || !options[provider]) {
       options[provider] = {state: "loading"};
       try {options[provider] = (await api(`/api/ai/options?provider=${encodeURIComponent(provider)}${refresh ? "&refresh=1" : ""}`)).options;}
-      catch (error) {options[provider] = {state: "unavailable", reason: error.message};}
+      catch (error) {options[provider] = {state: "unavailable", reason: plainError(error)};}
     }
     return options[provider];
   }
@@ -123,7 +105,7 @@
     if (draft.provider && !found) void providerOptions(draft.provider).then(redraw);
     let ready = false;
     if (found?.state === "loading" || (draft.provider && !found)) box.append(node("p", word("Reading what this tool offers…", "Читаю, что предлагает инструмент…")));
-    else if (found?.state === "unavailable") box.append(node("p", word("Unavailable: ", "Недоступно: ") + found.reason));
+    else if (found?.state === "unavailable") box.append(node("p", word("Unavailable: ", "Недоступно: ") + plainError(found.reason)));
     else if (found) {
       const model = found.models.find(item => item.id === draft.model && !item.problem);
       const name = item => item.problem ? `${item.label} (${item.problem})` : item.image === true ? item.label : `${item.label} (${word("no screenshots", "без снимков экрана")})`;
@@ -142,7 +124,7 @@
     save.addEventListener("click", async () => {
       save.disabled = true;
       try {await api("/api/ai/choice", {choice: draft}); await loadAI(true); $("ai-choice-message").textContent = word("Saved.", "Сохранено.");}
-      catch (error) {$("ai-choice-message").textContent = error.message; redraw();}
+      catch (error) {$("ai-choice-message").textContent = plainError(error); redraw();}
     });
     box.append(save);
     const speedName = speed => speed === "standard" ? word("standard speed", "обычная скорость") : speed;
@@ -158,36 +140,35 @@
       const text = task.state && task.state !== "ready" ? (task.state === "unavailable" ? word("unavailable: ", "недоступно: ") + task.reason : task.reason)
         : !checked || checked.state === "unchecked" ? word("not checked yet", "еще не проверено")
         : checked.state === "ready" ? word("ok", "работает") + (checked.message && !checked.message.startsWith("AI answered successfully") ? ". " + checked.message : "")
-        : errorText(checked.message);
+        : plainError(checked.message);
       tasks.append(node("li", `${word(...names)}: ${text}`));
     }
     box.append(tasks);
     return box;
   }
   function renderAI() {$("ai-card").replaceChildren(aiCard());}
-  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) edited = false; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
+  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) edited = false; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = plainError(error);}}
   $("ai-refresh").onclick = async () => {
     $("ai-refresh").disabled = true;
     try {await Promise.all(Object.keys(options).map(provider => providerOptions(provider, true))); await loadAI(true);}
     finally {$("ai-refresh").disabled = false;}
   };
-  async function load() {try {current = await api("/api/getting-started"); render(); void loadAI();} catch(error) {$("startup-message").textContent = error.message;}}
+  async function load() {try {current = await api("/api/getting-started"); render(); void loadAI();} catch(error) {$("startup-message").textContent = plainError(error);}}
   $("getting-started-open").onclick = show;
   $("getting-started-close").onclick = () => {$("getting-started").hidden = true; $("getting-started-open").setAttribute("aria-expanded","false"); localStorage.setItem("meetontrack-started", "1");};
-  $("assistant-problem-fix").onclick = show;
   $("startup-context").onclick = () => $("repo-button").click();
   $("startup-google").onclick = () => {$("settings-open").click(); $("google-context-settings").open = true; $("google-context-settings").scrollIntoView({block:"nearest"});};
-  $("startup-recorder").onclick = async () => {try {await api("/api/getting-started/open-recorder",{}); $("startup-message").textContent = word("Recorder opened. Finish setup there, then return here.", "Окно записи открыто. Завершите настройку там и вернитесь сюда.");} catch(error) {$("startup-message").textContent = error.message;}};
+  $("startup-recorder").onclick = async () => {try {await api("/api/getting-started/open-recorder",{}); $("startup-message").textContent = word("Recorder opened. Finish setup there, then return here.", "Окно записи открыто. Завершите настройку там и вернитесь сюда.");} catch(error) {$("startup-message").textContent = plainError(error);}};
   $("startup-record").onclick = async () => {
     starting = true; render();
     try {await api("/api/getting-started/start-recording",{}); $("startup-message").textContent = word("Start requested. Waiting for audio confirmation…", "Начало запрошено. Жду подтверждения записи звука…");}
-    catch(error) {starting = false; $("startup-message").textContent = error.message; render();}
+    catch(error) {starting = false; $("startup-message").textContent = plainError(error); render();}
     setTimeout(() => {if(starting && !recording) {starting=false; $("startup-message").textContent=word("Recording has not been confirmed. Open the recorder and check permissions.","Начало записи не подтверждено. Откройте окно записи и проверьте разрешения."); render();}},15000);
   };
   $("startup-ai-check").onclick = async () => {
     $("startup-ai-check").disabled = true; current.ai={state:"checking"}; render();
     try {current.ai=(await api("/api/getting-started/check-ai",{})).ai;}
-    catch(error) {current.ai={state:"error",message:error.message};}
+    catch(error) {current.ai={state:"error",message:plainError(error)};}
     finally {$("startup-ai-check").disabled=false; render(); void loadAI();}
   };
   $("context-google-open").onclick = () => { $("project-dialog").close(); $("startup-google").click(); };
@@ -196,7 +177,7 @@
     try {
       const result = await api("/api/context-folders/choose", {});
       if(result.path) { $("context-folder-path").value = result.path; $("context-folder-add").focus(); }
-    } catch(error) { $("context-folder-message").textContent = error.message; }
+    } catch(error) { $("context-folder-message").textContent = plainError(error); }
     finally { $("context-folder-choose").disabled = false; }
   };
   $("context-folder-add").onclick = async () => {
@@ -205,19 +186,64 @@
       current.folders = (await api("/api/context-folders/add", {path:$("context-folder-path").value})).folders;
       $("context-folder-path").value = "";
       $("context-folder-message").textContent = word("Connected. The next AI search will read current files in this folder.", "Подключено. Следующий поиск ИИ прочитает актуальные файлы в этой папке."); render();
-    } catch(error) { $("context-folder-message").textContent = error.message; }
+    } catch(error) { $("context-folder-message").textContent = plainError(error); }
     finally { $("context-folder-add").disabled = false; }
   };
+  // Anything that stops the app from doing its job gets a red banner above everything, with the one
+  // button that fixes it, also during a recording (owner decision 2026-10-21: a call was recorded with
+  // no speech recognition chosen and only a small grey label said so).
+  const blockerState = {setup: null, speech: null, health: null, live: null, aiFailure: ""};
+  let blockerSignature = "";
+  function openStep(id) {show(); $(id).scrollIntoView({block: "start"});}
+  async function openRecorder() {try {await api("/api/getting-started/open-recorder", {});} catch (error) {openStep("startup-audio-heading");}}
+  function blockers() {
+    const {setup, speech, health, live, aiFailure} = blockerState, found = [];
+    if (setup?.capture_installed === false) found.push([word("The recorder is not installed. Calls are not recorded.", "Приложение для записи не установлено. Звонки не записываются."), word("How to install", "Как установить"), () => openStep("startup-audio-heading")]);
+    else if (setup?.capture_running === false) found.push([word("The recorder is not running. Calls are not recorded.", "Приложение для записи не запущено. Звонки не записываются."), word("Start the recorder", "Запустить запись"), openRecorder]);
+    if (health?.state === "action_required" && health.reason === "audio_track_stalled") found.push([word("Sound is not being recorded. Check the microphone and system audio permissions in the recorder.", "Звук не записывается. Проверьте разрешения на микрофон и системный звук в окне записи."), word("Open the recorder", "Открыть окно записи"), openRecorder]);
+    if (health?.state === "action_required" && ["recognition_retries_exhausted", "recognition_resume_failed"].includes(health.reason) || live?.status === "error" && health?.capture?.audio_recording && health?.state !== "recovering") found.push([word("Live transcription stopped and did not restart. There is no AI help during the call.", "Расшифровка во время звонка остановилась и не восстановилась. Подсказок ИИ во время звонка не будет."), word("Resume transcription", "Возобновить расшифровку"), () => $("recognition-resume").click()]);
+    if (speech?.state === "needs_choice") found.push([word("Speech recognition is not set up. Calls are recorded, but there is no transcript and no AI help.", "Распознавание речи не настроено. Звонок записывается, но стенограммы и подсказок ИИ не будет."), word("Set up speech recognition", "Настроить распознавание"), () => openStep("speech-step")]);
+    else if (speech?.state === "unavailable") found.push([word("Speech recognition does not work: ", "Распознавание речи не работает: ") + speech.reason + word(". There is no transcript and no AI help.", ". Стенограммы и подсказок ИИ не будет."), word("Fix speech recognition", "Исправить распознавание"), () => openStep("speech-step")]);
+    // A choice that transcribes after the call can still be one the live recognizer cannot run.
+    else if (live?.status === "unavailable") found.push([word("Live transcript is off: ", "Расшифровка во время звонка выключена: ") + (live.status_reason || "?") + word(". There is no AI help during the call.", ". Подсказок ИИ во время звонка не будет."), word("Fix speech recognition", "Исправить распознавание"), () => openStep("speech-step")]);
+    const ai = setup?.ai || {};
+    if (ai.state === "needs_choice") found.push([word("AI is not chosen. There is no AI help during calls.", "ИИ не выбран. Подсказок ИИ во время звонка не будет."), word("Choose AI", "Выбрать ИИ"), () => openStep("startup-ai-heading")]);
+    else if (ai.state === "error") found.push([word("AI check failed: ", "Проверка ИИ не прошла: ") + plainError(ai.message || ""), word("Fix AI", "Исправить ИИ"), () => openStep("startup-ai-heading")]);
+    else if (aiFailure) found.push([word("AI help failed: ", "Подсказки ИИ не работают: ") + plainError(aiFailure), word("Fix AI", "Исправить ИИ"), () => openStep("startup-ai-heading")]);
+    return found;
+  }
+  function renderBlockers() {
+    const found = blockers(), signature = JSON.stringify(found.map(([text, label]) => [text, label]));
+    if (signature === blockerSignature) return;  // keeps the button under the pointer between polls
+    blockerSignature = signature;
+    $("blocker-banner").replaceChildren(...found.map(([text, label, fix]) => {
+      const row = document.createElement("div"), strong = document.createElement("strong"), button = document.createElement("button");
+      row.className = "blocker"; strong.textContent = text; button.type = "button"; button.textContent = label; button.onclick = fix;
+      row.append(strong, button);
+      return row;
+    }));
+    $("blocker-banner").hidden = !found.length;
+  }
+  async function refreshBlockers() {
+    const [setup, speech] = await Promise.allSettled([api("/api/getting-started"), api("/api/stt")]);
+    blockerState.setup = setup.status === "fulfilled" ? setup.value : null;
+    blockerState.speech = speech.status === "fulfilled" ? speech.value.choice : null;
+    renderBlockers();
+  }
   window.renderGettingStartedStatus = data => {
+    blockerState.health = data.recording_health || null;
+    blockerState.live = data.transcript || null;
+    blockerState.aiFailure = data.copilot?.error || (data.copilot?.analysis?.state === "error" ? data.copilot.analysis.message : "");
+    renderBlockers();
     const wasRecording = recording;
     recording = Boolean(data.recording_health?.audio_recording);
     if(recording && starting) {starting=false; $("startup-message").textContent=word("Audio recording confirmed.","Запись звука подтверждена.");}
-    const error=data.copilot?.error || (data.copilot?.analysis?.state==="error" ? data.copilot.analysis.message : "");
-    $("assistant-problem").hidden=!error; $("assistant-problem-text").textContent=errorText(error);
     if(wasRecording!==recording) render();
   };
-  new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:["lang"]});
-  window.addEventListener("focus", () => {if(!$("getting-started").hidden) void load();});
+  new MutationObserver(() => {render(); renderBlockers();}).observe(document.documentElement,{attributes:true,attributeFilter:["lang"]});
+  window.addEventListener("focus", () => {if(!$("getting-started").hidden) void load(); void refreshBlockers();});
+  void refreshBlockers();
+  setInterval(refreshBlockers, 15000);
   $("repo-button").addEventListener("click", load);
   render();
   if(!localStorage.getItem("meetontrack-started")) show(); else void load();

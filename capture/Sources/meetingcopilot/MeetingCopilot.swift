@@ -605,13 +605,13 @@ final class AppController {
         automaticFeaturesStarted = true
 
         Task { [transcription, root] in
-            // The one model the installer downloaded becomes the choice by
-            // itself; when its language is not known offline yet, discovery
-            // reads its model card and finishes the choice (owner decision
+            // A downloaded model becomes the choice by itself; when no
+            // model's language is known offline yet, discovery reads the
+            // model cards and finishes the choice (owner decision
             // 2026-10-21, no prompt).
             if case .needsChoice = Config.speechRecognition(),
                STTChoice.stored(in: Config.current()) == nil,
-               LocalSTTModel.installed.count == 1 {
+               !LocalSTTModel.installed.isEmpty {
                 _ = await STTCatalog.options(refresh: false)
             }
             await transcription.setStatusHandler { status in

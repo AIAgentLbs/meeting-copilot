@@ -254,18 +254,25 @@ the language the chosen local model implies (below).
 
 The installer's model (owner decision 2026-10-21): a speech model the installer
 downloaded is the person's own install-time choice, not a code default. When
-`stt.choice` is absent (or the legacy engine was `auto`) and exactly one local
-model is in our models folder (`LocalSTTModel.installed`: downloaded Parakeet
+`stt.choice` is absent (or the legacy engine was `auto`) and one or more local
+models are in our models folder (`LocalSTTModel.installed`: downloaded Parakeet
 versions and Nemotron ships), the migration writes
-`{engine: fluidaudio, model: <it>, language: <implied>}` with no prompt.
+`{engine: fluidaudio, model: <it>, language: <implied>}` with no prompt. With
+several, it takes the one the person downloaded or updated last (newest
+modification date of the model's folder), never a name or list order (owner
+decision 2026-10-21: a downloaded model always runs; a 24-minute call went
+untranscribed while two downloaded models waited for a choice).
 The implied language is `auto` when the model detects languages, its one
-language when it lists one, and unknown otherwise; an unknown language adopts
-nothing. Parakeet's languages come from the cached model card and Nemotron's
+language when it lists one, and unknown otherwise; a model with an unknown
+language is passed over for the next newest, and nothing is adopted when none
+is known. Parakeet's languages come from the cached model card and Nemotron's
 from the ship's own prompt dictionary, so adoption works offline; when the
 card is not cached yet, the first `stt-options` run (it reads the card)
-completes the adoption, and the app runs it once at start for that case. Zero
-or several candidates keep `needs_choice`; a model the installer did not
-download is never picked, and a stored choice is never replaced. The web card
+completes the adoption, and the app runs it once at start for that case; the
+web server also starts it in the background whenever it reads `needs_choice`.
+No local model keeps `needs_choice`, which the web page shows as a red
+blocker banner; a model in another app's folder is never picked, and a stored
+choice is never replaced. The web card
 saves the same implied language itself, so a person who picks such a model
 makes no further choice.
 

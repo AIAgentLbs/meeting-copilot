@@ -2241,6 +2241,20 @@ class AnnotationCache:
 ANNOTATED_CACHE = AnnotationCache()
 
 
+def recorder_running() -> bool | None:
+    """Whether the recorder app is running, from the process list; None when that can't be told.
+    The app is the binary with no subcommand (or `run`); `stt-options`, `process` and the other
+    one-shot commands share its path but record nothing."""
+    if os.name == "nt":
+        return None  # ponytail: Windows liveness unknown, add a tasklist check when its banner needs it
+    try:
+        listing = subprocess.run(["/bin/ps", "-axo", "args="], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    app = str(RECOGNITION_GUARD.binary)
+    return any(line.strip() == app or line.startswith((app + " run", app + " -psn")) for line in listing.splitlines())
+
+
 def annotated_snapshot():
     return ANNOTATED_CACHE.snapshot()
 
@@ -2426,6 +2440,7 @@ class Handler(BaseHTTPRequestHandler):
                 config = {}
             self._json({"ok": True, "ai": AI_READINESS.snapshot(),
                         "capture_installed": RECOGNITION_GUARD.binary.is_file(),
+                        "capture_running": recorder_running(),
                         "live_enabled": bool(config.get("live_transcription", {}).get("enabled", False)),
                         "folders": LOCAL_CONTEXT.snapshot()})
         elif path == "/api/ai":
@@ -2585,8 +2600,10 @@ class Handler(BaseHTTPRequestHandler):
                 capture = RECOGNITION_GUARD.health.sample(physical)
                 if not capture.get("audio_recording"):
                     raise BoundaryUnavailable("Audio recording is not confirmed active; wait for the recording indicator")
+                # Audio is the authority here: a call recorded without live transcription
+                # (status "unavailable", "paused", "error") can still be split.
                 with TRANSCRIPT.lock:
-                    if TRANSCRIPT.meeting_id != physical["meeting_id"] or TRANSCRIPT.status not in {"recording", "overloaded", "loading"}:
+                    if TRANSCRIPT.meeting_id != physical["meeting_id"] or TRANSCRIPT.status == "finished":
                         raise BoundaryConflict("Recording changed; refresh and confirm again")
                     result = BOUNDARIES.split({**physical, "status": "recording"},
                                               str(payload.get("expected_meeting_id") or ""),
