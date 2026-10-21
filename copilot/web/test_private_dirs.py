@@ -42,11 +42,30 @@ class PrivateDirTests(unittest.TestCase):
             # The ctypes rename is Windows-only (proven on Windows); the flow is checked here.
             with patch("private_dirs.WINDOWS", True), patch("private_dirs.os.scandir", side_effect=locked), \
                     patch("private_dirs._move_aside", side_effect=os.rename):
-                self.assertEqual(private_dir(archive), archive)
+                self.assertEqual(private_dir(archive, recover=True), archive)
             self.assertEqual(list(archive.iterdir()), [])
             aside = [item for item in Path(tmp).iterdir() if item.name.startswith("archive.inaccessible-")]
             self.assertEqual(len(aside), 1)
             self.assertTrue((aside[0] / "kept.json").exists())
+
+    def test_windows_settings_folder_is_never_replaced(self):
+        # Replacing ~/.config/meeting-copilot would silently drop other writers' keys.
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "meeting-copilot"
+            config.mkdir()
+            denied = PermissionError(5, "Access is denied", str(config))
+            with patch("private_dirs.WINDOWS", True), patch("private_dirs.os.scandir", side_effect=denied), \
+                    patch("private_dirs._move_aside") as move:
+                private_dir(config)
+            move.assert_not_called()
+
+    def test_archive_recovers_its_own_roots_only(self):
+        import archive
+        with tempfile.TemporaryDirectory() as tmp, patch("archive.private_dir") as made:
+            root = Path(tmp)
+            archive.MeetingArchive(root / "recordings", root / "archive", root / "reports", root / "config")
+        recovered = {call.args[0].name for call in made.call_args_list if call.kwargs.get("recover")}
+        self.assertEqual(recovered, {"archive", "reports"})
 
     @unittest.skipIf(os.name == "nt", "POSIX permissions")
     def test_posix_folder_stays_owner_only(self):

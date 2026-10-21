@@ -116,8 +116,8 @@ class MeetingArchive:
         self.delivery_monitor = DeliveryHealth(
             reports_root, config_root / "delivery-health.json", self.delivery_retry_days
         )
-        private_dir(self.archive_root)
-        private_dir(self.reports_root)
+        private_dir(self.archive_root, recover=True)
+        private_dir(self.reports_root, recover=True)
 
     @property
     def journal(self) -> list[dict]:

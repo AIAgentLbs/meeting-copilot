@@ -7,8 +7,11 @@ session can no longer open it: [WinError 5] Access is denied on archive\\<meetin
 user-profile folders the app writes to are already private to the person, so on Windows a
 new folder inherits that ACL instead.
 
-A folder already locked that way is moved aside (nothing is deleted or read) and made
-again. The parent folder grants the person delete-child, which yields DELETE on the locked
+With recover=True (only folders whose loss is no worse than the lock: the archive and
+reports, which the app cannot read while locked and rebuilds as meetings are saved), a
+folder already locked that way is moved aside (nothing is deleted or read) and made
+again. Settings folders are never recovered this way: replacing them would silently drop
+other writers' keys, so the original error stands. The parent folder grants the person delete-child, which yields DELETE on the locked
 folder, enough to rename it; os.rename also asks for SYNCHRONIZE, which the lock denies, so
 the rename opens the folder with DELETE alone. Only the exact folder asked for is healed,
 never its parents.
@@ -22,12 +25,14 @@ from pathlib import Path
 WINDOWS = os.name == "nt"
 
 
-def private_dir(path) -> Path:
+def private_dir(path, recover=False) -> Path:
     path = Path(path)
     if not WINDOWS:
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
         return path
     path.mkdir(parents=True, exist_ok=True)
+    if not recover:
+        return path
     try:
         with os.scandir(path):
             pass
@@ -55,20 +60,21 @@ def _move_aside(source: Path, target: Path) -> None:
 
     name = "\\??\\" + str(source.absolute())
     new = "\\??\\" + str(target.absolute())
+    name_bytes, new_bytes = len(name.encode("utf-16-le")), len(new.encode("utf-16-le"))  # not len(): surrogates
 
     class RenameInformation(ctypes.Structure):
         _fields_ = [("ReplaceIfExists", ctypes.c_ulong), ("RootDirectory", wintypes.HANDLE),
-                    ("FileNameLength", ctypes.c_ulong), ("FileName", ctypes.c_wchar * (len(new) + 1))]
+                    ("FileNameLength", ctypes.c_ulong), ("FileName", ctypes.c_wchar * (new_bytes // 2 + 1))]
 
     ntdll = ctypes.WinDLL("ntdll")
     ntdll.NtOpenFile.restype = ntdll.NtSetInformationFile.restype = ntdll.NtClose.restype = ctypes.c_long
-    text = UnicodeString(len(name) * 2, len(name) * 2 + 2, name)
+    text = UnicodeString(name_bytes, name_bytes + 2, name)
     attributes = ObjectAttributes(ctypes.sizeof(ObjectAttributes), None, ctypes.pointer(text), 0x40, None, None)
     handle, status = wintypes.HANDLE(), IoStatusBlock()
     # DELETE only; share read/write/delete; FILE_DIRECTORY_FILE. FileRenameInformation = 10.
     code = ntdll.NtOpenFile(ctypes.byref(handle), 0x00010000, ctypes.byref(attributes), ctypes.byref(status), 7, 1)
     if code == 0:
-        info = RenameInformation(0, None, len(new) * 2, new)
+        info = RenameInformation(0, None, new_bytes, new)
         code = ntdll.NtSetInformationFile(handle, ctypes.byref(status), ctypes.byref(info), ctypes.sizeof(info), 10)
         ntdll.NtClose(handle)
     if code != 0:
