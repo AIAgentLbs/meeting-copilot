@@ -26,10 +26,8 @@ import AppKit
 /// engine, and a pair of transcription pop-ups saying in the config file's
 /// vocabulary what the form beside them said in a person's. The schema now
 /// carries `askedInSetup`, and `advancedSections` is what this tab draws.
-/// Coverage has to be total to earn the flag: the meeting language and the
-/// summary backend are asked on both tabs still, because setup's menu and
-/// cards cannot reach every value the schema allows and hiding them here would
-/// leave those values settable only by editing the file.
+/// Coverage has to be total to earn the flag: a value setup cannot reach
+/// stays here, or it would be settable only by editing the file.
 ///
 /// Two rules make the config file stay readable as a record of decisions.
 /// Nothing is written until it differs from the default — setting a control
@@ -318,11 +316,9 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         ]
     }
 
-    /// Rebuild the rows rather than update them. Which models are worth
-    /// listing is itself an answer that changes — a parakeet version left
-    /// behind by a change on this very tab appears, and goes when it is
-    /// deleted — and a list that only ever grew would keep offering to
-    /// delete a directory that isn't there any more.
+    /// Rebuild the rows rather than update them: which models are on disk
+    /// changes, and a list that only ever grew would keep offering to delete
+    /// a directory that isn't there any more.
     private func refreshModels() {
         guard Platform.supportsLocalModels else { return }
         for view in modelsBox.arrangedSubviews {
@@ -334,11 +330,11 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         let total = modelStorage.total(shownModels)
         modelsTotal.stringValue = total == 0
             ? localised(
-                "Nothing downloaded yet. The setup tab is where they are fetched.",
-                "Пока ничего не скачано. Скачиваются они на вкладке настройки.")
+                "Nothing downloaded yet. Models are fetched in Getting started, in the assistant.",
+                "Пока ничего не скачано. Модели скачиваются в разделе «Начать работу» в помощнике.")
             : localised("\(ModelStorage.describe(bytes: total)) in total · ",
                         "всего \(ModelStorage.describe(bytes: total)) · ")
-                + friendlyPath(shownModels[0].directory.deletingLastPathComponent())
+                + friendlyPath(modelStorage.root)
 
         for (index, model) in shownModels.enumerated() {
             modelsBox.addArrangedSubview(modelRow(model, tag: index))
@@ -349,10 +345,7 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         let name = NSTextField(labelWithString: model.name)
         name.lineBreakMode = .byTruncatingTail
 
-        let size = NSTextField(labelWithString: model.isDownloaded
-            ? ModelStorage.describe(bytes: model.bytes)
-            : localised("not downloaded", "не скачана"))
-        size.textColor = model.isDownloaded ? .labelColor : .secondaryLabelColor
+        let size = NSTextField(labelWithString: ModelStorage.describe(bytes: model.bytes))
         size.alignment = .right
 
         let delete = NSButton(
@@ -361,10 +354,6 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         delete.bezelStyle = .rounded
         delete.controlSize = .small
         delete.tag = tag
-        // Present and disabled rather than absent: the row is the same row
-        // whether or not the model is here, and a button that comes and goes
-        // moves everything beside it.
-        delete.isEnabled = model.isDownloaded
 
         let line = NSStackView(views: [name, size, delete])
         line.orientation = .horizontal
@@ -389,19 +378,17 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
         return row
     }
 
-    /// What the model is for, in the words the setup form uses for the switch
-    /// that asks for it — so somebody who deletes the wrong one has to have
-    /// misread the same sentence twice.
+    /// What the model is for.
     private static func purpose(of kind: ModelStorage.Model.Kind) -> String {
         switch kind {
-        case .parakeet:
+        case .speech:
             return localised(
-                "Transcribes on this Mac, after the meeting.",
-                "Расшифровывает на этом маке, после встречи.")
-        case .live:
+                "Speech recognition on this Mac.",
+                "Распознавание речи на этом маке.")
+        case .speaker:
             return localised(
-                "The live transcript shown during a meeting.",
-                "Расшифровка, которая идёт прямо во время встречи.")
+                "Tells apart the speakers on the other side of a call.",
+                "Различает говорящих на другой стороне звонка.")
         }
     }
 
@@ -414,27 +401,21 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
             : url.path
     }
 
-    /// Ask, then delete, then bring down the switch that wanted it.
-    ///
-    /// The asking is not ceremony: the download is hundreds of megabytes over
-    /// whatever connection the person is on next time, and the alert is the
-    /// only place that says the switch is going off with it.
+    /// Ask, then delete. No setting changes: a deleted model that is still
+    /// the chosen one is reported as not downloaded until it is fetched again
+    /// in Getting started.
     @objc private func deleteModelClicked(_ sender: NSButton) {
         guard sender.tag < shownModels.count else { return }
         let model = shownModels[sender.tag]
-        let choice = TranscriptionChoice.read(
-            engine: Config.transcriptionEngine(),
-            cloudProvider: Config.transcriptionCloudProvider(),
-            enabled: Config.transcriptionEnabled(),
-            localModels: Platform.supportsLocalModels)
-        let updates = ModelStorage.updatesAfterDeleting(
-            model.kind, choice: choice, liveEnabled: Config.liveTranscriptionEnabled())
 
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = localised("Delete \(model.name)?", "Удалить \(model.name)?")
-        alert.informativeText = Self.consequence(
-            of: model, choice: choice, switchesOff: !updates.isEmpty)
+        alert.informativeText = localised(
+            "\(ModelStorage.describe(bytes: model.bytes)) comes back. If it is your chosen model, "
+                + "download it again or choose another in Getting started, in the assistant.",
+            "Освободится \(ModelStorage.describe(bytes: model.bytes)). Если это выбранная модель, "
+                + "скачайте ее снова или выберите другую в разделе «Начать работу» в помощнике.")
         alert.addButton(withTitle: localised("Delete", "Удалить"))
         alert.addButton(withTitle: localised("Cancel", "Отмена"))
         alert.buttons.first?.hasDestructiveAction = true
@@ -449,52 +430,9 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
                 "Couldn't delete \(model.name)", "Не удалось удалить \(model.name)")
             failed.informativeText = error.localizedDescription
             failed.runModal()
-            refreshModels()
-            return
         }
-        // After the files, not before: a switch turned off for a deletion
-        // that then failed would leave the person worse off than they were.
-        for update in updates { Config.update(path: update.path, value: update.value) }
-        // A write redraws every surface, this one included — but only if
-        // there was one, and turning nothing off is the ordinary case.
-        if updates.isEmpty { refreshModels() }
+        refreshModels()
         setup.refresh()
-    }
-
-    /// What the person is about to lose, and what will change because of it.
-    private static func consequence(
-        of model: ModelStorage.Model,
-        choice: TranscriptionChoice,
-        switchesOff: Bool
-    ) -> String {
-        let freed = localised(
-            "\(ModelStorage.describe(bytes: model.bytes)) comes back. ",
-            "Освободится \(ModelStorage.describe(bytes: model.bytes)). ")
-        guard switchesOff else {
-            return freed + localised(
-                "It downloads again if you switch it back on.",
-                "Скачается снова, если её опять включить.")
-        }
-        switch model.kind {
-        case .parakeet where choice.cloud:
-            return freed + localised(
-                "Transcribing on this Mac goes off with it, so meetings go to "
-                    + "\(TranscriptionChoice.displayName(choice.provider)) instead.",
-                "Расшифровка на этом маке выключится, и встречи пойдут "
-                    + "в \(TranscriptionChoice.displayName(choice.provider)).")
-        case .parakeet:
-            return freed + localised(
-                "Nothing else is set up to transcribe, so transcription goes off "
-                    + "entirely — otherwise the model comes back at the next meeting.",
-                "Расшифровывать больше нечем, поэтому расшифровка выключится совсем — "
-                    + "иначе модель вернётся на ближайшей встрече.")
-        case .live:
-            return freed + localised(
-                "The live transcript goes off with it — otherwise the model comes "
-                    + "back at the next meeting.",
-                "Расшифровка по ходу встречи выключится — иначе модель вернётся "
-                    + "на ближайшей встрече.")
-        }
     }
 
     private func sectionHeader(_ title: String) -> NSView {
@@ -605,8 +543,7 @@ final class SettingsWindow: NSObject, NSTextFieldDelegate {
             }
         }
         showStrayKeys(in: config)
-        // Last, because it reads the disk rather than the file, and because
-        // what it lists depends on `transcription.model` just above it.
+        // Last, because it reads the disk rather than the file.
         refreshModels()
     }
 

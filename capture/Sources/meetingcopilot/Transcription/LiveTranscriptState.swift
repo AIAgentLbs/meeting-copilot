@@ -1,15 +1,5 @@
 import Foundation
 
-enum LiveTranscriptionLanguage {
-    /// A preferred language is not a decoder instruction. In particular a
-    /// per-language prompt or vocabulary-pruned model can corrupt a different
-    /// language or a mid-call switch. Use the full multilingual model and its
-    /// native auto prompt on both channels, freshly for every recording.
-    static func prompt(for configured: String?) -> String {
-        "auto"
-    }
-}
-
 struct LiveTranscriptState: Sendable {
     enum Speaker: String, Sendable, Hashable {
         case you

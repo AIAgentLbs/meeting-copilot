@@ -280,11 +280,10 @@ struct InterfaceLanguageTests {
         #expect(Self.inLanguage(.russian) { SetupForm.sentence(for: []) }
             == "Всё, что нужно \(ProductBrand.name), разрешено.")
 
-        // A name stays a name in either language; what surrounds it does not.
         let left = Self.inLanguage(.russian) {
-            SetupForm.sentence(for: [.parakeet, .microphone])
+            SetupForm.sentence(for: [.speechChoice, .microphone])
         }
-        #expect(left == "Осталось: parakeet, микрофон")
+        #expect(left == "Осталось: выбрать распознавание речи в разделе «Начать работу», микрофон")
     }
 
     // MARK: - the machinery of the two above
@@ -394,7 +393,7 @@ struct InterfaceLanguageTests {
         // A failure carries a message from CoreML, which arrives in whatever
         // language CoreML wrote it in; only the words around it are meetingcopilot's.
         let statuses: [LiveTranscriptionCoordinator.Status] = [
-            .idle, .paused, .loading, .live, .modelMissing, .overloaded, .error("CoreML"),
+            .idle, .paused, .loading, .live, .unavailable("model"), .overloaded, .error("CoreML"),
         ]
         for status in statuses {
             window.updateLive(snapshot(recording: true, status: status))
@@ -611,10 +610,10 @@ struct InterfaceLanguageTests {
             ProductBrand.name, "by \(ProductBrand.company)", "\(ProductBrand.company) ↗",
             "AssemblyAI", "OpenAI", "Anthropic", "Claude Code", "Codex", "Ollama",
             "sk-ant-…", "sk-…", "meetingcopilot",
-            // The models, named the way their release notes name them.
-            "parakeet v3", "parakeet v2", "NVIDIA nemotron",
         ]
         if names.contains(text) { return true }
+        // The models on disk, named by their ids.
+        if ModelStorage().all().contains(where: { $0.name == text }) { return true }
         // The meeting languages are named in themselves — English, Русский,
         // Deutsch — because that answers "what is spoken here", not "what is
         // this window in". See `MeetingLanguages`.

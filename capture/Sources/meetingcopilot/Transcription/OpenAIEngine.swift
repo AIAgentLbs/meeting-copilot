@@ -3,11 +3,10 @@ import Foundation
 
 /// OpenAI's diarizing transcription, over the mixed-down session audio.
 ///
-/// The model is whatever `transcription.openai.model` names — never a default
-/// written here — and only OpenAI's diarizing transcription model works: the
-/// others return running text with no timings at all, and a transcript with
-/// no clock can be neither aligned with the recording nor attributed to a
-/// speaker. The diarizing one returns
+/// The model is the person's `stt.choice`, never a default written here. A
+/// model that returns running text with no timings is refused at Check: a
+/// transcript with no clock can be neither aligned with the recording nor
+/// attributed to a speaker. A diarizing one returns
 /// segments with start, end and a speaker label — the same shape AssemblyAI
 /// returns, which is why both are `.mixed` engines and share everything
 /// downstream.
@@ -19,8 +18,8 @@ import Foundation
 /// required for anything over 30 seconds — the API refuses outright without
 /// it, so it is always sent.
 ///
-/// Every response is cached next to the audio as `transcript.openai*.json`,
-/// so a retry after a crash re-renders from disk instead of re-uploading and
+/// Every response is cached next to the audio as
+/// `transcript.openai.<model>-<language>*.json`, so a retry after a crash re-renders from disk instead of re-uploading and
 /// paying again.
 actor OpenAITranscriptionEngine: TranscriptionEngine {
     enum EngineError: TranscriptionFailure, CustomStringConvertible {
@@ -43,8 +42,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
                 return "no OpenAI API key — put one in \(Config.openAIKeyPath.path)"
                     + " (chmod 600) or set OPENAI_API_KEY"
             case .noModel:
-                return "no OpenAI transcription model chosen — set transcription.openai.model"
-                    + " to OpenAI's diarizing transcription model"
+                return "no OpenAI transcription model chosen: \(STTChoice.needsChoiceMessage)"
             case .http(let code, let body):
                 return "openai transcription failed: HTTP \(code) \(body.prefix(400))"
             case .empty:
@@ -63,11 +61,8 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     nonisolated let input: TranscriptionInput = .mixed
 
     private let apiKey: String
-    /// The languages this meeting may be in. Consulted for one decision only —
-    /// whether a language can be named at all — because the API has no way to
-    /// narrow detection to a set the way assemblyai's `expected_languages`
-    /// does. See `languageField(for:)`.
-    private let expected: [String]
+    /// A language code, or `auto` to let the model detect it.
+    private let language: String
     /// A parameter rather than a constant so the sliced path can be exercised
     /// against real audio and the real API without a meeting long enough to
     /// pass 25 MB — an hour of it, every time anyone wanted to check.
@@ -75,12 +70,15 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
 
     /// Throws rather than failing at transcribe time — a missing key should
     /// show up in the log the moment the engine is picked, not an upload later.
-    init(requestLimit: Int64 = OpenAITranscriptionEngine.defaultRequestLimit) throws {
+    init(
+        model: String, language: String,
+        requestLimit: Int64 = OpenAITranscriptionEngine.defaultRequestLimit
+    ) throws {
         guard let key = Config.openAIKey() else { throw EngineError.noAPIKey }
+        guard !model.isEmpty else { throw EngineError.noModel }
         apiKey = key
-        expected = MeetingLanguages.expected(primary: Config.transcriptionLanguage())
-        guard let model = Config.openAITranscriptionModel() else { throw EngineError.noModel }
         self.model = model
+        self.language = language
         self.requestLimit = requestLimit
     }
 
@@ -96,7 +94,8 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
 
         var segments: [TranscriptSegment] = []
         for (index, slice) in slices.enumerated() {
-            let cache = dir.appendingPathComponent(Self.cacheName(index, of: slices.count))
+            let cache = dir.appendingPathComponent(Self.cacheName(
+                index, of: slices.count, key: STTChoice.cacheKey(model: model, language: language)))
             let response: Response
             if let cached = try? Data(contentsOf: cache),
                let decoded = try? JSONDecoder().decode(Response.self, from: cached) {
@@ -168,7 +167,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             // without it the API answers 400 rather than transcribing.
             ("chunking_strategy", "auto"),
         ]
-        if let language = Self.languageField(for: expected) {
+        if let language = Self.languageField(for: language) {
             fields.append(("language", language))
         }
 
@@ -193,23 +192,10 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         return data
     }
 
-    /// The `language` field for a request, or nil to let the model detect.
-    ///
-    /// `language` is a pin: it tells the model what it is listening to rather
-    /// than what it might be, and there is nothing beside it — no
-    /// `expected_languages`, no candidate list — to express an expectation
-    /// instead. So it is only sent when the expectation is a single language
-    /// and there is nothing for the pin to be wrong about, which today means
-    /// somebody who chose English.
-    ///
-    /// "Mostly Russian" is not that. It means Russian *and* English, and a
-    /// pin on either is how the other comes back as fluent nonsense — the
-    /// same failure the local engine's script filter used to cause, and the
-    /// same reason it matters: `keep_audio` is off by default, so that
-    /// transcript is the whole of what survives the meeting. Detection over
-    /// two candidates is a far smaller risk than a confident wrong answer.
-    static func languageField(for expected: [String]) -> String? {
-        expected.count == 1 ? expected.first : nil
+    /// The `language` field for a request, or nil to let the model detect:
+    /// `auto` is not a language OpenAI takes, it is the absence of one.
+    static func languageField(for language: String) -> String? {
+        language == STTChoice.autoLanguage || language.isEmpty ? nil : language
     }
 
     private static func writeMultipart(
@@ -244,8 +230,8 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
 
     // MARK: - shaping
 
-    static func cacheName(_ index: Int, of count: Int) -> String {
-        count > 1 ? "transcript.openai.\(index + 1).json" : "transcript.openai.json"
+    static func cacheName(_ index: Int, of count: Int, key: String) -> String {
+        count > 1 ? "transcript.openai.\(key).\(index + 1).json" : "transcript.openai.\(key).json"
     }
 
     /// The response as meetingcopilot's segments: times moved onto the session clock,

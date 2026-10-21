@@ -50,69 +50,6 @@ enum Config {
         transcription()?["enabled"] as? Bool ?? true
     }
 
-    /// Configured engine: `auto` (default), `parakeet` (local), or a cloud
-    /// provider by name — `assemblyai` or `openai`.
-    ///
-    /// `auto` means "the best one available right now": the cloud provider
-    /// when there is a key and the API answers, parakeet otherwise. That
-    /// ordering is deliberate — a cloud engine is better on Russian and tells
-    /// apart several people sharing one channel, and parakeet needs neither
-    /// network nor account, so it is what should catch a session recorded on
-    /// a train.
-    static func transcriptionEngine() -> String {
-        transcription()?["engine"] as? String ?? "auto"
-    }
-
-    /// Which cloud engine `auto` reaches for: `assemblyai` (default) or
-    /// `openai`. It only decides the provider — whether the cloud is used at
-    /// all is `engine`, and a `engine` naming a provider outright wins over
-    /// this.
-    ///
-    /// The two are separate settings because they answer separate questions,
-    /// and the setup window asks them separately: a switch for "may audio
-    /// leave this Mac", a pair of cards for "to whom". Turning the switch off
-    /// and on again should not lose the answer to the second one.
-    static func transcriptionCloudProvider() -> String {
-        let configured = transcription()?["cloud"] as? String ?? "assemblyai"
-        guard cloudEngines.contains(configured) else {
-            FileHandle.standardError.write(Data(
-                "warning: unknown cloud engine \"\(configured)\" — using assemblyai\n".utf8
-            ))
-            return "assemblyai"
-        }
-        return configured
-    }
-
-    /// The cloud engines, by the name they carry in the config and in
-    /// transcript.json's provenance.
-    static let cloudEngines: Set<String> = ["assemblyai", "openai"]
-
-    /// OpenAI's transcription model, exactly as the person set it in
-    /// `transcription.openai.model`. nil when unset: no model id is written
-    /// into this app (owner rule 2026-10-20), so the OpenAI engine refuses to
-    /// start until one is chosen. It has to be one that returns timings and
-    /// speakers (OpenAI's diarizing transcription model).
-    static func openAITranscriptionModel() -> String? {
-        guard let model = (transcription()?["openai"] as? [String: Any])?["model"] as? String,
-              !model.trimmed.isEmpty
-        else { return nil }
-        return model.trimmed
-    }
-
-    /// Parakeet model version: "v3" (multilingual, default) or "v2"
-    /// (English-only, marginally higher recall on English).
-    static func transcriptionModel() -> String {
-        transcription()?["model"] as? String ?? "v3"
-    }
-
-    /// Legacy preferred language, retained for config compatibility only.
-    /// Speech recognition always auto-detects without a language shortlist;
-    /// this is unrelated to interface_language and summary.language.
-    static func transcriptionLanguage() -> String? {
-        guard let code = transcription()?["language"] as? String, !code.isEmpty else { return nil }
-        return code
-    }
-
     /// Whether a meeting should feed the optional local streaming model while
     /// it is being recorded. This is deliberately opt-in: recording and the
     /// canonical post-meeting transcript do not depend on the extra model.
@@ -196,15 +133,6 @@ enum Config {
             return secret(at: configured)
         }
         return secret(at: assemblyAIKeyPath) ?? secret(atAnyOf: assemblyAISharedKeyPaths)
-    }
-
-    /// Override AssemblyAI's default speech model. nil sends nothing and lets
-    /// the API pick.
-    static func assemblyAISpeechModel() -> String? {
-        guard let model = assemblyAI()?["speech_model"] as? String, !model.isEmpty else {
-            return nil
-        }
-        return model
     }
 
     private static func assemblyAI() -> [String: Any]? {

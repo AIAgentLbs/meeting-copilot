@@ -333,6 +333,7 @@ enum PostProcessor {
         SessionState.update(dir, with: [
             SessionState.Key.transcriptionFailed: nil,
             SessionState.Key.transcriptionAttempts: nil,
+            SessionState.Key.transcriptionDeferred: nil,
             SessionState.Key.speakersStatus: nil,
             SessionState.Key.summaryStatus: nil,
         ])

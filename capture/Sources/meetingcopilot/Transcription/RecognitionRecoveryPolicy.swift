@@ -1,7 +1,9 @@
 import Foundation
 
 enum LiveRecognitionStatus: Sendable, Equatable {
-    case idle, paused, loading, live, modelMissing, overloaded
+    case idle, paused, loading, live, overloaded
+    /// The chosen speech model cannot run live; the reason says why.
+    case unavailable(String)
     case error(String)
 
     /// Queue pressure is recoverable only while the recorder keeps feeding it.

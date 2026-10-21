@@ -115,4 +115,11 @@ protocol TranscriptionEngine: Sendable {
     func prepare() async throws
     func transcribe(_ audio: URL) async throws -> [TranscriptSegment]
     func release() async
+    /// The model that actually ran, once `transcribe` has: an engine whose
+    /// server reports it (AssemblyAI's `speech_model_used`) says so here.
+    func modelUsed() async -> String
+}
+
+extension TranscriptionEngine {
+    func modelUsed() async -> String { model }
 }

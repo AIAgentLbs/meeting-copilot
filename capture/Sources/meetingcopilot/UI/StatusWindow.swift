@@ -347,7 +347,7 @@ final class StatusWindow {
         case .paused: localised("off", "выключена")
         case .loading: localised("loading model…", "загружаю модель…")
         case .live: localised("on this Mac", "на этом маке")
-        case .modelMissing: localised("model not downloaded", "модель не скачана")
+        case .unavailable(let reason): localised("off: ", "выключена: ") + reason
         case .overloaded:
             localised("stopped — Mac couldn't keep up", "остановлена — мак не успевает")
         case .error(let message): localised("stopped — ", "остановлена — ") + message

@@ -44,9 +44,7 @@ enum SettingsSchema {
         /// It is `askedInSetup`, not `hidden`: the entry stays in the list,
         /// so `knownKeys` still knows it, the README still has to document
         /// it, and the config file still reads as a record of decisions.
-        /// Partial coverage does not count — the meeting language menu
-        /// offers parakeet's 25 languages and the cloud engines understand
-        /// more, so that one is still asked here.
+        /// Partial coverage does not count.
         let askedInSetup: Bool
 
         init(
@@ -74,60 +72,18 @@ enum SettingsSchema {
     }
 
     /// The settings that only exist where a local model can run. On Intel the
-    /// window would otherwise show a live-transcript switch that does nothing
-    /// and a choice of engines with only one real option in it — settings that
-    /// lie are worse than settings that are missing.
+    /// window would otherwise show a live-transcript switch that does nothing.
+    /// Which engine and model transcribe is not here: it is `stt.choice`,
+    /// chosen in Getting started.
     private static var localModelEntries: [Entry] {
-        guard Platform.supportsLocalModels else {
-            return [
-                Entry(["transcription", "engine"], localised("Engine", "Движок"),
-                      localised(
-                          "A cloud engine is the only one on an Intel Mac; parakeet needs Apple Silicon.",
-                          "На маке с Intel есть только облачный движок: parakeet нужен Apple Silicon."),
-                      .choice(["auto", "assemblyai", "openai"]), default: "auto", askedInSetup: true),
-                Entry(["transcription", "cloud"], localised("Cloud engine", "Облачный движок"),
-                      localised(
-                          "Which service auto uploads to. assemblyai has no length limit; openai charges more.",
-                          "Куда auto отправляет запись. У assemblyai нет предела длины, openai дороже."),
-                      .choice(["assemblyai", "openai"]), default: "assemblyai", askedInSetup: true),
-                Entry(["transcription", "language"], localised("Legacy language preference (unused)", "Старая настройка языка (не используется)"),
-                      localised(
-                          "Kept for compatibility. Speech languages are detected automatically without a shortlist.",
-                          "Оставлена для совместимости. Языки речи определяются автоматически без ограничивающего списка."),
-                      .text,
-                      default: localised(
-                          "detected from any language", "определяется, язык любой")),
-            ]
-        }
+        guard Platform.supportsLocalModels else { return [] }
         return [
             Entry(["live_transcription", "enabled"],
                   localised("Show a live transcript", "Показывать расшифровку по ходу встречи"),
                   localised(
-                      "Uses an additional local NVIDIA model while a meeting is being recorded.",
-                      "Пока идёт запись, работает ещё одна местная модель NVIDIA."),
+                      "Runs the speech model chosen in Getting started while a meeting is being recorded.",
+                      "Пока идет запись, работает модель распознавания, выбранная в «Начале работы»."),
                   .toggle, default: false, askedInSetup: true),
-            Entry(["transcription", "engine"], localised("Engine", "Движок"),
-                  localised(
-                      "auto: the cloud engine when there's a key and the network answers, parakeet otherwise.",
-                      "auto — облачный движок, когда есть ключ и отвечает сеть, иначе parakeet."),
-                  .choice(["auto", "assemblyai", "openai", "parakeet"]), default: "auto", askedInSetup: true),
-            Entry(["transcription", "cloud"], localised("Cloud engine", "Облачный движок"),
-                  localised(
-                      "Which service auto uploads to. assemblyai has no length limit; openai charges more.",
-                      "Куда auto отправляет запись. У assemblyai нет предела длины, openai дороже."),
-                  .choice(["assemblyai", "openai"]), default: "assemblyai", askedInSetup: true),
-            Entry(["transcription", "language"], localised("Legacy language preference (unused)", "Старая настройка языка (не используется)"),
-                  localised(
-                      "Kept for compatibility. Speech languages are detected automatically without a shortlist.",
-                      "Оставлена для совместимости. Языки речи определяются автоматически без ограничивающего списка."),
-                  .text,
-                  default: localised(
-                      "detected from any language", "определяется, язык любой")),
-            Entry(["transcription", "model"], localised("Parakeet model", "Модель parakeet"),
-                  localised(
-                      "v3 covers 25 European languages; v2 is English-only.",
-                      "v3 знает 25 европейских языков, v2 — только английский."),
-                  .choice(["v3", "v2"]), default: "v3"),
         ]
     }
 
@@ -244,7 +200,7 @@ enum SettingsSchema {
                   localised(
                       "Off means record only; the on_stop hook still fires.",
                       "Выключено — только запись; хук on_stop всё равно срабатывает."),
-                  .toggle, default: true, askedInSetup: true),
+                  .toggle, default: true),
         ] + localModelEntries + [
             Entry(["transcript_echo_filter"],
                   localised("Drop echoed speech", "Убирать отражённую речь"),
@@ -259,18 +215,6 @@ enum SettingsSchema {
                       "Where the cloud engine's key is read from. ASSEMBLYAI_API_KEY wins over it.",
                       "Откуда читается ключ облачного движка. ASSEMBLYAI_API_KEY важнее."),
                   .text, default: "~/.config/meeting-copilot/keys/assemblyai"),
-            Entry(["transcription", "assemblyai", "speech_model"],
-                  localised("AssemblyAI speech model", "Модель речи AssemblyAI"),
-                  localised(
-                      "Empty sends nothing and lets the API pick its own default.",
-                      "Пусто — ничего не отправляется, и API выбирает сам."),
-                  .text, default: localised("the API's own default", "выбор самого API")),
-            Entry(["transcription", "openai", "model"], localised("OpenAI model", "Модель OpenAI"),
-                  localised(
-                      "Required for OpenAI transcription: its diarizing model, the only one that returns both timings and speakers.",
-                      "Нужна для расшифровки через OpenAI: ее модель с разметкой говорящих, единственная, "
-                          + "которая возвращает и время, и говорящих."),
-                  .text, default: localised("not set", "не задана")),
         ]),
 
         Section(title: localised("Summaries", "Саммари"), entries: [
@@ -502,15 +446,16 @@ enum SettingsSchema {
     /// reported as one it ignores.
     static let unrenderedKeys = ["transcription.assemblyai.api_key"]
 
-    /// Whole subtrees another screen owns. `ai` is the one AI choice,
-    /// written by Getting started (docs/config.schema.json) and read here for
-    /// summaries and naming: known, so never "not read", and not a control.
-    static let ownedSubtrees = ["ai"]
+    /// Whole subtrees another screen owns, written by Getting started
+    /// (docs/config.schema.json): `ai` is the one AI choice, read here for
+    /// summaries and naming, and `stt` the one speech recognition choice.
+    /// Known, so never "not read", and not a control.
+    static let ownedSubtrees = ["ai", "stt"]
 
     /// Older releases exposed these choices. Retained audio now always becomes
     /// one compact stereo M4A, but accepting the keys keeps an old config from
     /// being reported as misspelled until its owner next edits the file.
-    static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"] + legacyAIKeys
+    static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"] + legacyAIKeys + legacySTTKeys
 
     /// The summary and naming settings from before `ai.choice`. Not offered
     /// anywhere: the AI is chosen in one place, Getting started. Still known,
@@ -523,6 +468,14 @@ enum SettingsSchema {
         "speaker_names.backend", "speaker_names.model",
     ]
 
+    /// The transcription settings from before `stt.choice`. Not offered
+    /// anywhere: speech recognition is chosen in Getting started. Still known,
+    /// because `STTChoice.migrateLegacy` reads them once.
+    static let legacySTTKeys = [
+        "transcription.engine", "transcription.cloud", "transcription.language",
+        "transcription.model", "transcription.assemblyai.speech_model", "transcription.openai.model",
+    ]
+
     /// The settings above that this slice does not render, because there is no
     /// local model behind them. They stay *known*: a config carrying them on
     /// an Intel Mac is not misspelled, and reporting a working setting as
@@ -530,7 +483,7 @@ enum SettingsSchema {
     static var unrenderedLocalModelKeys: [String] {
         Platform.supportsLocalModels
             ? []
-            : ["live_transcription.enabled", "transcription.model"]
+            : ["live_transcription.enabled"]
     }
 
     /// Every key the program understands, as `a.b` strings — used to spot

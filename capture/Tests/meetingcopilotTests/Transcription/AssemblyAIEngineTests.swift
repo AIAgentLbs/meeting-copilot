@@ -50,25 +50,29 @@ struct AssemblyAIEngineTests {
     @Test("A transcription request keeps channel separation and diarization")
     func requestEnablesMultichannelSpeakerLabels() throws {
         let body = AssemblyAIEngine.requestBody(
-            audioURL: "https://example.test/audio.m4a",
-            expectedLanguages: ["ru", "en"],
-            speechModel: "universal-3-pro")
+            audioURL: "https://example.test/audio.m4a", model: "test-model", language: "ru")
 
         #expect(body["audio_url"] as? String == "https://example.test/audio.m4a")
         #expect(body["multichannel"] as? Bool == true)
         #expect(body["speaker_labels"] as? Bool == true)
-        #expect(body["speech_model"] as? String == "universal-3-pro")
-        let detection = try #require(body["language_detection_options"] as? [String: Any])
-        #expect(detection["expected_languages"] as? [String] == ["ru", "en"])
-        #expect(detection["fallback_language"] as? String == "ru")
+        #expect(body["speech_models"] as? [String] == ["test-model"])
+        #expect(body["language_code"] as? String == "ru")
+        #expect(body["language_detection"] == nil)
+
+        let auto = AssemblyAIEngine.requestBody(
+            audioURL: "https://example.test/audio.m4a", model: "test-model",
+            language: STTChoice.autoLanguage)
+        #expect(auto["language_detection"] as? Bool == true)
+        #expect(auto["language_code"] == nil)
     }
 
-    @Test("Multichannel responses never reuse a cache made from a mono mix")
+    @Test("Multichannel responses never reuse a cache made from a mono mix or another model")
     func multichannelCacheHasItsOwnName() {
         let audio = URL(fileURLWithPath: "/tmp/meeting/multichannel.m4a")
-        let cache = AssemblyAIEngine.cacheURL(for: audio)
-        #expect(cache.lastPathComponent == "transcript.assemblyai.multichannel.json")
+        let cache = AssemblyAIEngine.cacheURL(for: audio, model: "test-model", language: "ru")
+        #expect(cache.lastPathComponent.hasPrefix("transcript.assemblyai.multichannel."))
         #expect(cache.lastPathComponent != "transcript.assemblyai.json")
+        #expect(cache != AssemblyAIEngine.cacheURL(for: audio, model: "other-model", language: "ru"))
     }
 
     /// The server's verdict on a silent recording, verbatim from the call that

@@ -3,9 +3,12 @@ import FluidAudio
 import Foundation
 import os.lock
 
-/// Runs the optional low-latency transcript beside the durable recorder. The
-/// two speakers get independent streaming state while sharing the heavyweight
-/// CoreML model bundle.
+/// Runs the optional low-latency transcript beside the durable recorder, with
+/// the same model the person chose for the final transcript (`stt.choice`).
+/// The two speakers get independent recognizers sharing the heavyweight
+/// CoreML model bundle. A choice that cannot run live (a cloud engine, a model
+/// not downloaded, no choice yet) is a status with its reason; the recording
+/// never depends on it.
 actor LiveTranscriptionCoordinator {
     private struct AudioPacket: @unchecked Sendable {
         var buffer: AVAudioPCMBuffer
@@ -43,7 +46,7 @@ actor LiveTranscriptionCoordinator {
         }
     }
 
-    private let modelStore: LiveTranscriptionModelStore
+    private let resolve: @Sendable () -> STTResolution
     private var transcript = LiveTranscriptState()
     private var status: Status = .idle
     private var isRecording = false
@@ -55,7 +58,8 @@ actor LiveTranscriptionCoordinator {
     private var pendingSinks: SessionSinks?
     private var drops: [Date] = []
     private var lastConsumedAt: [Source: Date] = [:]
-    private var liveLanguage = "auto"
+    /// What a pause has to outlast to end an utterance, from the recognizer.
+    private var pauseEndingABlock: Double = 2
     /// The engine reports one running transcript per speaker and never says
     /// where an utterance ended, so the pause is what ends it here.
     private var partials = CumulativePartials()
@@ -69,8 +73,8 @@ actor LiveTranscriptionCoordinator {
     private var loadTask: Task<Void, Never>?
     private var consumerTasks: [Task<Void, Never>] = []
     private var continuations: [AsyncStream<AudioPacket>.Continuation] = []
-    private var managers: [Source: StreamingNemotronMultilingualAsrManager] = [:]
-    private var sharedModels: SharedNemotronMultilingualModels?
+    private var managers: [Source: LiveRecognizer] = [:]
+    private var sharedModels: (choice: STTChoice, models: LiveModels)?
     private var currentRemoteVoice: Int?
     private var lastSystemSignal: Date?
     private var captureWarnings: [CaptureWarning] = []
@@ -80,8 +84,8 @@ actor LiveTranscriptionCoordinator {
     private var recoveryExhausted = false
     private let inputTimes = OSAllocatedUnfairLock(initialState: [Source: Date]())
 
-    init(modelStore: LiveTranscriptionModelStore = .init()) {
-        self.modelStore = modelStore
+    init(resolve: @escaping @Sendable () -> STTResolution = { Config.speechRecognition() }) {
+        self.resolve = resolve
     }
 
     var snapshot: Snapshot {
@@ -98,7 +102,6 @@ actor LiveTranscriptionCoordinator {
 
     func beginRecording(
         enabled: Bool,
-        language: String,
         update: @escaping @Sendable (Snapshot) -> Void,
         attach: @escaping @Sendable (SessionSinks?) -> Void
     ) {
@@ -117,13 +120,13 @@ actor LiveTranscriptionCoordinator {
         publish()
         guard enabled else { return }
         startHealthWatchdog()
-        startPipeline(language: language, epoch: epoch)
+        startPipeline(epoch: epoch)
     }
 
     /// The caller detaches the old sinks before calling this, so no audio can
     /// enter a closing epoch; new sinks arrive through `attach` once the model
     /// is loaded and consuming.
-    func setEnabled(_ enabled: Bool, language: String) {
+    func setEnabled(_ enabled: Bool) {
         guard isRecording else { return }
         healthTask?.cancel()
         healthTask = nil
@@ -136,7 +139,7 @@ actor LiveTranscriptionCoordinator {
         publish()
         guard enabled else { return }
         startHealthWatchdog()
-        startPipeline(language: language, epoch: epoch)
+        startPipeline(epoch: epoch)
     }
 
     func finishRecording() async {
@@ -163,20 +166,29 @@ actor LiveTranscriptionCoordinator {
 
     /// Builds the queues and their sinks but does not hand the sinks over.
     ///
-    /// Loading Nemotron takes several seconds, and audio pushed into a queue
+    /// Loading a model takes several seconds, and audio pushed into a queue
     /// nobody is reading yet fills five seconds of buffer and then overflows —
     /// which used to be reported as "your Mac couldn't keep up" before a
     /// single word had been transcribed. The recorders start feeding the
     /// queues at the moment the model starts consuming them, and not before.
-    private func startPipeline(language: String, epoch: Int) {
-        liveLanguage = language
+    private func startPipeline(epoch: Int) {
         pipelineStartedAt = Date()
         inputTimes.withLock { $0.removeAll() }
-        guard modelStore.isReady(language: language) else {
-            status = .modelMissing
+        let choice: STTChoice
+        switch resolve() {
+        case .ready(let ready):
+            if let reason = LiveModels.unavailableReason(ready) {
+                status = .unavailable(reason)
+                publish()
+                return
+            }
+            choice = ready
+        case .needsChoice(let reason), .unavailable(let reason):
+            status = .unavailable(reason)
             publish()
             return
         }
+        if sharedModels?.choice != choice { sharedModels = nil }
         drops.removeAll(keepingCapacity: true)
         partials.reset()
         silentSeconds.removeAll(keepingCapacity: true)
@@ -204,7 +216,7 @@ actor LiveTranscriptionCoordinator {
             await self.loadAndConsume(
                 mic: micPair.stream,
                 system: systemPair.stream,
-                language: language,
+                choice: choice,
                 epoch: epoch
             )
         }
@@ -234,27 +246,23 @@ actor LiveTranscriptionCoordinator {
     private func loadAndConsume(
         mic: AsyncStream<AudioPacket>,
         system: AsyncStream<AudioPacket>,
-        language: String,
+        choice: STTChoice,
         epoch: Int
     ) async {
-        async let loadedRemoteDiarizer = RemoteSpeakerDiarizer.load()
+        async let loadedRemoteDiarizer: RemoteSpeakerDiarizer? = Self.remoteDiarizer()
         do {
-            let shared: SharedNemotronMultilingualModels
-            if let sharedModels {
-                shared = sharedModels
+            let shared: LiveModels
+            if let sharedModels, sharedModels.choice == choice {
+                shared = sharedModels.models
             } else {
-                shared = try await StreamingNemotronMultilingualAsrManager.preloadShared(
-                    from: modelStore.variantDirectory(language: language))
+                shared = try await LiveModels.load(choice)
             }
             guard transcript.epoch == epoch, transcript.isEnabled else { return }
-            sharedModels = shared
+            sharedModels = (choice, shared)
 
-            let micManager = StreamingNemotronMultilingualAsrManager()
-            let systemManager = StreamingNemotronMultilingualAsrManager()
-            try await micManager.loadFromShared(shared)
-            try await systemManager.loadFromShared(shared)
-            await micManager.setLanguage(language)
-            await systemManager.setLanguage(language)
+            let micManager = try await shared.recognizer(source: .microphone)
+            let systemManager = try await shared.recognizer(source: .system)
+            pauseEndingABlock = micManager.pauseEndingUtterance
             await installCallback(on: micManager, source: .mic, epoch: epoch)
             await installCallback(on: systemManager, source: .system, epoch: epoch)
             let remoteDiarizer = await loadedRemoteDiarizer
@@ -288,8 +296,24 @@ actor LiveTranscriptionCoordinator {
         }
     }
 
+    /// Whatever speaker model files are on this Mac (the first in
+    /// FluidAudio's own order when there are several); which one is not a
+    /// setting (owner decision 2026-10-21). With none, the far end stays one
+    /// voice, labelled by its channel. Never a download.
+    static func remoteDiarizer(
+        installed: [LocalSpeakerModel] = LocalSpeakerModel.installed
+    ) async -> RemoteSpeakerDiarizer? {
+        guard let speaker = installed.first else { return nil }
+        do {
+            return try RemoteSpeakerDiarizer.load(speaker)
+        } catch {
+            FileHandle.standardError.write(Data("live speaker model failed to load: \(error)\n".utf8))
+            return nil
+        }
+    }
+
     private func installCallback(
-        on manager: StreamingNemotronMultilingualAsrManager,
+        on manager: LiveRecognizer,
         source: Source,
         epoch: Int
     ) async {
@@ -305,7 +329,7 @@ actor LiveTranscriptionCoordinator {
     nonisolated private func consume(
         _ stream: AsyncStream<AudioPacket>,
         from source: Source,
-        with manager: StreamingNemotronMultilingualAsrManager,
+        with manager: LiveRecognizer,
         spoken pulse: OSAllocatedUnfairLock<Bool>?,
         epoch: Int,
         remoteDiarizer: RemoteSpeakerDiarizer? = nil
@@ -330,7 +354,7 @@ actor LiveTranscriptionCoordinator {
                             ))
                         }
                     }
-                    _ = try await manager.process(audioBuffer: packet.buffer)
+                    try await manager.process(packet.buffer)
                     let spoken = pulse?.withLock { decoded -> Bool in
                         defer { decoded = false }
                         return decoded
@@ -378,7 +402,7 @@ actor LiveTranscriptionCoordinator {
     }
 
     /// A real voice change closes the current far-end paragraph even if the
-    /// speakers handed over without two seconds of silence. Nemotron remains
+    /// speakers handed over without a pause. The recognizer remains
     /// cumulative; `CumulativePartials` subtracts the closed prefix when the
     /// next callback arrives.
     private func receivedRemoteVoice(_ voice: Int, epoch: Int) {
@@ -396,8 +420,9 @@ actor LiveTranscriptionCoordinator {
     ///
     /// Measured in audio rather than on the clock: the model can fall a couple
     /// of seconds behind while it warms up, and a stopwatch reads that as a
-    /// pause and cuts the sentence it is still working through.
-    private static let pauseEndingABlock: Double = 2
+    /// pause and cuts the sentence it is still working through. How long is
+    /// the recognizer's: a streaming model answers within a chunk, a sliding
+    /// window only once per window.
 
     private func decoded(
         seconds: Double, spoken: Bool, from source: Source, epoch: Int
@@ -411,7 +436,7 @@ actor LiveTranscriptionCoordinator {
         }
         let silence = (silentSeconds[source] ?? 0) + seconds
         silentSeconds[source] = silence
-        guard silence >= Self.pauseEndingABlock else { return }
+        guard silence >= pauseEndingABlock else { return }
         await endSegment(on: source, epoch: epoch)
     }
 
@@ -429,7 +454,7 @@ actor LiveTranscriptionCoordinator {
         // finish()'s flush callback. Apply its returned final text exactly once.
         callbackGeneration[source, default: 0] += 1
         do {
-            let final = try await LiveUtteranceDecoder.finish(manager)
+            let final = try await manager.finishUtterance()
             guard transcript.epoch == epoch else { return }
             received(final, from: source, epoch: epoch)
             transcript.endSegment(speaker: source.speaker, epoch: epoch)
@@ -521,7 +546,7 @@ actor LiveTranscriptionCoordinator {
             let epoch = transcript.setEnabled(true)
             lastConsumedAt = [.mic: now, .system: now]
             status = .loading
-            startPipeline(language: liveLanguage, epoch: epoch)
+            startPipeline(epoch: epoch)
         case .exhausted:
             recoveryExhausted = true
             stopPipeline(releaseSharedModels: true)
@@ -551,7 +576,7 @@ actor LiveTranscriptionCoordinator {
     }
 
     private func detachPipeline() -> (
-        load: Task<Void, Never>?, managers: [StreamingNemotronMultilingualAsrManager]
+        load: Task<Void, Never>?, managers: [LiveRecognizer]
     ) {
         let oldLoad = loadTask
         oldLoad?.cancel()

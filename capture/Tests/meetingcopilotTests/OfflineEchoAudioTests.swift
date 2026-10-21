@@ -120,7 +120,7 @@ struct OfflineEchoAudioTests {
         let first = try OfflineEchoAudio.prepare(microphone: sources.0, system: sources.1, in: dir)
         #expect(try read(first.microphone) == storedLocal)
         #expect(try read(first.system).allSatisfy { $0 == 0 })
-        let cache = AssemblyAIEngine.cacheURL(for: first.microphone)
+        let cache = AssemblyAIEngine.cacheURL(for: first.microphone, model: "test-model", language: "ru")
         #expect(cache.deletingLastPathComponent() != dir)
         try Data("keep cached provider response".utf8).write(to: cache)
         first.removeAudio()

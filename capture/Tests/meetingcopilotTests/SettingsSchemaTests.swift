@@ -182,12 +182,6 @@ struct SettingsSchemaTests {
         #expect(held == [
             // The switch at the foot of the form.
             "auto_record.enabled",
-            // Both transcription switches off.
-            "transcription.enabled",
-            // The two switches, "In the cloud" and "On this Mac".
-            "transcription.engine",
-            // The AssemblyAI and OpenAI cards under the cloud switch.
-            "transcription.cloud",
             // The live-transcript switch — Apple Silicon only, on both sides.
             "live_transcription.enabled",
             // Files: the switch, and the folder chosen with an open panel.
@@ -202,21 +196,19 @@ struct SettingsSchemaTests {
         ])
     }
 
-    /// The one that stays on both tabs, and why: setup asks it, but cannot
-    /// say everything the schema allows. The language menu offers parakeet's
-    /// 25 European languages while the cloud engines understand more.
-    @Test("A setting setup asks only partly is still asked in Advanced")
-    func partialCoverageStaysInAdvanced() {
-        let advanced = Set(SettingsSchema.advancedSections
-            .flatMap(\.entries)
-            .map { $0.path.joined(separator: ".") })
-        #expect(advanced.contains("transcription.language"))
-
-        // The claim about the menu, checked rather than asserted: a menu that
-        // grew to every language the cloud takes would make the field above
-        // redundant after all.
-        let offered = Set(MeetingLanguages.menu.map(\.code))
-        #expect(!offered.contains("ja"), "the meeting-language menu now covers more than parakeet")
+    /// Speech recognition is chosen in one place, Getting started (`stt.choice`).
+    /// The old transcription keys are known (the migration reads them) but no
+    /// window offers them, and `stt` is never reported as unread.
+    @Test("No window offers the old speech recognition settings")
+    func legacySTTKeysAreKnownButNotOffered() {
+        let offered = Set(SettingsSchema.sections.flatMap(\.entries).map { $0.path.joined(separator: ".") })
+        for key in SettingsSchema.legacySTTKeys {
+            #expect(!offered.contains(key), "\(key) is offered again")
+            #expect(SettingsSchema.knownKeys.contains(key))
+        }
+        #expect(SettingsSchema.strayKeys(in: [
+            "stt": ["choice": ["engine": "fluidaudio", "model": "m", "language": "auto"]],
+        ]).isEmpty)
     }
 
     /// The AI for summaries and speaker names is chosen in one place,

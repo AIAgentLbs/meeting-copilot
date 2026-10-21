@@ -72,20 +72,6 @@ struct LiveTranscriptTests {
         ]))
     }
 
-    @Test("A preferred meeting language never forces the live decoder's language",
-          arguments: ["ru", "ru-RU", "en", "en-US", "es", "unknown", ""])
-    func preferredLanguageStillDetectsSpeech(configured: String) {
-        #expect(LiveTranscriptionLanguage.prompt(for: configured) == "auto")
-        #expect(LiveTranscriptionModelStore().variantDirectory(
-            language: LiveTranscriptionLanguage.prompt(for: configured)
-        ).path.hasSuffix("multilingual/1120ms"))
-    }
-
-    @Test("An unset meeting language also uses automatic recognition")
-    func unsetLanguageDetectsSpeech() {
-        #expect(LiveTranscriptionLanguage.prompt(for: nil) == "auto")
-    }
-
     @Test("Remote diarization chooses a clear voice and rejects silence or overlap")
     func remoteVoicePrediction() {
         #expect(RemoteSpeakerDiarizer.dominantVoice(
@@ -329,48 +315,39 @@ struct LiveTranscriptTests {
         #expect(!relay.forward(source))
     }
 
-    @Test("The live model store detects complete language variants")
-    func modelStoreReadiness() throws {
-        let root = FileManager.default.temporaryDirectory
+    @Test("A Nemotron ship is ready only with metadata, tokenizer, encoder and a decoder")
+    func nemotronShipReadiness() throws {
+        let ship = FileManager.default.temporaryDirectory
             .appendingPathComponent("meetingcopilot-live-model-test-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: root) }
-        let store = LiveTranscriptionModelStore(root: root)
+        defer { try? FileManager.default.removeItem(at: ship) }
+        #expect(!LocalSTTModel.nemotronVariantReady(at: ship))
 
-        #expect(store.variantDirectory(language: "en-US").path.hasSuffix("latin/1120ms"))
-        #expect(store.variantDirectory(language: "ru-RU").path.hasSuffix("multilingual/1120ms"))
-        #expect(!store.isReady(language: "ru-RU"))
-
-        let variant = store.variantDirectory(language: "ru-RU")
         try FileManager.default.createDirectory(
-            at: variant.appendingPathComponent("encoder.mlmodelc"),
-            withIntermediateDirectories: true)
-        try Data("{}".utf8).write(to: variant.appendingPathComponent("metadata.json"))
-        try Data("{}".utf8).write(to: variant.appendingPathComponent("tokenizer.json"))
-        try FileManager.default.createDirectory(
-            at: variant.appendingPathComponent("decoder_joint.mlmodelc"),
-            withIntermediateDirectories: true)
+            at: ship.appendingPathComponent("encoder.mlmodelc"), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: ship.appendingPathComponent("metadata.json"))
+        try Data("{}".utf8).write(to: ship.appendingPathComponent("tokenizer.json"))
+        #expect(!LocalSTTModel.nemotronVariantReady(at: ship))
 
-        #expect(store.isReady(language: "ru-RU"))
+        try FileManager.default.createDirectory(
+            at: ship.appendingPathComponent("decoder_joint.mlmodelc"), withIntermediateDirectories: true)
+        #expect(LocalSTTModel.nemotronVariantReady(at: ship))
     }
 
     @Test("Enabling without a downloaded model fails safely and leaves recording independent")
     func missingModelDoesNotCreateSinks() async {
-        let missingRoot = FileManager.default.temporaryDirectory
-            .appendingPathComponent("meetingcopilot-live-missing-\(UUID().uuidString)")
         let coordinator = LiveTranscriptionCoordinator(
-            modelStore: LiveTranscriptionModelStore(root: missingRoot))
+            resolve: { .needsChoice(STTChoice.needsChoiceMessage) })
 
         let attached = OSAllocatedUnfairLock<Bool>(initialState: false)
         await coordinator.beginRecording(
             enabled: true,
-            language: "ru-RU",
             update: { _ in },
             attach: { sinks in attached.withLock { $0 = $0 || sinks != nil } })
         let snapshot = await coordinator.snapshot
 
         #expect(attached.withLock { $0 } == false)
         #expect(snapshot.isEnabled)
-        #expect(snapshot.status == .modelMissing)
+        #expect(snapshot.status == .unavailable(STTChoice.needsChoiceMessage))
         #expect(snapshot.entries.isEmpty)
     }
 
@@ -381,9 +358,7 @@ struct LiveTranscriptTests {
         // mic engine and an explicitly enabled voice route after Stop.
         final class Token: Sendable {}
         let coordinator = LiveTranscriptionCoordinator(
-            modelStore: LiveTranscriptionModelStore(
-                root: FileManager.default.temporaryDirectory
-                    .appendingPathComponent("meetingcopilot-live-release-\(UUID().uuidString)")))
+            resolve: { .needsChoice(STTChoice.needsChoiceMessage) })
 
         weak var captured: Token?
         do {
@@ -391,7 +366,6 @@ struct LiveTranscriptTests {
             captured = token
             await coordinator.beginRecording(
                 enabled: false,
-                language: "ru-RU",
                 update: { _ in _ = token },
                 attach: { _ in _ = token })
         }
@@ -458,17 +432,19 @@ struct LiveTranscriptTests {
         }
         let audioPath = try #require(
             ProcessInfo.processInfo.environment["MEETINGCOPILOT_LIVE_TEST_AUDIO"])
-        let store = LiveTranscriptionModelStore()
-        #expect(store.isReady(language: "ru-RU"))
+        guard case .ready(let choice) = Config.speechRecognition() else {
+            Issue.record("choose a local speech model in Getting started first")
+            return
+        }
+        #expect(LiveModels.unavailableReason(choice) == nil)
 
         let updates = OSAllocatedUnfairLock<LiveTranscriptionCoordinator.Snapshot?>(
             initialState: nil)
         let attached = OSAllocatedUnfairLock<LiveTranscriptionCoordinator.SessionSinks?>(
             initialState: nil)
-        let coordinator = LiveTranscriptionCoordinator(modelStore: store)
+        let coordinator = LiveTranscriptionCoordinator()
         await coordinator.beginRecording(
             enabled: true,
-            language: "ru-RU",
             update: { snapshot in updates.withLock { $0 = snapshot } },
             attach: { sinks in attached.withLock { $0 = sinks } })
 

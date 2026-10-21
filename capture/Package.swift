@@ -25,13 +25,6 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]
         ),
-        .executableTarget(
-            name: "meetingcopilot-live-model",
-            dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio"),
-            ],
-            path: "Tools/LiveModelPrep"
-        ),
         .testTarget(
             name: "meetingcopilotTests",
             dependencies: ["meetingcopilot"]

@@ -1,5 +1,4 @@
 import AVFoundation
-import FluidAudio
 import Foundation
 
 enum CheckStatus {
@@ -247,7 +246,7 @@ enum DoctorReport {
     }
 
     /// Never discover a missing model or a missing API key after an important
-    /// meeting: check whatever the configured engine needs, up front.
+    /// meeting: report what the speech recognition choice adds up to, up front.
     static func checkTranscription() -> Check {
         guard Config.transcriptionEnabled() else {
             return Check(
@@ -256,103 +255,20 @@ enum DoctorReport {
                 remediation: nil
             )
         }
-        let configured = Config.transcriptionEngine()
-        let provider = TranscriptionCoordinator.cloudProvider(configured: configured)
-        if Config.cloudEngines.contains(configured) { return checkCloud(provider) }
-        guard Platform.supportsLocalModels else { return checkWithoutLocalModels(provider) }
-        return checkParakeet()
+        return transcriptionCheck(Config.speechRecognition())
     }
 
-    /// An Intel Mac, where anything but an explicit cloud engine would like to
-    /// run a local model and none of them can. Report what will actually
-    /// happen — the cloud engine, or nothing at all — because the time to
-    /// learn there is no engine is before the meeting.
-    private static func checkWithoutLocalModels(_ provider: String) -> Check {
-        guard cloudKey(provider) != nil else {
+    /// A warning, never a failure: a choice that cannot run yet costs the
+    /// transcript, and refusing to launch over it would cost the recording too.
+    static func transcriptionCheck(_ resolution: STTResolution) -> Check {
+        guard case .ready(let choice) = resolution else {
             return Check(
                 name: "transcription",
-                status: .warn("local transcription needs Apple Silicon and there is no "
-                    + "\(cloudName(provider)) key"),
-                remediation: "printf '%s' YOUR_KEY > \(cloudKeyPath(provider).path)"
-                    + " && chmod 600 \(cloudKeyPath(provider).path)"
+                status: .warn(resolution.reason),
+                remediation: "open Getting started in the assistant"
             )
         }
-        return checkCloud(provider)
-    }
-
-    private static func checkParakeet() -> Check {
-        // Resolved through the engine so the cache we check can't drift from
-        // the model we'd actually download.
-        let version = ParakeetEngine.configuredVersion()
-
-        // v2 doesn't fail on other languages, it returns English-looking
-        // nonsense — the failure you only notice by reading the transcript.
-        // Catch the mismatched config here rather than after the meeting.
-        if version == .v2,
-           let language = Config.transcriptionLanguage(),
-           language != "en" {
-            return Check(
-                name: "transcription",
-                status: .warn("parakeet v2 is English-only but language is \"\(language)\""),
-                remediation: "set transcription.model to \"v3\" — v2 won't fail on "
-                    + "\(language), it'll return phonetic nonsense"
-            )
-        }
-
-        let cache = AsrModels.defaultCacheDirectory(for: version)
-        if AsrModels.modelsExist(at: cache, version: version) {
-            return Check(name: "transcription", status: .ok, remediation: nil)
-        }
-        let label = version == .v2 ? "v2" : "v3"
-        return Check(
-            name: "transcription",
-            status: .warn("parakeet \(label) models not downloaded (~600 MB)"),
-            remediation: "downloads automatically on first transcription — record a short test session while online"
-        )
-    }
-
-    /// The cloud engine has no models to cache; what it can be missing is a
-    /// key. Language is worth reporting either way: the engine detects it, and
-    /// what a configured one narrows is the shortlist it detects within.
-    private static func checkCloud(_ provider: String) -> Check {
-        // A warning, not a failure: a missing key costs you the transcript,
-        // and refusing to launch over it would cost you the recording too.
-        guard cloudKey(provider) != nil else {
-            return Check(
-                name: "transcription",
-                status: .warn("\(provider) engine selected but no API key — transcripts will fail"),
-                remediation: "printf '%s' YOUR_KEY > \(cloudKeyPath(provider).path)"
-                    + " && chmod 600 \(cloudKeyPath(provider).path)"
-            )
-        }
-        let expected = MeetingLanguages.expected(primary: Config.transcriptionLanguage())
-        guard !expected.isEmpty else {
-            return Check(
-                name: "transcription",
-                status: .warn("\(provider) · key ok · no language set (detects from any)"),
-                remediation: "set transcription.language (e.g. \"ru\") — detection over every "
-                    + "language it knows can pick wrong on a short or noisy meeting"
-            )
-        }
-        return Check(
-            name: "transcription",
-            status: .warn(
-                "\(provider) · key ok · expecting \(expected.joined(separator: "+")) "
-                    + "· audio leaves this machine"),
-            remediation: nil
-        )
-    }
-
-    private static func cloudKey(_ provider: String) -> String? {
-        provider == "openai" ? Config.openAIKey() : Config.assemblyAIKey()
-    }
-
-    private static func cloudKeyPath(_ provider: String) -> URL {
-        provider == "openai" ? Config.openAIKeyPath : Config.assemblyAIKeyPath
-    }
-
-    private static func cloudName(_ provider: String) -> String {
-        provider == "openai" ? "OpenAI" : "AssemblyAI"
+        return Check(name: "transcription (\(choice.engine) \(choice.model))", status: .ok, remediation: nil)
     }
 
     static func print(_ checks: [Check]) {

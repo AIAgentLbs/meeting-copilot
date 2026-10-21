@@ -21,6 +21,11 @@ enum SessionState {
         /// won't work on a retry. Absent — nothing to do, either because
         /// `speakers.json` exists or because naming is off.
         static let speakersStatus = "speakers_status"
+        /// Present while a session waits for something that will pass: a
+        /// finished speech choice, a downloaded model, the network. Costs no
+        /// attempts; cleared when the transcript is written.
+        static let transcriptionDeferred = TranscriptionDeferred.key
+        /// Why the far end was or was not split into voices.
     }
 
     static let deferred = "deferred"

@@ -8,8 +8,9 @@ import Foundation
 /// handles Russian properly and real diarization — so a call with three people
 /// on the far side comes back as three speakers instead of one "them".
 ///
-/// The full API response is cached next to the audio as
-/// `transcript.assemblyai.multichannel.json`. A retry after a crash re-renders
+/// The full API response is cached next to the audio, keyed by the model and
+/// language asked for (`transcript.assemblyai.multichannel.<key>.json`). A
+/// retry after a crash, or a re-transcription with the same choice, re-renders
 /// from that file instead of re-uploading and re-paying.
 actor AssemblyAIEngine: TranscriptionEngine {
     enum EngineError: TranscriptionFailure, CustomStringConvertible {
@@ -62,38 +63,32 @@ actor AssemblyAIEngine: TranscriptionEngine {
     private static let pollTimeout: TimeInterval = 3 * 3600
 
     nonisolated let name = "assemblyai"
+    /// The model asked for. What actually ran is `modelUsed()`.
     nonisolated let model: String
     nonisolated let input: TranscriptionInput = .multichannel
 
     private let apiKey: String
-    /// The languages this meeting may be in. The API is told to detect within
-    /// them rather than to assume the first: `language_code` is a pin, and a
-    /// pin on the wrong language is where this engine returns fluent phonetic
-    /// garbage instead of failing.
-    private let expected: [String]
-    private let speechModel: String?
+    /// A language code, or `auto` to let AssemblyAI detect it.
+    private let language: String
+    private var speechModelUsed: String?
 
     /// Throws rather than failing at transcribe time — a missing key should
     /// show up in the log the moment the engine is picked, not an upload later.
-    init() throws {
+    init(model: String, language: String) throws {
         guard let key = Config.assemblyAIKey() else { throw EngineError.noAPIKey }
         apiKey = key
-        expected = MeetingLanguages.expected(primary: Config.transcriptionLanguage())
-        speechModel = Config.assemblyAISpeechModel()
-
-        let parts = [
-            speechModel ?? "universal",
-            expected.isEmpty ? "auto-detect" : expected.joined(separator: "+"),
-        ]
-        model = parts.joined(separator: " · ")
+        self.model = model
+        self.language = language
     }
+
+    func modelUsed() async -> String { speechModelUsed ?? model }
 
     func prepare() async throws {}
     func release() async {}
 
     func transcribe(_ audio: URL) async throws -> [TranscriptSegment] {
         let audioDuration = try await Self.audioDuration(of: audio)
-        let cache = Self.cacheURL(for: audio)
+        let cache = Self.cacheURL(for: audio, model: model, language: language)
 
         let response: TranscriptResponse
         if let cached = try? Data(contentsOf: cache),
@@ -109,6 +104,7 @@ actor AssemblyAIEngine: TranscriptionEngine {
             try? raw.write(to: cache, options: .atomic)
             response = decoded
         }
+        speechModelUsed = response.speech_model_used
 
         // utterances is the diarized view; text is the flat fallback for a
         // recording where diarization found nothing to split.
@@ -160,9 +156,10 @@ actor AssemblyAIEngine: TranscriptionEngine {
         return duration
     }
 
-    static func cacheURL(for audio: URL) -> URL {
-        audio.deletingLastPathComponent()
-            .appendingPathComponent("transcript.assemblyai.multichannel.json")
+    static func cacheURL(for audio: URL, model: String, language: String) -> URL {
+        let key = STTChoice.cacheKey(model: model, language: language)
+        return audio.deletingLastPathComponent()
+            .appendingPathComponent("transcript.assemblyai.multichannel.\(key).json")
     }
 
     // MARK: - API
@@ -184,10 +181,7 @@ actor AssemblyAIEngine: TranscriptionEngine {
     }
 
     private func submit(audioURL: String) async throws -> String {
-        let body = Self.requestBody(
-            audioURL: audioURL,
-            expectedLanguages: expected,
-            speechModel: speechModel)
+        let body = Self.requestBody(audioURL: audioURL, model: model, language: language)
 
         var request = URLRequest(url: Self.base.appendingPathComponent("transcript"))
         request.httpMethod = "POST"
@@ -203,28 +197,23 @@ actor AssemblyAIEngine: TranscriptionEngine {
 
     /// The paid API boundary as plain JSON, kept pure so a test can pin the
     /// channel-separation contract without replacing URLSession with a mock.
-    static func requestBody(
-        audioURL: String,
-        expectedLanguages: [String],
-        speechModel: String?
-    ) -> [String: Any] {
+    static func requestBody(audioURL: String, model: String, language: String) -> [String: Any] {
         var body: [String: Any] = [
             "audio_url": audioURL,
             "multichannel": true,
             "speaker_labels": true,
             "punctuate": true,
             "format_text": true,
-            "language_detection": true,
+            // The person's model, and only it: no fallback model is listed.
+            "speech_models": [model],
             // speakers_expected is deliberately unset — with multichannel,
             // any hint applies independently to every channel.
         ]
-        if let primary = expectedLanguages.first {
-            body["language_detection_options"] = [
-                "expected_languages": expectedLanguages,
-                "fallback_language": primary,
-            ]
+        if language == STTChoice.autoLanguage {
+            body["language_detection"] = true
+        } else {
+            body["language_code"] = language
         }
-        if let speechModel { body["speech_model"] = speechModel }
         return body
     }
 
@@ -286,5 +275,6 @@ actor AssemblyAIEngine: TranscriptionEngine {
         let text: String?
         let audio_duration: Double?
         let utterances: [Utterance]?
+        let speech_model_used: String?
     }
 }

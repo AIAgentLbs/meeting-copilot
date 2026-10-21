@@ -22,4 +22,12 @@ enum Platform {
         return false
         #endif
     }()
+
+    static let architecture: String = {
+        #if arch(arm64)
+        return "arm64"
+        #else
+        return "x86_64"
+        #endif
+    }()
 }

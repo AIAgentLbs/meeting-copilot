@@ -1,5 +1,6 @@
 import AppKit
 import ArgumentParser
+import FluidAudio
 import Foundation
 
 @main
@@ -9,7 +10,7 @@ struct MeetingCopilot: ParsableCommand {
         abstract: "Local meeting recorder + transcriber. Records mic and system audio as two tracks, then transcribes on-device.",
         subcommands: [
             Run.self, Setup.self, Doctor.self, Install.self, Sessions.self, ProcessSession.self,
-            Record.self, TranscribeAudio.self,
+            Record.self, TranscribeAudio.self, STTOptions.self, STTDownload.self, STTCheck.self,
         ],
         defaultSubcommand: Run.self
     )
@@ -478,9 +479,17 @@ final class AppController {
     /// in the middle of one.
     private var recordingActivity: NSObjectProtocol?
     private var automaticFeaturesStarted = false
+    /// When the shared config file last changed. The speech choice is saved
+    /// by the assistant, another process, so the change is noticed here.
+    private var configChangedAt: Date?
 
     init(root: URL) {
         self.root = root
+        // Models are downloaded only by `stt-download`, on the person's
+        // request in Getting started; FluidAudio must never fetch one as a
+        // side effect of loading.
+        ModelHub.offlineMode = true
+        configChangedAt = Self.configModified()
 
         let settings = Config.autoRecord()
         // The calendar is worth reading for names even when it isn't a
@@ -594,6 +603,15 @@ final class AppController {
         automaticFeaturesStarted = true
 
         Task { [transcription, root] in
+            // The one model the installer downloaded becomes the choice by
+            // itself; when its language is not known offline yet, discovery
+            // reads its model card and finishes the choice (owner decision
+            // 2026-10-21, no prompt).
+            if case .needsChoice = Config.speechRecognition(),
+               STTChoice.stored(in: Config.current()) == nil,
+               LocalSTTModel.installed.count == 1 {
+                _ = await STTCatalog.options(refresh: false)
+            }
             await transcription.setStatusHandler { status in
                 Task { @MainActor [weak self] in
                     self?.showTranscription(status)
@@ -609,8 +627,11 @@ final class AppController {
         // A backlog deferred for want of a model is only half-solved by
         // recording the fact — something has to come back for it when the
         // network does.
-        let monitor = NetworkMonitor { [root] in
-            Task { await PostProcessor.sweep(root: root) }
+        let monitor = NetworkMonitor { [root, transcription] in
+            Task {
+                await transcription.resumePending(root: root)
+                await PostProcessor.sweep(root: root)
+            }
         }
         monitor.start()
         network = monitor
@@ -699,9 +720,8 @@ final class AppController {
         // Close the old epoch synchronously. Any partial result already in
         // flight is rejected by the coordinator's epoch check.
         session.installLiveAudioSinks(mic: nil, system: nil)
-        let language = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
         Task { [liveTranscription] in
-            await liveTranscription.setEnabled(enabled, language: language)
+            await liveTranscription.setEnabled(enabled)
         }
     }
 
@@ -755,7 +775,6 @@ final class AppController {
 
         guard let newSession = session else { return }
         let liveEnabled = Config.liveTranscriptionEnabled()
-        let liveLanguage = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
         let liveExportContext = LiveTranscriptExporter.Context(
             meetingID: UUID().uuidString,
             title: context.title ?? context.folderSuffix ?? newSession.dir.lastPathComponent,
@@ -768,7 +787,6 @@ final class AppController {
         Task { [weak self, liveTranscription, liveTranscriptExporter] in
             await liveTranscription.beginRecording(
                 enabled: liveEnabled,
-                language: liveLanguage,
                 update: { [weak self] snapshot in
                     Task {
                         await liveTranscriptExporter.publish(
@@ -776,7 +794,7 @@ final class AppController {
                     }
                     Task { @MainActor in self?.showLive(snapshot) }
                 },
-                // The sinks arrive when Nemotron starts consuming, which is
+                // The sinks arrive when the live model starts consuming, which is
                 // several seconds after the recording began. Only the session
                 // that asked for them may have them.
                 attach: { [weak self] sinks in
@@ -952,11 +970,26 @@ final class AppController {
         let decision = autoRecord.enabled ? autoRecord.lastDecision : nil
         menuBar.updateAutoRecord(enabled: autoRecord.enabled, decision: decision)
         window.updateAutoRecord(enabled: autoRecord.enabled, decision: decision)
+        resumeAfterConfigChange()
         guard let session else { return }
         present(
             session.isPaused ? .paused : .recording,
             elapsed: Self.format(Date().timeIntervalSince(session.startedAt))
         )
+    }
+
+    /// A new speech choice may be what deferred sessions were waiting for.
+    /// Retrying on the file changing, not on a timer, keeps a session deferred
+    /// for want of the network from being uploaded again every few seconds.
+    private func resumeAfterConfigChange() {
+        let modified = Self.configModified()
+        guard automaticFeaturesStarted, modified != configChangedAt else { return }
+        configChangedAt = modified
+        Task { [transcription, root] in await transcription.resumePending(root: root) }
+    }
+
+    private static func configModified() -> Date? {
+        (try? Config.path.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
     private func openFolder() {

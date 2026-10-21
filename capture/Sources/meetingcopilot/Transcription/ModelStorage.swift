@@ -1,128 +1,94 @@
-import FluidAudio
 import Foundation
 
 /// The local speech models as files on a disk: which of them are on this Mac,
 /// what they weigh, and how to get the space back.
 ///
-/// The windows quote sizes from here rather than from a constant. The numbers
-/// in the form's prose — "about 460 MB" — are what a download is going to
-/// cost before it happens, and they have to be written down somewhere because
-/// nothing has been fetched yet. Once the files are there the only honest
-/// figure is the one measured off the disk, and the two differ by more than
-/// rounding: the live model's cache keeps every language variant that has
-/// ever been fetched, so it grows without anything in the window changing.
+/// Only what is actually there is listed. Which model to use is chosen in
+/// Getting started (`stt.choice`), so there is no configured model to show
+/// as missing here; a model is listed because its files exist, and its size
+/// is measured off the disk rather than quoted.
 ///
-/// Deleting is not the same as switching off, which is the whole reason
-/// `updatesAfterDeleting` exists. A model deleted while the switch that wants
-/// it is still on comes back on the next meeting, quietly, over the same
-/// connection the person was trying to spare — and the space they thought
-/// they had freed is gone again without anybody being told.
+/// Deleting changes no setting. A deleted model that is still the chosen one
+/// makes speech recognition report it as not downloaded, and Getting started
+/// is where it comes back.
 struct ModelStorage {
     /// One model, as a person is shown it.
     struct Model: Equatable {
-        /// Which switch in the setup form asks for this model. The version is
-        /// in the name and the path; nothing outside this file has to know
-        /// that parakeet has versions at all.
         enum Kind: Equatable {
-            case parakeet
-            case live
+            /// Speech recognition: a Parakeet version or a Nemotron ship.
+            case speech
+            /// Speaker separation for the far-end track.
+            case speaker
         }
 
         let kind: Kind
-        /// A name, so not translated — these are the words the release notes,
-        /// the config file and the setup form all use.
+        /// The model id, as `stt.choice` names it.
         let name: String
         let directory: URL
-        /// What the directory holds, in bytes. Zero when it isn't there,
-        /// which is also what `isDownloaded` reads.
+        /// What the directory holds, in bytes.
         let bytes: Int
 
         var isDownloaded: Bool { bytes > 0 }
     }
 
-    private let live: LiveTranscriptionModelStore
-    private let parakeetCache: @Sendable (AsrModelVersion) -> URL
+    /// FluidAudio's model cache. A seam so tests never see the real one.
+    let root: URL
 
-    init(
-        live: LiveTranscriptionModelStore = LiveTranscriptionModelStore(),
-        parakeetCache: @escaping @Sendable (AsrModelVersion) -> URL = {
-            AsrModels.defaultCacheDirectory(for: $0)
+    init(root: URL = LocalSTTModel.modelsRoot) {
+        self.root = root
+    }
+
+    /// Every model this app can run whose files are on this Mac: Parakeet
+    /// versions, then Nemotron ships, then speaker models.
+    func all() -> [Model] {
+        let parakeet = LocalSTTModel.parakeetVersions.map { version in
+            model(.speech, LocalSTTModel.parakeet(version).id,
+                  root.appendingPathComponent(LocalSTTModel.repo(for: version).folderName))
         }
-    ) {
-        self.live = live
-        self.parakeetCache = parakeetCache
-    }
-
-    /// Every model worth showing, in the order the setup form asks for them.
-    ///
-    /// The configured parakeet version is listed whether or not it is here —
-    /// its row is where a person reads that it isn't. Another version is
-    /// listed only when its files exist: a version nobody chose and nobody
-    /// downloaded is not news, but half a gigabyte left behind by a version
-    /// somebody has since changed away from is exactly what this list is for.
-    func all(configured: AsrModelVersion = ParakeetEngine.configuredVersion()) -> [Model] {
-        var models = [parakeet(version: configured)]
-        for version in [AsrModelVersion.v3, .v2] where version != configured {
-            let other = parakeet(version: version)
-            if other.isDownloaded { models.append(other) }
+        let speakers = LocalSpeakerModel.all.map { speaker in
+            model(.speaker, speaker.id,
+                  root.appendingPathComponent(speaker.variant.repo.folderName)
+                      .appendingPathComponent(speaker.relativePath))
         }
-        models.append(liveModel())
-        return models
+        return (parakeet + nemotronShips() + speakers).filter(\.isDownloaded)
     }
 
-    func parakeet(version: AsrModelVersion) -> Model {
-        let directory = parakeetCache(version)
-        return Model(
-            kind: .parakeet,
-            name: "parakeet \(version == .v2 ? "v2" : "v3")",
-            directory: directory,
-            bytes: Self.bytes(of: directory))
+    /// A ship is any folder under the Nemotron repository that holds the
+    /// `metadata.json` FluidAudio writes. Core ML bundles carry a file of the
+    /// same name, so they are not looked inside.
+    private func nemotronShips() -> [Model] {
+        let repo = root.appendingPathComponent(LocalSTTModel.nemotronRepo.folderName)
+            .resolvingSymlinksInPath()
+        guard let walker = FileManager.default.enumerator(at: repo, includingPropertiesForKeys: nil)
+        else { return [] }
+        var ships: [Model] = []
+        for case let url as URL in walker {
+            if ["mlmodelc", "mlpackage"].contains(url.pathExtension) {
+                walker.skipDescendants()
+            } else if url.lastPathComponent == "metadata.json" {
+                let dir = url.deletingLastPathComponent().resolvingSymlinksInPath()
+                let ship = dir.path.dropFirst(repo.path.count + 1)
+                ships.append(model(.speech, "\(LocalSTTModel.nemotronRepo.name)/\(ship)", dir))
+            }
+        }
+        return ships.sorted { $0.name < $1.name }
     }
 
-    func liveModel() -> Model {
-        Model(
-            kind: .live,
-            name: "NVIDIA nemotron",
-            directory: live.modelDirectory,
-            bytes: Self.bytes(of: live.modelDirectory))
+    private func model(_ kind: Model.Kind, _ name: String, _ directory: URL) -> Model {
+        Model(kind: kind, name: name, directory: directory, bytes: Self.bytes(of: directory))
     }
 
-    /// What everything listed comes to. The number a person came to the
-    /// window for, and the one they can compare against what the disk says.
+    /// What everything listed comes to.
     func total(_ models: [Model]) -> Int {
         models.reduce(0) { $0 + $1.bytes }
     }
 
-    /// Put the directory back the way it was before the download. Removing
-    /// the whole directory rather than the files we know about: FluidAudio
-    /// writes more into it than it reads back, and a half-emptied cache is
-    /// the state its downloader is worst at recovering from.
+    /// Remove the model's whole directory: FluidAudio writes more into it
+    /// than it reads back, and a half-emptied cache is the state its
+    /// downloader is worst at recovering from.
     func delete(_ model: Model) throws {
         guard FileManager.default.fileExists(atPath: model.directory.path) else { return }
         try FileManager.default.removeItem(at: model.directory)
-    }
-
-    /// What to write when a model is deleted: the switch that asked for it
-    /// has to come down with it. Returned as config paths rather than done
-    /// here so the whole matrix can be checked without a disk.
-    ///
-    /// Deleting parakeet on a Mac with no cloud engine leaves nothing to
-    /// transcribe with, and `TranscriptionChoice` says so by switching
-    /// transcription off outright. That is the truth about what was just
-    /// done, and the window says it out loud before doing it.
-    static func updatesAfterDeleting(
-        _ kind: Model.Kind,
-        choice: TranscriptionChoice,
-        liveEnabled: Bool
-    ) -> [(path: [String], value: Any?)] {
-        switch kind {
-        case .parakeet:
-            guard choice.local else { return [] }
-            return TranscriptionChoice(cloud: choice.cloud, local: false, provider: choice.provider)
-                .updates
-        case .live:
-            return liveEnabled ? [(["live_transcription", "enabled"], nil)] : []
-        }
     }
 
     /// A size as a person reads it: megabytes until they stop being readable,
@@ -139,9 +105,7 @@ struct ModelStorage {
             gigabytes.replacingOccurrences(of: ".", with: ",") + " ГБ")
     }
 
-    /// What a directory holds, in bytes. The same walk the download progress
-    /// bar does once a second, so nothing here is a cost the window doesn't
-    /// already pay.
+    /// What a directory holds, in bytes.
     static func bytes(of directory: URL) -> Int {
         guard let walker = FileManager.default.enumerator(
             at: directory, includingPropertiesForKeys: [.fileSizeKey]

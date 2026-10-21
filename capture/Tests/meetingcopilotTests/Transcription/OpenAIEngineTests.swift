@@ -79,36 +79,22 @@ struct OpenAIEngineTests {
             from: decoded, offset: 0, labelPrefix: nil).isEmpty)
     }
 
+    /// The chosen language is sent as chosen; `auto` sends none and lets the
+    /// model listen.
+    @Test("A language is sent only when one is chosen")
+    func languageIsSentOnlyWhenChosen() {
+        #expect(OpenAITranscriptionEngine.languageField(for: "ru") == "ru")
+        #expect(OpenAITranscriptionEngine.languageField(for: STTChoice.autoLanguage) == nil)
+        #expect(OpenAITranscriptionEngine.languageField(for: "") == nil)
+    }
+
     /// The cache is the server's own answer, and a retry after a crash has to
-    /// find every piece of it — so the name says which piece it is, and the
-    /// ordinary one-request case keeps the plain name.
-    /// The engine used to pass the configured language straight through, which
-    /// is a pin — and "meetings are mostly in Russian" is precisely the case
-    /// where a pin is sometimes wrong. OpenAI has no expected_languages to
-    /// narrow detection with instead, so the only safe answer is to say
-    /// nothing and let the model listen.
-    @Test("A language is named only when it cannot be the wrong one")
-    func languageIsNamedOnlyWhenUnambiguous() {
-        #expect(OpenAITranscriptionEngine.languageField(for: ["en"]) == "en")
-        #expect(OpenAITranscriptionEngine.languageField(for: ["ru", "en"]) == nil)
-        #expect(OpenAITranscriptionEngine.languageField(for: []) == nil)
-    }
-
-    /// The rule stated against the setting people actually change, so that a
-    /// later change to what a choice expects can't quietly restore the pin.
-    @Test("Choosing Russian sends no language at all")
-    func russianIsNotPinned() {
-        let expected = MeetingLanguages.expected(primary: "ru")
-        #expect(OpenAITranscriptionEngine.languageField(for: expected) == nil)
-        #expect(OpenAITranscriptionEngine.languageField(
-            for: MeetingLanguages.expected(primary: "en")) == nil)
-    }
-
-    @Test("Cached responses are named per piece only when there is more than one")
+    /// find every piece of it, so the name says which piece it is.
+    @Test("Cached responses are named per model and language, and per piece only when there is more than one")
     func cacheNames() {
-        #expect(OpenAITranscriptionEngine.cacheName(0, of: 1) == "transcript.openai.json")
-        #expect(OpenAITranscriptionEngine.cacheName(0, of: 3) == "transcript.openai.1.json")
-        #expect(OpenAITranscriptionEngine.cacheName(2, of: 3) == "transcript.openai.3.json")
+        #expect(OpenAITranscriptionEngine.cacheName(0, of: 1, key: "k") == "transcript.openai.k.json")
+        #expect(OpenAITranscriptionEngine.cacheName(0, of: 3, key: "k") == "transcript.openai.k.1.json")
+        #expect(OpenAITranscriptionEngine.cacheName(2, of: 3, key: "k") == "transcript.openai.k.3.json")
     }
 
     /// 25 MB is the API's ceiling; the pieces have to come in under it with

@@ -39,6 +39,7 @@ actor LiveTranscriptExporter {
         let meetingID: String
         let title: String
         let status: String
+        let statusReason: String
         let startedAt: String
         let updatedAt: String
         let remoteAttendees: [String]
@@ -51,6 +52,7 @@ actor LiveTranscriptExporter {
 
         enum CodingKeys: String, CodingKey {
             case version, source, title, status, segments
+            case statusReason = "status_reason"
             case meetingID = "meeting_id"
             case startedAt = "started_at"
             case updatedAt = "updated_at"
@@ -102,6 +104,7 @@ actor LiveTranscriptExporter {
             meetingID: context.meetingID,
             title: context.title,
             status: Self.status(snapshot),
+            statusReason: Self.reason(snapshot),
             startedAt: Self.iso(context.startedAt),
             updatedAt: Self.iso(now),
             remoteAttendees: context.remoteAttendees,
@@ -138,9 +141,16 @@ actor LiveTranscriptExporter {
         case .paused: return "paused"
         case .loading: return "loading"
         case .live: return "recording"
-        case .modelMissing: return "model_missing"
+        case .unavailable: return "unavailable"
         case .overloaded: return "overloaded"
         case .error: return "error"
+        }
+    }
+
+    private static func reason(_ snapshot: LiveTranscriptionCoordinator.Snapshot) -> String {
+        switch snapshot.status {
+        case .unavailable(let reason), .error(let reason): return reason
+        default: return ""
         }
     }
 

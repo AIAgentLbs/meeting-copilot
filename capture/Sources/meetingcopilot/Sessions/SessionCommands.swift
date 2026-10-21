@@ -1,4 +1,5 @@
 import ArgumentParser
+import FluidAudio
 import Foundation
 
 /// `meetingcopilot sessions` — what has been recorded and what is still owed on it.
@@ -63,7 +64,14 @@ struct ProcessSession: ParsableCommand {
     )
     var again = false
 
+    @OptionGroup var speech: SpeechChoiceOptions
+
     func run() throws {
+        ModelHub.offlineMode = true
+        let override = try speech.choice()
+        if override != nil, !again {
+            throw ValidationError("a one-run speech choice only applies with --again")
+        }
         let dir = URL(
             fileURLWithPath: (folder ?? FileManager.default.currentDirectoryPath as String)
                 .expandingTilde,
@@ -89,7 +97,9 @@ struct ProcessSession: ParsableCommand {
                 // settled session it pulls the microphone and the far end back
                 // out of audio.m4a a channel at a time; on one that never got
                 // that far it reads the tracks as they were recorded.
-                try runBlocking { try await TranscriptionCoordinator().transcribeNow(dir) }
+                try runBlocking {
+                    try await TranscriptionCoordinator().transcribeNow(dir, override: override)
+                }
             } catch let busy as SessionClaim.Busy {
                 // The running app got to this folder first. Nothing has been
                 // touched, and there is nothing to fix — so this reads as a
@@ -148,26 +158,26 @@ struct ProcessSession: ParsableCommand {
     private static func logHint(_ dir: URL) -> String {
         "See \(dir.appendingPathComponent("transcribe.log").lastPathComponent) for detail."
     }
+}
 
-    /// ArgumentParser's `run()` is synchronous, and this command is a one-shot
-    /// process whose whole purpose is the async work — so waiting for it is
-    /// the entire job rather than a blocked main thread.
-    private func runBlocking<T: Sendable>(
-        _ work: @escaping @Sendable () async throws -> T
-    ) throws -> T {
-        let semaphore = DispatchSemaphore(value: 0)
-        nonisolated(unsafe) var result: Result<T, Error>?
-        Task {
-            do {
-                result = .success(try await work())
-            } catch {
-                result = .failure(error)
-            }
-            semaphore.signal()
+/// ArgumentParser's `run()` is synchronous, and this command is a one-shot
+/// process whose whole purpose is the async work, so waiting for it is
+/// the entire job rather than a blocked main thread.
+func runBlocking<T: Sendable>(
+    _ work: @escaping @Sendable () async throws -> T
+) throws -> T {
+    let semaphore = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var result: Result<T, Error>?
+    Task {
+        do {
+            result = .success(try await work())
+        } catch {
+            result = .failure(error)
         }
-        semaphore.wait()
-        return try result!.get()
+        semaphore.signal()
     }
+    semaphore.wait()
+    return try result!.get()
 }
 
 extension String {

@@ -1,5 +1,4 @@
 import AppKit
-import FluidAudio
 import Foundation
 
 /// Everything a new installation is asked: the permissions macOS will
@@ -22,14 +21,12 @@ import Foundation
 /// program that will do the recording.
 ///
 /// Everything it shows is read from the machine rather than assumed: whether a
-/// grant exists, whether a model is downloaded, whether `claude` and `codex`
-/// are installed *and answer when run*. Nothing here says "should work".
+/// grant exists, and whether the speech recognition chosen in Getting started
+/// can run. Nothing here says "should work", and nothing here downloads.
 @MainActor
-final class SetupForm: NSObject, NSTextFieldDelegate {
+final class SetupForm: NSObject {
     let firstRun: Bool
     var onShowSettings: (() -> Void)?
-    private let quickStatus = NSTextField(wrappingLabelWithString: "")
-    private var quickDownloadError: String?
     /// Whether a recording is in progress. Registering at login and testing
     /// system audio both disturb a running recording, and nothing in this
     /// form is worth losing a meeting for.
@@ -40,35 +37,12 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     /// redraws its other tab.
     var onStateChange: (() -> Void)?
 
-    /// What the config says about transcription, and how to change it.
-    ///
-    /// The pair is one seam rather than two because the transcription
-    /// switches only work as a loop: a click writes the choice and then
-    /// redraws the switches from what it wrote. Replacing only the writing
-    /// would leave a test watching the form redraw from the config file of
-    /// whoever is running the suite — which is also the reason the bug this
-    /// pair exists to keep out shipped in the first place.
-    var storedTranscription: @MainActor () -> TranscriptionChoice = {
-        TranscriptionChoice.read(
-            engine: Config.transcriptionEngine(),
-            cloudProvider: Config.transcriptionCloudProvider(),
-            enabled: Config.transcriptionEnabled(),
-            localModels: Platform.supportsLocalModels)
-    }
-    var write: @MainActor ([String], Any?) -> Void = { Config.update(path: $0, value: $1) }
-
-    /// Whether the local model is on this Mac, and how to put it there. Also
-    /// a seam, for the same reason and one more: the click that has to be
-    /// got right is the one made with no model on the disk, and it starts a
-    /// download — which a test has to be able to answer without pulling 460
-    /// megabytes over the network.
-    var parakeetIsHere: @MainActor () -> Bool = {
-        let version = ParakeetEngine.configuredVersion()
-        return AsrModels.modelsExist(
-            at: AsrModels.defaultCacheDirectory(for: version), version: version)
-    }
-    var fetchParakeet: @MainActor () async throws -> Void = {
-        _ = try await AsrModels.downloadAndLoad(version: ParakeetEngine.configuredVersion())
+    /// What the speech recognition choice in Getting started adds up to. A
+    /// seam so a test can say "nothing chosen" without a config file. Read
+    /// only: the migration of old settings belongs to the code that runs
+    /// sessions, not to a window redrawing itself.
+    var speechResolution: @MainActor () -> STTResolution = {
+        STTRuntime.resolve(stored: STTChoice.stored(in: Config.current()))
     }
 
     /// The form itself, for a host to put in a scroll view.
@@ -106,45 +80,10 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         grantedNote: localised("allowed", "разрешено"),
         optional: true)
 
-    private let cloudSwitch = NSSwitch()
-    private let cloudStatus = NSTextField(labelWithString: "")
-    private let providerCards = ChoiceGroup()
-    private let cloudKey = NSSecureTextField()
-    private let cloudKeyStatus = NSTextField(labelWithString: "")
-    /// Shown only when there is a key to paste: an empty field under a
-    /// working provider is an invitation to overwrite something that works.
-    private let keyLine = NSStackView()
-    /// The provider whose key field is open. Set when a card or the switch is
-    /// clicked for a service with no key yet — and while it is set, the
-    /// provider actually in force is unchanged, so a curious click cannot cost
-    /// the next meeting its transcript.
-    private var pendingProvider: String?
-    /// The provider in force, read back from the config on every refresh.
-    private var provider = "assemblyai"
-    private let localSwitch = NSSwitch()
-
-    private let language = NSPopUpButton()
-    private let languageNote = NSTextField(labelWithString: "")
+    private let speechStatus = SetupLayout.detail("", lines: 3, width: 440)
     private let keepAudio = NSSwitch()
     private let liveTranscription = NSSwitch()
-    private let liveStatus = NSTextField(labelWithString: "")
-    private let liveModelStore = LiveTranscriptionModelStore()
-    /// What the models on this Mac weigh, for the two rows that say so. The
-    /// figure in each row's prose is what a download will cost; this is what
-    /// it did cost, and only this one can be trusted once the files exist.
-    private let modelStorage = ModelStorage()
-    private var liveDownloadTask: Task<Void, Never>?
-    private var liveDownloading = false
-    /// What parakeet weighs on disk once it is there — measured, not quoted:
-    /// 461 MB for v3, and v2 is the same 0.6B model. The bar is the cache
-    /// directory growing towards this number, so a figure taken from
-    /// somewhere else is a bar that stops three quarters of the way and a
-    /// count that never reaches what it promised.
-    private static let parakeetMegabytes = 460
-
-    private let parakeetStatus = NSTextField(labelWithString: "")
-    private let parakeetBar = NSProgressIndicator()
-    private var parakeetProgress: Timer?
+    private let liveDetail = SetupLayout.detail("", lines: 4, width: 520)
 
     private let summariesOn = NSSwitch()
     private let recordingsPath = NSTextField(labelWithString: "")
@@ -188,17 +127,16 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             content: SetupLayout.box(firstRun ? [launchRow, micRow, audioRow] : [launchRow, micRow, audioRow, calendarRow])))
 
         if firstRun {
-            quickStatus.font = SetupLayout.detailFont
-            quickStatus.maximumNumberOfLines = 0
             form.addArrangedSubview(SetupLayout.section(
-                localised("Local speech recognition", "Локальная расшифровка"), content: quickStatus))
+                localised("Speech recognition", "Распознавание речи"),
+                content: SetupLayout.box([speechRow()])))
             form.addArrangedSubview(SetupLayout.detail(localised(
-                "Speech languages are detected automatically, including changes during a call. Local recognition needs no paid API key. AI answers use the provider and model you choose in Getting started, in the assistant.",
-                "Языки речи определяются автоматически, в том числе при переключении в звонке. Для локальной расшифровки платный ключ не нужен. Ответы ИИ используют инструмент и модель, которые вы выберете в разделе «Начать работу» в помощнике."), lines: 5, width: 580))
+                "Speech recognition and the AI for answers are chosen in Getting started, in the assistant.",
+                "Распознавание речи и ИИ для ответов выбираются в разделе «Начать работу» в помощнике."), lines: 3, width: 580))
             let settings = SetupLayout.actionButton(localised("Other options…", "Другие настройки…"), target: self, action: #selector(showOtherSettings))
             form.addArrangedSubview(settings)
         } else {
-        var transcription: [NSView] = [transcriptionRows(), languageRow()]
+        var transcription: [NSView] = [SetupLayout.box([speechRow()])]
         // The live transcript is a local streaming model, so on an Intel Mac
         // there is nothing behind the switch. Left out rather than shown
         // switched off: an offer that can never be accepted.
@@ -242,15 +180,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
 
     @objc private func showOtherSettings() { onShowSettings?() }
 
-    private func prepareLiveHelp() {
-        // This is an explicit setup action, not a download at recording start.
-        write(["live_transcription", "enabled"], true)
-        if !hasKey(for: transcriptionChoice.provider), Platform.supportsLocalModels {
-            write(["transcription", "engine"], "parakeet")
-        }
-        downloadLiveModel()
-    }
-
     /// Re-read the machine and the config file. A host calls this when the
     /// form comes back on screen: the menu and the status window both write
     /// `auto_record.enabled`, and a form showing yesterday's answer is worse
@@ -259,197 +188,30 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         refresh()
     }
 
-    /// Put down what outlives a keystroke. The setup window calls it on the
-    /// way out: a timer polling a download directory has no reason to keep
-    /// running behind a closed window.
-    func stop() {
-        parakeetProgress?.invalidate()
-        parakeetProgress = nil
-    }
+    /// The setup window calls this on the way out. Nothing in the form
+    /// outlives it any more: it never downloads.
+    func stop() {}
     // MARK: - building
 
-    /// The two questions this section actually asks: may audio leave this
-    /// Mac, and should the local model be kept ready. Both are switches, and
-    /// neither is a fallback setting — "the cloud when it answers, this Mac
-    /// when it doesn't" is what having both on *means*, not a third option to
-    /// pick.
-    ///
-    /// The provider cards sit under the cloud switch and stay on screen while
-    /// it is off, because they are what the switch costs: the price per hour
-    /// belongs where the decision is made, not in a document.
-    private func transcriptionRows() -> NSView {
-        cloudSwitch.target = self
-        cloudSwitch.action = #selector(cloudToggled)
-        cloudStatus.font = SetupLayout.statusFont
-        cloudStatus.textColor = .secondaryLabelColor
-        cloudStatus.lineBreakMode = .byTruncatingTail
-
-        let cloudRow = SetupLayout.row(
-            leading: cloudSwitch,
-            title: SetupLayout.title(localised("In the cloud", "В облаке")),
-            detail: SetupLayout.detail(
-                localised(
-                    "Audio is uploaded to the provider's servers. Better on Russian, "
-                        + "and tells apart multiple speakers.",
-                    "Звук уходит на серверы провайдера. Лучше слышит русский "
-                        + "и различает нескольких говорящих."),
-                lines: 2, width: 440),
-            trailing: [cloudStatus])
-
-        localSwitch.target = self
-        localSwitch.action = #selector(localToggled)
-        parakeetStatus.font = SetupLayout.statusFont
-        parakeetStatus.textColor = .secondaryLabelColor
-        parakeetStatus.lineBreakMode = .byTruncatingTail
-        // FluidAudio reports no progress, so the bar is the cache directory
-        // growing towards the model's known size. Approximate, and better
-        // than a spinner that could mean anything.
-        parakeetBar.style = .bar
-        parakeetBar.isIndeterminate = false
-        parakeetBar.controlSize = .small
-        parakeetBar.minValue = 0
-        parakeetBar.maxValue = Double(Self.parakeetMegabytes)
-        parakeetBar.isHidden = true
-        parakeetBar.widthAnchor.constraint(equalToConstant: 90).isActive = true
-
-        let localRow = SetupLayout.row(
-            leading: localSwitch,
-            title: SetupLayout.title(localised("On this Mac", "На этом маке")),
-            detail: SetupLayout.detail(
-                localised(
-                    "Nvidia parakeet, \(Self.parakeetMegabytes) MB download and disk usage. Nothing leaves "
-                        + "the machine, only me / them in the transcript.",
-                    "Nvidia parakeet, \(Self.parakeetMegabytes) МБ при скачивании и на диске. С мака "
-                        + "ничего не уходит, но в расшифровке только «я» и «они»."),
-                lines: 2, width: 440),
-            trailing: [parakeetBar, parakeetStatus])
-
-        // One row, not two, on an Intel Mac: there is no local model to offer,
-        // and the row explains itself rather than vanishing.
-        return SetupLayout.box([cloudRow, providerRow(), localRow])
-    }
-
-    /// The provider cards and the one key field they share, indented under
-    /// the switch they belong to.
-    private func providerRow() -> NSView {
-        let assembly = ChoiceCard(
-            id: "assemblyai",
-            title: "AssemblyAI",
-            detail: localised(
-                "$0.23 an hour. No limit on meeting length.",
-                "$0,23 за час. Без ограничения на длину встречи."),
-            accessories: [link(
-                localised("Get a key", "Получить ключ"),
-                "https://www.assemblyai.com/dashboard/signup")])
-        let openai = ChoiceCard(
-            id: "openai",
-            title: "OpenAI",
-            detail: localised(
-                "$0.36 an hour. Same key as summaries.",
-                "$0,36 за час. Тот же ключ, что и для саммари."),
-            accessories: [link(
-                localised("Get a key", "Получить ключ"),
-                "https://platform.openai.com/api-keys")])
-        providerCards.adopt([assembly, openai])
-        providerCards.onChange = { [weak self] id in self?.providerPicked(id) }
-
-        cloudKey.placeholderString = localised("paste key", "вставьте ключ")
-        cloudKey.font = SetupLayout.detailFont
-        cloudKey.delegate = self
-        cloudKey.widthAnchor.constraint(equalToConstant: 220).isActive = true
-        cloudKeyStatus.font = SetupLayout.statusFont
-        cloudKeyStatus.textColor = .secondaryLabelColor
-        cloudKeyStatus.lineBreakMode = .byWordWrapping
-        cloudKeyStatus.maximumNumberOfLines = 2
-
-        keyLine.orientation = .horizontal
-        keyLine.alignment = .centerY
-        keyLine.spacing = 10
-        keyLine.setViews([cloudKey, cloudKeyStatus, NSView()], in: .leading)
-
-        let stack = NSStackView(views: [SetupLayout.cards(providerCards.cards), keyLine])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        // Indented to the width of a switch plus its gap, so the cards read as
-        // the cloud row's detail rather than as a third choice beside it.
-        stack.edgeInsets = NSEdgeInsets(top: 12, left: 58, bottom: 13, right: 14)
-        for view in stack.arrangedSubviews {
-            view.widthAnchor.constraint(
-                equalTo: stack.widthAnchor, constant: -72).isActive = true
-        }
-        return stack
-    }
-
-    /// A menu rather than the two-letter code this used to ask for. The code
-    /// was never a question anybody could answer from the window: nothing said
-    /// whether it wanted `ru`, `rus` or `ru-RU`, and a typo went to stderr,
-    /// where nobody was reading. What is stored is still the code.
-    private func languageRow() -> NSView {
-        let label = NSTextField(labelWithString: localised(
-            "Speech languages", "Языки разговора"))
-        label.font = .systemFont(ofSize: 13)
-        label.textColor = .secondaryLabelColor
-
-        language.target = self
-        language.action = #selector(languageChanged)
-        buildLanguageMenu()
-        language.isEnabled = false
-
-        let picker = NSStackView(views: [label, language, NSView()])
-        picker.orientation = .horizontal
-        picker.alignment = .centerY
-        picker.spacing = 10
-
-        languageNote.font = SetupLayout.statusFont
-        languageNote.textColor = .secondaryLabelColor
-        languageNote.lineBreakMode = .byWordWrapping
-        languageNote.maximumNumberOfLines = 2
-        languageNote.preferredMaxLayoutWidth = 520
-
-        let stack = NSStackView(views: [picker, languageNote])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 4
-        return stack
-    }
-
-    /// Detect first, then the five languages meetingcopilot is actually used in, then
-    /// the alphabet. Each item carries its own config value, so the menu can
-    /// be reordered without a table of indices to keep in step with it.
-    private func buildLanguageMenu() {
-        let menu = NSMenu()
-        let detect = NSMenuItem(
-            title: localised("Detect automatically", "Определять автоматически"),
-            action: nil, keyEquivalent: "")
-        menu.addItem(detect)
-        language.menu = menu
-    }
-
-    private var selectedLanguage: String? {
-        language.selectedItem?.representedObject as? String
+    /// Which engine and model transcribe is chosen in one place, Getting
+    /// started in the assistant (`stt.choice` in the shared config). This row
+    /// only says what that choice adds up to on this Mac.
+    private func speechRow() -> NSView {
+        SetupLayout.row(
+            symbol: "text.bubble",
+            title: SetupLayout.title(localised("Speech recognition", "Распознавание речи")),
+            detail: speechStatus)
     }
 
     private func liveTranscriptionRow() -> NSView {
         liveTranscription.target = self
         liveTranscription.action = #selector(liveTranscriptionToggled)
-        liveStatus.font = SetupLayout.statusFont
-        liveStatus.textColor = .secondaryLabelColor
-        liveStatus.lineBreakMode = .byTruncatingTail
-
         return SetupLayout.row(
             leading: liveTranscription,
             title: SetupLayout.title(localised(
                 "I want a live transcript during meetings",
                 "Показывать расшифровку прямо во время встречи")),
-            detail: SetupLayout.detail(
-                localised(
-                    "A 600 MB NVIDIA model downloads once. Nothing leaves this Mac, "
-                        + "and the final transcript is still parakeet's.",
-                    "Один раз скачается модель NVIDIA, 600 МБ. С мака ничего не уходит, "
-                        + "итоговую расшифровку всё равно делает parakeet."),
-                lines: 2, width: 520),
-            trailing: [liveStatus])
+            detail: liveDetail)
     }
 
     /// Where the recordings live, and the one thing worth saying about the
@@ -570,10 +332,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     }
 
 
-    private func link(_ title: String, _ url: String) -> NSButton {
-        SetupLayout.link(title, url, target: self, action: #selector(linkClicked(_:)))
-    }
-
     /// What is left when neither icon is on, and nothing at all while either
     /// is. Static and free of AppKit so the sentence can be checked without a
     /// window: it is the only instruction meetingcopilot gives for reaching itself,
@@ -619,11 +377,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         calendarRow.onAct = { [weak self] in Task { await self?.askCalendar() } }
     }
 
-    @objc private func linkClicked(_ sender: NSButton) {
-        guard let url = sender.identifier.flatMap({ URL(string: $0.rawValue) }) else { return }
-        NSWorkspace.shared.open(url)
-    }
-
     /// Written the moment they are clicked, and taken up the moment they are
     /// written — the app reads the same file change and moves its icons. So
     /// the switch that has just emptied the menu bar is on screen beside the
@@ -642,136 +395,10 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         Config.update(path: ["keep_audio"], value: keepAudio.state == .on ? true : nil)
     }
 
-    /// The cloud switch. Turning it on for a service with no key does not
-    /// turn it on: it opens the key field instead and leaves the switch where
-    /// it was, because a switch that says "on" while every transcript fails
-    /// with HTTP 401 is a lie the person only finds out about after a meeting.
-    @objc private func cloudToggled() {
-        if cloudSwitch.state == .on, !hasKey(for: provider) {
-            pendingProvider = provider
-            cloudSwitch.state = .off
-            refresh()
-            focusKeyField()
-            return
-        }
-        pendingProvider = nil
-        commitTranscription()
-    }
-
-    /// Picking a card is how you say "use this one", so a card with a working
-    /// key also switches the cloud on. A card without one only opens the key
-    /// field: what is in force stays in force until the new key is accepted.
-    private func providerPicked(_ id: String) {
-        guard hasKey(for: id) else {
-            pendingProvider = id
-            refresh()
-            focusKeyField()
-            return
-        }
-        pendingProvider = nil
-        provider = id
-        cloudSwitch.state = .on
-        commitTranscription()
-    }
-
-    /// The switch is the download button: there is nothing to decide between
-    /// "I want this" and "fetch the model", so asking twice is a step for its
-    /// own sake.
-    ///
-    /// The choice is written before the download starts, and that order is
-    /// the whole of it. Starting the download first redraws the form — so
-    /// the footer says what is happening from the first second — and the
-    /// redraw puts the switch back where the config still has it, which is
-    /// off; the write that followed then read the switch and saved the
-    /// arrangement the click was trying to leave. Written first, the redraw
-    /// reads a config that already says local, so the download's own redraw
-    /// has nothing left to undo.
-    ///
-    /// It also means a download that fails or is abandoned leaves the choice
-    /// on disk, which is what makes the footer go on offering it: the button
-    /// asks whether the local model is wanted and missing, and a choice that
-    /// was never written is not wanted.
-    @objc private func localToggled() {
-        commitTranscription()
-        if localSwitch.state == .on { downloadParakeetIfNeeded() }
-    }
-
-    private func commitTranscription() {
-        let choice = TranscriptionChoice(
-            cloud: cloudSwitch.state == .on,
-            local: localSwitch.state == .on && Platform.supportsLocalModels,
-            provider: provider)
-        for update in choice.updates {
-            write(update.path, update.value)
-        }
-        refresh()
-    }
-
-    private func hasKey(for provider: String) -> Bool {
-        provider == "openai" ? Config.openAIKey() != nil : Config.assemblyAIKey() != nil
-    }
-
-    /// Whichever window is showing the form — the setup wizard or the
-    /// settings tab. The form does not own a window and must not assume one.
-    private func focusKeyField() {
-        view.window?.makeFirstResponder(cloudKey)
-    }
-
     @objc private func liveTranscriptionToggled() {
-        let enabled = liveTranscription.state == .on
-        Config.update(path: ["live_transcription", "enabled"], value: enabled ? true : nil)
-        if enabled {
-            downloadLiveModel()
-        } else {
-            liveDownloadTask?.cancel()
-            liveDownloadTask = nil
-            liveDownloading = false
-            refresh()
-        }
-    }
-
-    private func downloadLiveModel() {
-        guard !liveDownloading else { return }
-        let prompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
-        if liveModelStore.isReady(language: prompt) {
-            liveStatus.stringValue = localised("downloaded", "скачана")
-            refresh()
-            return
-        }
-        liveDownloading = true
-        quickDownloadError = nil
-        liveStatus.stringValue = localised("preparing download…", "готовлюсь скачивать…")
+        Config.update(
+            path: ["live_transcription", "enabled"], value: liveTranscription.state == .on ? true : nil)
         refresh()
-        liveDownloadTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                _ = try await liveModelStore.download(language: prompt) { [weak self] fraction in
-                    Task { @MainActor in
-                        self?.liveStatus.stringValue = localised(
-                            "downloading — \(Int(fraction * 100))% of about 600 MB",
-                            "скачивание — \(Int(fraction * 100))% из примерно 600 МБ")
-                    }
-                }
-                if liveModelStore.isReady(language: prompt) {
-                    liveStatus.stringValue = localised("downloaded", "скачана")
-                } else {
-                    liveStatus.stringValue = localised(
-                        "download incomplete — turn off and on to retry",
-                        "скачалось не всё — выключите и включите, чтобы повторить")
-                    quickDownloadError = liveStatus.stringValue
-                }
-            } catch is CancellationError {
-                liveStatus.stringValue = localised("download paused", "скачивание остановлено")
-            } catch {
-                liveStatus.stringValue =
-                    localised("download failed: ", "не удалось скачать: ")
-                        + error.localizedDescription
-                quickDownloadError = liveStatus.stringValue
-            }
-            liveDownloading = false
-            liveDownloadTask = nil
-            refresh()
-        }
     }
 
     @objc private func autoRecordToggled() {
@@ -843,206 +470,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     private lazy var systemAudio: SetupPermissions.SystemAudioResult? =
         SetupPermissions.rememberedSystemAudio(heardAt: SetupState.systemAudioHeardAt())
 
-    private func downloadParakeetIfNeeded() {
-        guard !parakeetIsHere() else { return }
-        guard parakeetProgress == nil else { return }
-        quickDownloadError = nil
-        watchParakeetSize()
-        // So the footer button says what is happening from the first second,
-        // rather than at the end of it.
-        refresh()
-        Task {
-            do {
-                try await fetchParakeet()
-            } catch {
-                parakeetStatus.stringValue =
-                    localised("download failed: ", "не удалось скачать: ") + "\(error)"
-                quickDownloadError = parakeetStatus.stringValue
-            }
-            parakeetProgress?.invalidate()
-            parakeetProgress = nil
-            parakeetBar.isHidden = true
-            refresh()
-        }
-    }
-
-    /// FluidAudio hands back no progress, so the progress is the cache
-    /// directory growing. Approximate, and better than a spinner that could
-    /// mean anything.
-    private func watchParakeetSize() {
-        parakeetProgress?.invalidate()
-        let cache = AsrModels.defaultCacheDirectory(for: ParakeetEngine.configuredVersion())
-        parakeetBar.isHidden = false
-        parakeetBar.doubleValue = 0
-        parakeetProgress = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                let mb = Self.megabytes(of: cache)
-                self?.parakeetBar.doubleValue = Double(mb)
-                self?.parakeetStatus.stringValue = localised(
-                    "\(mb) of about \(Self.parakeetMegabytes) MB",
-                    "\(mb) из примерно \(Self.parakeetMegabytes) МБ")
-            }
-        }
-    }
-
-    private static func megabytes(of dir: URL) -> Int {
-        guard let walker = FileManager.default.enumerator(
-            at: dir, includingPropertiesForKeys: [.fileSizeKey]
-        ) else { return 0 }
-        var total = 0
-        for case let url as URL in walker {
-            total += (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        }
-        return total / 1_048_576
-    }
-
-    // MARK: - text fields
-
-    func controlTextDidEndEditing(_ notification: Notification) {
-        guard let field = notification.object as? NSTextField else { return }
-        if field === cloudKey { Task { await saveCloudKey() } }
-    }
-
-    /// Return in a key field submits the key and stops there.
-    ///
-    /// Left alone, the newline travels on to the window's default button —
-    /// Done — so the window closes on the very keystroke that submits the key.
-    /// The check against the API then finishes into a window nobody can see,
-    /// and the one answer worth waiting for, whether the key was accepted,
-    /// is delivered to nothing at all. Someone who pasted a key and pressed
-    /// Return has no way to learn what happened except to open Setup again.
-    ///
-    /// Ending editing here is the same path a click elsewhere takes — it fires
-    /// `controlTextDidEndEditing`, which saves — and returning true keeps the
-    /// keystroke from travelling any further. Only this field swallows
-    /// Return: everywhere else in the window it should still mean Done.
-    func control(
-        _ control: NSControl,
-        textView: NSTextView,
-        doCommandBy selector: Selector
-    ) -> Bool {
-        guard selector == #selector(NSResponder.insertNewline(_:)),
-              control === cloudKey
-        else { return false }
-        control.window?.makeFirstResponder(nil)
-        return true
-    }
-
-    @objc private func languageChanged() {
-        Config.update(path: ["transcription", "language"], value: selectedLanguage)
-        refresh()
-    }
-
-    /// What the choice above actually promises, in the one place somebody is
-    /// looking at it. Picking English says nothing worth saying — it is the
-    /// language the second slot would have added anyway.
-    private static func note(forLanguage code: String?) -> String {
-        return localised(
-            "Detected from speech for every meeting and each new utterance. "
-                + "Languages may change during a call; no manual switch is needed.",
-            "Определяются по речи в каждой встрече и каждой новой реплике. "
-                + "Во время звонка можно менять язык без ручного переключения.")
-    }
-
-    /// What a key field says while the provider is being asked.
-    ///
-    /// Named rather than written out at each of the three places that need
-    /// it, because one of them needs it by *comparison* — the redraw clears a
-    /// stale "checking…" and leaves anything else alone. Two literals agree
-    /// in one language and stop agreeing in the other, which would leave a
-    /// Russian window saying it was still checking a key it had finished
-    /// with.
-    private static var checkingKey: String { localised("checking…", "проверяю…") }
-
-    /// Check first, write second.
-    ///
-    /// The other order costs someone their working key: two characters typed
-    /// into the field by accident used to replace a good key on disk, and the
-    /// only sign was every later meeting failing to transcribe with HTTP 401.
-    /// A key that isn't accepted never reaches the file.
-    private func saveCloudKey() async {
-        let target = pendingProvider ?? provider
-        let key = cloudKey.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
-        cloudKeyStatus.stringValue = Self.checkingKey
-
-        let accepted = target == "openai"
-            ? await SummaryKeyProbe.works(provider: .openAI, key: key)
-            : await Self.assemblyKeyWorks(key)
-        guard accepted else {
-            cloudKeyStatus.stringValue = hasKey(for: target)
-                ? localised(
-                    "that key was refused — the saved one is untouched",
-                    "этот ключ не приняли — сохранённый не тронут")
-                : localised("that key was refused", "этот ключ не приняли")
-            return
-        }
-        let path = target == "openai" ? Config.openAIKeyPath : Config.assemblyAIKeyPath
-        do {
-            try Self.writeSecret(key, to: path)
-        } catch {
-            cloudKeyStatus.stringValue =
-                localised("couldn't save the key: ", "не удалось сохранить ключ: ") + "\(error)"
-            return
-        }
-        cloudKey.stringValue = ""
-        cloudKeyStatus.stringValue = localised("key works", "ключ работает")
-        // A key that works is the answer to the question the switch asked, so
-        // it turns the cloud on rather than making the person click twice.
-        provider = target
-        pendingProvider = nil
-        cloudSwitch.state = .on
-        commitTranscription()
-    }
-
-    /// A key is a secret: it goes to a file only its owner can read, never
-    /// into the config file — which the settings window shows on screen. The
-    /// directory is meetingcopilot's own and mode 0700, so a key pasted here can't be
-    /// overwritten by some other tool that keeps its secrets in the same place.
-    private static func writeSecret(_ value: String, to path: URL) throws {
-        try FileManager.default.createDirectory(
-            at: path.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
-        try Data(value.utf8).write(to: path, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
-    }
-
-    /// Ask AssemblyAI whether it knows this key, now, rather than finding out
-    /// after a meeting. The cheapest authenticated call it has.
-    private static func assemblyKeyWorks(_ key: String) async -> Bool {
-        var request = URLRequest(
-            url: URL(string: "https://api.assemblyai.com/v2/transcript?limit=1")!)
-        request.timeoutInterval = 15
-        request.setValue(key, forHTTPHeaderField: "authorization")
-        guard let (_, response) = try? await URLSession.shared.data(for: request) else {
-            return false
-        }
-        return (response as? HTTPURLResponse)?.statusCode == 200
-    }
-
     // MARK: - reading the machine
-
-    /// Whether the local model is on this Mac. A Mac that cannot run it at
-    /// all is not missing it, so the question is answered yes there and the
-    /// window stops asking.
-    private var parakeetIsDownloaded: Bool {
-        guard Platform.supportsLocalModels else { return true }
-        return parakeetIsHere()
-    }
-
-    /// The two switches as the config file has them.
-    private var transcriptionChoice: TranscriptionChoice {
-        storedTranscription()
-    }
-
-    /// Asked for, and not here. **On this Mac** is the whole question: both
-    /// switches on is still asking for the local model, because that is the
-    /// setting that transcribes when the network doesn't.
-    private var parakeetIsWantedAndMissing: Bool {
-        transcriptionChoice.needsLocalModel(downloaded: parakeetIsDownloaded)
-    }
 
     /// Summaries are on and no runnable AI is chosen for them in Getting
     /// started: the one line somebody reads before pressing Done says so.
@@ -1102,30 +530,11 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         }
 
         let config = Config.raw()
-        refreshTranscription()
-        // A code the menu doesn't offer — hand-edited, or a leftover "ru-RU"
-        // — selects Detect automatically, which is what the engines will
-        // actually do with it. Shown as it will behave rather than as it is
-        // written, and left in the file for its owner to change.
-        let stored = Config.transcriptionLanguage()
-        let item = language.menu?.items.first { $0.representedObject as? String == stored }
-        language.select(item ?? language.menu?.items.first)
-        languageNote.stringValue = Self.note(forLanguage: item?.representedObject as? String)
-        languageNote.isHidden = languageNote.stringValue.isEmpty
+        let speech = speechResolution()
+        refreshSpeech(speech)
         keepAudio.state = Config.keepAudio() ? .on : .off
-
         liveTranscription.state = Config.liveTranscriptionEnabled() ? .on : .off
-        let livePrompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
-        if liveModelStore.isReady(language: livePrompt) {
-            liveStatus.stringValue = Self.downloaded(modelStorage.liveModel())
-            liveStatus.textColor = .systemGreen
-        } else if !liveDownloading, Config.liveTranscriptionEnabled(), liveStatus.stringValue.isEmpty {
-            liveStatus.stringValue = localised(
-                "about 600 MB — downloads when switched on",
-                "около 600 МБ — скачается при включении")
-        } else if !Config.liveTranscriptionEnabled() {
-            liveStatus.stringValue = localised("optional", "по желанию")
-        }
+        refreshLive(speech)
 
         let root = Config.resolveRoot(cliOverride: nil).path
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -1146,91 +555,43 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         autoRecord.state = autoRecordOn ? .on : .off
 
         highlightNextGrant()
-        if firstRun {
-            let finalReady = parakeetIsDownloaded
-            let liveReady = liveModelStore.isReady(language: livePrompt)
-            quickStatus.stringValue = localised(
-                "Final transcript: \(finalReady ? "compatible model already installed" : "one-time download, about \(Self.parakeetMegabytes) MB").\nLive transcript: \(liveReady ? "model already installed" : "a separate streaming model, about 600 MB"). Existing compatible files are reused.\n\(isDownloading ? "Download in progress. You can leave this window open or explore the assistant." : "The button below prepares only what is missing.")",
-                "Итоговая стенограмма: \(finalReady ? "совместимая модель уже установлена" : "разовая загрузка, примерно \(Self.parakeetMegabytes) МБ").\nРасшифровка во время звонка: \(liveReady ? "модель уже установлена" : "отдельная потоковая модель, примерно 600 МБ"). Совместимые файлы используются повторно.\n\(isDownloading ? "Идет загрузка. Можно оставить окно открытым или перейти в помощник." : "Кнопка внизу подготовит только то, чего не хватает.")")
-            if let error = quickDownloadError {
-                quickStatus.stringValue += "\n" + error + localised(". Press the download button to retry.", ". Нажмите кнопку загрузки для повтора.")
-            }
-        }
         onStateChange?()
     }
 
-    /// The transcription section, redrawn from the config and from what is
-    /// actually on disk: which keys exist, whether the local model is there.
-    private func refreshTranscription() {
-        let choice = transcriptionChoice
-        provider = choice.provider
-        pendingProvider = TranscriptionChoice.stillPending(pendingProvider) { [weak self] in
-            self?.hasKey(for: $0) ?? false
-        }
-
-        cloudSwitch.state = choice.cloud ? .on : .off
-        // The card under the key field is the one being answered, so a
-        // provider waiting for a key is the one shown chosen.
-        providerCards.select(pendingProvider ?? provider)
-
-        for card in providerCards.cards {
-            let known = hasKey(for: card.id)
-            card.report(
-                known
-                    ? localised("key saved; checked when used", "ключ сохранен; проверяется при запросе")
-                    : localised("no key yet", "ключа ещё нет"),
-                good: known)
-            card.showLink(!known)
-        }
-        cloudKey.placeholderString = (pendingProvider ?? provider) == "openai"
-            ? "sk-…" : localised("paste key", "вставьте ключ")
-        // Written on every pass rather than only into an empty label: a line
-        // left over from the last question describes the wrong one.
-        if let prompt = TranscriptionChoice.keyPrompt(
-            pending: pendingProvider, inForce: provider, cloudOn: choice.cloud) {
-            cloudKeyStatus.stringValue = prompt
-        } else if cloudKeyStatus.stringValue == Self.checkingKey {
-            cloudKeyStatus.stringValue = ""
-        }
-        // The cards below carry the price and the key state, so the row speaks
-        // only when a missing key is what holds the switch down.
-        cloudStatus.stringValue = TranscriptionChoice.rowNeedsKey(
-            pending: pendingProvider, cloudOn: choice.cloud)
-            ? localised("needs a key", "нужен ключ") : ""
-        keyLine.isHidden = pendingProvider == nil && hasKey(for: provider)
-
-        localSwitch.isEnabled = Platform.supportsLocalModels
-        localSwitch.state = choice.local ? .on : .off
-        if !Platform.supportsLocalModels {
-            parakeetStatus.stringValue = localised(
-                "needs Apple Silicon", "нужен Apple Silicon")
-            parakeetStatus.textColor = .secondaryLabelColor
-            parakeetBar.isHidden = true
-        } else {
-            let version = ParakeetEngine.configuredVersion()
-            if parakeetIsHere() {
-                parakeetStatus.stringValue = Self.downloaded(
-                    modelStorage.parakeet(version: version))
-                parakeetStatus.textColor = .systemGreen
-                parakeetBar.isHidden = true
-            } else if parakeetProgress == nil {
-                parakeetStatus.stringValue = choice.local
-                    ? localised(
-                        "about \(Self.parakeetMegabytes) MB",
-                        "около \(Self.parakeetMegabytes) МБ")
-                    : localised("free", "бесплатно")
-                parakeetStatus.textColor = .secondaryLabelColor
-            }
+    /// The speech row, in the form's language around the engine's own words.
+    private func refreshSpeech(_ resolution: STTResolution) {
+        switch resolution {
+        case .ready(let choice):
+            speechStatus.stringValue = "\(choice.engine) · \(choice.model). " + localised(
+                "Change it in Getting started, in the assistant.",
+                "Изменить можно в разделе «Начать работу» в помощнике.")
+            speechStatus.textColor = .secondaryLabelColor
+        case .needsChoice:
+            speechStatus.stringValue = localised(
+                "Not chosen yet. Choose it in Getting started, in the assistant.",
+                "Пока не выбрано. Выберите в разделе «Начать работу» в помощнике.")
+            speechStatus.textColor = .systemOrange
+        case .unavailable(let reason):
+            speechStatus.stringValue = localised("Can't run yet: ", "Пока не может работать: ") + reason
+            speechStatus.textColor = .systemOrange
         }
     }
 
-    /// A model that is here, and what it is costing to keep. The size is the
-    /// half of this line a person can act on: the row above it says what the
-    /// download would weigh, and only the Advanced tab can give the space
-    /// back, so the number has to appear where somebody would go looking for
-    /// it rather than only where it can be deleted.
-    private static func downloaded(_ model: ModelStorage.Model) -> String {
-        localised("downloaded · ", "скачана · ") + ModelStorage.describe(bytes: model.bytes)
+    /// The live row says why it cannot run, never offers a download.
+    private func refreshLive(_ resolution: STTResolution) {
+        var text = localised(
+            "Uses the speech model chosen in Getting started. Nothing leaves this Mac.",
+            "Использует модель распознавания, выбранную в «Начале работы». С мака ничего не уходит.")
+        if Config.liveTranscriptionEnabled(), let reason = Self.liveUnavailable(resolution) {
+            text += "\n" + localised("Not available: ", "Недоступно: ") + reason
+        }
+        liveDetail.stringValue = text
+    }
+
+    /// Why the live transcript cannot run with this choice, or nil when it can.
+    nonisolated static func liveUnavailable(_ resolution: STTResolution) -> String? {
+        guard case .ready(let choice) = resolution else { return resolution.reason }
+        return LiveModels.unavailableReason(choice)
     }
 
     /// Tint the row the primary button is about to act on — and only that
@@ -1265,18 +626,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         if SetupPermissions.needsSystemAudioTest(systemAudio) {
             return { [weak self] in Task { await self?.testSystemAudio() } }
         }
-        if parakeetIsWantedAndMissing, parakeetProgress == nil {
-            return { [weak self] in self?.downloadParakeetIfNeeded() }
-        }
-        if firstRun, Platform.supportsLocalModels, !Config.liveTranscriptionEnabled() {
-            return { [weak self] in self?.prepareLiveHelp() }
-        }
-        if Config.liveTranscriptionEnabled() {
-            let prompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
-            if !liveModelStore.isReady(language: prompt), !liveDownloading {
-                return { [weak self] in self?.downloadLiveModel() }
-            }
-        }
         return nil
     }
 
@@ -1289,14 +638,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         if SetupPermissions.needsStartAtLogin { left.append(.startAtLogin) }
         if SetupPermissions.microphone() != .granted { left.append(.microphone) }
         if systemAudio != .heard { left.append(.systemAudio) }
-        if parakeetIsWantedAndMissing { left.append(.parakeet) }
-        if firstRun, Platform.supportsLocalModels, !Config.liveTranscriptionEnabled() {
-            left.append(.liveEnabled)
-        }
-        if Config.liveTranscriptionEnabled() {
-            let prompt = LiveTranscriptionLanguage.prompt(for: Config.transcriptionLanguage())
-            if !liveModelStore.isReady(language: prompt) { left.append(.liveModel) }
-        }
+        if case .needsChoice = speechResolution() { left.append(.speechChoice) }
         // Summaries on with nothing chosen to write them is not "everything
         // granted".
         if !firstRun, chosenSummaryIsMissing { left.append(.summaryTool) }
@@ -1314,9 +656,8 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         case startAtLogin
         case microphone
         case systemAudio
-        case parakeet
-        case liveModel
-        case liveEnabled
+        /// No speech recognition is chosen in Getting started.
+        case speechChoice
         /// Summaries are on, and no AI is chosen for them in Getting started.
         case summaryTool
 
@@ -1325,12 +666,9 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
             case .startAtLogin: return localised("start at login", "запуск при входе")
             case .microphone: return localised("microphone", "микрофон")
             case .systemAudio: return localised("system audio", "звук системы")
-            // A name, and names are not translated.
-            case .parakeet: return "parakeet"
-            case .liveModel:
-                return localised("live model", "модель для расшифровки на ходу")
-            case .liveEnabled:
-                return localised("enable live transcription", "включить расшифровку звонка")
+            case .speechChoice:
+                return localised("choose speech recognition in Getting started",
+                                 "выбрать распознавание речи в разделе «Начать работу»")
             case .summaryTool:
                 return localised("choose AI for summaries in Getting started",
                                  "выбрать ИИ для саммари в разделе «Начать работу»")
@@ -1365,9 +703,9 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         }
     }
 
-    /// Whether a model is coming down right now — the work a host must not
-    /// offer to start a second time.
-    var isDownloading: Bool { liveDownloading || parakeetProgress != nil }
+    /// Whether a model is coming down right now. Never, from this form; kept
+    /// for the setup window, which asks.
+    var isDownloading: Bool { false }
 
     /// What the setup window's primary button says, given where things stand.
     var nextActionTitle: String {
@@ -1381,25 +719,6 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
         }
         if SetupPermissions.needsSystemAudioTest(systemAudio) {
             return localised("Allow and test", "Разрешить и проверить")
-        }
-        // Named separately from the live model because the two downloads
-        // can be outstanding at once, and a button that says "Download
-        // parakeet" while parakeet is downloading has nothing left to do
-        // but close the window under the person reading it.
-        if parakeetProgress != nil {
-            return localised("Downloading parakeet…", "Скачивается parakeet…")
-        }
-        if outstanding.contains(.parakeet) {
-            return localised("Download parakeet", "Скачать parakeet")
-        }
-        if liveDownloading {
-            return localised("Downloading live model…", "Скачивается модель…")
-        }
-        if outstanding.contains(.liveModel) {
-            return localised("Download live model", "Скачать модель")
-        }
-        if firstRun, Platform.supportsLocalModels, !Config.liveTranscriptionEnabled() {
-            return localised("Enable live transcription", "Включить расшифровку звонка")
         }
         if firstRun { return localised("Open MeetOnTrack", "Открыть MeetOnTrack") }
         return localised("Done", "Готово")
@@ -1584,214 +903,5 @@ final class AccessRow: NSView, LayerTinted {
             mark.contentTintColor = .tertiaryLabelColor
             button.isHidden = false
         }
-    }
-}
-
-// MARK: - one of several
-
-/// A card in a row of mutually exclusive choices.
-@MainActor
-final class ChoiceCard: NSView, LayerTinted {
-    let id: String
-    var onSelect: ((String) -> Void)?
-
-    private let radio = NSImageView()
-    private let titleLabel: NSTextField
-    private let statusLabel = NSTextField(labelWithString: "")
-    private var linkButton: NSButton?
-    private var selected = false
-
-    /// What the machine last said about this card. Set through `report`,
-    /// which is also told whether that was good news.
-    private(set) var status: String = "" {
-        didSet {
-            statusLabel.stringValue = status
-            statusLabel.isHidden = status.isEmpty
-            colourStatus()
-        }
-    }
-
-    /// Say what the machine answered, and whether it was the answer somebody
-    /// wanted.
-    ///
-    /// Good news used to be recognised by matching the words — anything
-    /// starting with "answers", "downloaded", "key works" or "running" was
-    /// green. That is a rule that only reads one language: translate the
-    /// statuses and every card in the window goes grey, which is a defect
-    /// nothing would have failed on. The caller knows the answer it just got;
-    /// it says so.
-    func report(_ text: String, good: Bool = false) {
-        works = good
-        status = text
-    }
-
-    /// Whether the last thing the machine said about this card was good news.
-    private var works = false
-
-    /// An unchosen card may report "not here" in passing — it is one of the
-    /// options, and that is what there is to say about it. The chosen one may
-    /// not: that is the meeting that will come back without a summary, so it
-    /// is said in the colour of something to attend to.
-    private func colourStatus() {
-        statusLabel.textColor = works
-            ? .systemGreen
-            : (selected ? .systemOrange : .secondaryLabelColor)
-    }
-
-    var isEnabled: Bool = true {
-        didSet { alphaValue = isEnabled ? 1 : 0.45 }
-    }
-
-    var isSelected: Bool {
-        get { selected }
-        set {
-            selected = newValue
-            radio.image = NSImage(
-                systemSymbolName: newValue ? "largecircle.fill.circle" : "circle",
-                accessibilityDescription: newValue
-                    ? localised("chosen", "выбрано")
-                    : localised("not chosen", "не выбрано"))
-            radio.contentTintColor = newValue ? .controlAccentColor : .tertiaryLabelColor
-            layer?.borderWidth = newValue ? 1.5 : 1
-            retint()
-            colourStatus()
-        }
-    }
-
-    init(id: String, title: String, detail: String, accessories: [NSView] = [],
-         compact: Bool = false) {
-        self.id = id
-        titleLabel = NSTextField(labelWithString: title)
-        super.init(frame: .zero)
-
-        titleLabel.font = SetupLayout.titleFont
-        radio.symbolConfiguration = .init(pointSize: 15, weight: .regular)
-        radio.widthAnchor.constraint(equalToConstant: 17).isActive = true
-        isSelected = false
-
-        let heading = NSStackView(views: [radio, titleLabel])
-        heading.orientation = .horizontal
-        heading.alignment = .firstBaseline
-        heading.spacing = 7
-
-        let detailLabel = NSTextField(labelWithString: detail)
-        detailLabel.font = SetupLayout.detailFont
-        detailLabel.textColor = .secondaryLabelColor
-        detailLabel.lineBreakMode = compact ? .byTruncatingTail : .byWordWrapping
-        detailLabel.maximumNumberOfLines = compact ? 1 : 4
-        detailLabel.preferredMaxLayoutWidth = 190
-
-        statusLabel.font = SetupLayout.statusFont
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.lineBreakMode = .byTruncatingMiddle
-        statusLabel.isHidden = true
-
-        linkButton = accessories.compactMap { $0 as? NSButton }.last { $0.bezelStyle == .inline }
-
-        wantsLayer = true
-        layer?.cornerRadius = SetupLayout.corner
-        layer?.borderWidth = 1
-        retint()
-
-        let stack = compact
-            ? NSStackView(
-                views: [heading, detailLabel, SetupLayout.spacer(), statusLabel] + accessories)
-            : NSStackView(views: [heading, detailLabel, statusLabel] + accessories)
-        stack.orientation = compact ? .horizontal : .vertical
-        stack.alignment = compact ? .centerY : .leading
-        stack.spacing = compact ? 8 : 7
-        stack.edgeInsets = compact ? SetupLayout.rowInsets : SetupLayout.cardInsets
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
-        guard !compact else {
-            // A compact card is a row, and rows state their own height here
-            // rather than inheriting whatever the stack settles on — the same
-            // arithmetic `SetupLayout.row` gets, so there is one answer to
-            // this question in the window and not two.
-            SetupLayout.fitRowHeight(stack)
-            return
-        }
-        for accessory in accessories where accessory is NSTextField || accessory is NSSegmentedControl {
-            accessory.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20).isActive = true
-        }
-    }
-
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    func tintLayer() {
-        layer?.borderColor = selected
-            ? NSColor.controlAccentColor.cgColor
-            : NSColor.separatorColor.withAlphaComponent(0.6).cgColor
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        retint()
-    }
-
-    /// The install link only belongs on a card for something that isn't here.
-    func showLink(_ show: Bool) { linkButton?.isHidden = !show }
-
-    /// `hitTest` is asked in the *superview's* coordinates, so the test has to
-    /// be against `frame`. Against `bounds` it silently answers "not mine" for
-    /// every card that isn't at the origin of its row — which is how a row of
-    /// three cards ends up with only the leftmost one responding to a click.
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard !isHidden, frame.contains(point) else { return nil }
-        guard let hit = super.hitTest(point) else { return self }
-        if hit === self || containsInteractiveControl(hit) { return hit }
-        return self
-    }
-
-    private func containsInteractiveControl(_ hit: NSView) -> Bool {
-        var view: NSView? = hit
-        while let current = view, current !== self {
-            if current is NSButton || current is NSSegmentedControl {
-                return true
-            }
-            if let field = current as? NSTextField, field.isEditable {
-                return true
-            }
-            view = current.superview
-        }
-        return false
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        guard isEnabled else { return }
-        onSelect?(id)
-    }
-}
-
-/// A set of cards where exactly one is chosen. AppKit only groups radio
-/// buttons that share a superview, and these deliberately don't — so the
-/// grouping is done here, in the open.
-@MainActor
-private final class ChoiceGroup {
-    private(set) var cards: [ChoiceCard] = []
-    var onChange: ((String) -> Void)?
-
-    var selected: String? { cards.first { $0.isSelected }?.id }
-
-    func adopt(_ cards: [ChoiceCard]) {
-        self.cards = cards
-        for card in cards {
-            card.onSelect = { [weak self] id in
-                self?.select(id)
-                self?.onChange?(id)
-            }
-        }
-    }
-
-    func card(_ id: String) -> ChoiceCard? { cards.first { $0.id == id } }
-
-    func select(_ id: String?) {
-        for card in cards { card.isSelected = card.id == id }
     }
 }

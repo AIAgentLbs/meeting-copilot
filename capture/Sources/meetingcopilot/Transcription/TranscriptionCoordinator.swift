@@ -35,6 +35,8 @@ actor TranscriptionCoordinator {
     private var queue: [URL] = []
     private var draining = false
     private var engine: TranscriptionEngine?
+    /// The choice `engine` was built for, so a changed choice gets a new one.
+    private var engineChoice: STTChoice?
     private var lastFailure: String?
     private var statusHandler: (@Sendable (Status) -> Void)?
 
@@ -43,11 +45,15 @@ actor TranscriptionCoordinator {
     /// the configured answer, and wants it decided late.
     private let fixedEngine: TranscriptionEngine?
     private let onStop: @Sendable () -> String?
+    /// The stored speech choice; tests pass their own.
+    private let resolve: @Sendable () -> STTResolution
 
     init(engine: TranscriptionEngine? = nil,
-         onStop: @escaping @Sendable () -> String? = { Config.onStop() }) {
+         onStop: @escaping @Sendable () -> String? = { Config.onStop() },
+         resolve: @escaping @Sendable () -> STTResolution = { Config.speechRecognition() }) {
         fixedEngine = engine
         self.onStop = onStop
+        self.resolve = resolve
     }
 
     func setStatusHandler(_ handler: @escaping @Sendable (Status) -> Void) {
@@ -142,6 +148,8 @@ actor TranscriptionCoordinator {
                 // simply left where it is: the filesystem is the queue, and the
                 // next `resumePending` offers it again once the owner is done.
                 log(dir, "\(busy)")
+            } catch let deferred as TranscriptionDeferred {
+                recordDeferred(deferred, for: dir)
             } catch {
                 log(dir, "transcription failed: \(error)")
                 lastFailure = dir.lastPathComponent
@@ -164,9 +172,12 @@ actor TranscriptionCoordinator {
     /// it wants the failure back to print and to exit on. The work is the same
     /// either way, down to pulling one channel out of `audio.m4a` — a settled
     /// session has nothing else left to transcribe from.
-    func transcribeNow(_ dir: URL) async throws {
+    ///
+    /// `override` is a one-run speech choice (`process --again --engine …`):
+    /// checked like the stored one, used for this run only, never saved.
+    func transcribeNow(_ dir: URL, override: STTChoice? = nil) async throws {
         do {
-            try await transcribeAndAnnounce(dir)
+            try await transcribeAndAnnounce(dir, override: override)
         } catch let busy as SessionClaim.Busy {
             // The app has this session. Nothing failed, so nothing is recorded
             // against it — the person gets the sentence and the folder is left
@@ -174,6 +185,10 @@ actor TranscriptionCoordinator {
             log(dir, "\(busy)")
             await releaseEngine()
             throw busy
+        } catch let deferred as TranscriptionDeferred {
+            recordDeferred(deferred, for: dir)
+            await releaseEngine()
+            throw deferred
         } catch {
             log(dir, "transcription failed: \(error)")
             recordFailure(error, for: dir)
@@ -185,22 +200,14 @@ actor TranscriptionCoordinator {
 
     /// One session from end to end: the transcript, then the banner and the
     /// hook that say it happened.
-    private func transcribeAndAnnounce(_ dir: URL) async throws {
+    private func transcribeAndAnnounce(_ dir: URL, override: STTChoice? = nil) async throws {
         do {
-            try await transcribe(dir)
-        } catch {
-            // The network can go away between the reachability probe and the
-            // upload. One retry on the local engine, so a dropped connection
-            // costs minutes rather than the transcript.
-            guard Config.transcriptionEngine() == "auto",
-                  Platform.supportsLocalModels,
-                  engineIsCloud(), Self.looksLikeNetworkTrouble(error)
-            else { throw error }
-            log(dir, "cloud transcription failed (\(error)) — retrying locally")
-            await engine?.release()
-            engine = ParakeetEngine()
-            try await engine?.prepare()
-            try await transcribe(dir)
+            try await transcribe(dir, override: override)
+        } catch let error where engineIsCloud() && Self.looksLikeNetworkTrouble(error) {
+            // No network is a wait, not a failure: the session keeps its
+            // attempts and goes when the network is back. Another engine is
+            // the person's choice to make, never a silent swap.
+            throw TranscriptionDeferred(kind: .network, reason: "\(error)")
         }
         // After the transcript, never instead of it: transcript.json is the
         // completion marker, so anything that runs before it risks retiring a
@@ -221,16 +228,24 @@ actor TranscriptionCoordinator {
     private func releaseEngine() async {
         await engine?.release()
         engine = nil
+        engineChoice = nil
     }
 
-    /// Count a failure against the session, and retire it once retrying has
-    /// stopped being reasonable — either because the error can't be fixed by
-    /// repeating it, or because we've repeated it enough.
-    ///
-    /// A retired session keeps its audio and gets it compressed: there will
-    /// never be a transcript, so holding a gigabyte an hour of PCM against a
-    /// future attempt is pure waste. Delete `transcription_failed` from
-    /// meta.json to offer it to the queue again.
+    /// A session that cannot be transcribed yet. No attempt is counted and
+    /// the audio stays as it is: the next pass after the reason goes away
+    /// (a choice saved, a model downloaded, the network back) does the work.
+    private func recordDeferred(_ deferred: TranscriptionDeferred, for dir: URL) {
+        let first = SessionState.value(dir, SessionState.Key.transcriptionDeferred) == nil
+        SessionState.update(dir, with: [SessionState.Key.transcriptionDeferred: deferred.metadata])
+        log(dir, "transcription waiting: \(deferred)")
+        guard first else { return }
+        notifyUser(
+            title: localised(
+                "MeetOnTrack: transcription waiting", "MeetOnTrack: расшифровка ждет"),
+            body: dir.lastPathComponent + ": " + deferred.reason,
+            opening: dir)
+    }
+
     private func engineIsCloud() -> Bool {
         guard let input = engine?.input else { return false }
         switch input {
@@ -239,11 +254,9 @@ actor TranscriptionCoordinator {
         }
     }
 
-    /// Network-shaped failures, the ones a local engine can rescue. A bad key
-    /// or a rejected file is not one of them — retrying locally would still be
-    /// right, but silently swapping engines for every failure hides real
-    /// problems.
-    private static func looksLikeNetworkTrouble(_ error: Error) -> Bool {
+    /// Network-shaped failures, the ones waiting fixes. A bad key or a
+    /// rejected file is not one of them.
+    static func looksLikeNetworkTrouble(_ error: Error) -> Bool {
         let urlErrorCodes: Set<URLError.Code> = [
             .notConnectedToInternet, .networkConnectionLost, .timedOut,
             .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
@@ -253,6 +266,14 @@ actor TranscriptionCoordinator {
         return "\(error)".contains("offline") || "\(error)".contains("timed out")
     }
 
+    /// Count a failure against the session, and retire it once retrying has
+    /// stopped being reasonable, either because the error can't be fixed by
+    /// repeating it, or because we've repeated it enough.
+    ///
+    /// A retired session keeps its audio and gets it compressed: there will
+    /// never be a transcript, so holding a gigabyte an hour of PCM against a
+    /// future attempt is pure waste. Delete `transcription_failed` from
+    /// meta.json to offer it to the queue again.
     private func recordFailure(_ error: Error, for dir: URL) {
         let permanent = (error as? TranscriptionFailure)?.isPermanent ?? false
         let attempts =
@@ -296,7 +317,7 @@ actor TranscriptionCoordinator {
         var description: String { "No speech was recognized; audio kept for a manual retry." }
     }
 
-    private func transcribe(_ dir: URL) async throws {
+    private func transcribe(_ dir: URL, override: STTChoice? = nil) async throws {
         // The one place both routes into transcription meet: the app draining
         // its queue and `meetingcopilot process` given a folder by hand. Claiming here,
         // before an engine is prepared and long before anything is uploaded,
@@ -307,7 +328,7 @@ actor TranscriptionCoordinator {
         defer { SessionClaim.release(dir) }
 
         var meta = try SessionMeta.read(from: dir)
-        let engine = try await preparedEngine()
+        let (engine, choice) = try await preparedEngine(override: override)
 
         var audioDirectory = dir
         var cleaned: OfflineEchoAudio.Result?
@@ -351,6 +372,10 @@ actor TranscriptionCoordinator {
         case .perTrack:
             merged = try await transcribePerTrack(audioDirectory, meta: meta, engine: engine)
             merged.sort { $0.start_ms < $1.start_ms }
+            // Speakers are labelled by channel: the microphone is "me", call
+            // audio is "them" (owner decision 2026-10-21). Hook: a finer
+            // split of the far end (a separate future task) relabels "them"
+            // segments here, before the echo filter compares the two sides.
             // Only the per-track path can double-transcribe the far end: it
             // reads both tracks, and a raw mic recording through speakers has
             // their voice on it too. A diarizing engine sees the mix once, so
@@ -390,12 +415,14 @@ actor TranscriptionCoordinator {
 
         let transcript = Transcript(
             engine: engine.name,
-            model: engine.model,
+            model: await engine.modelUsed(),
+            language: choice?.language,
             created_at: ISO8601DateFormatter().string(from: Date()),
             segments: merged
         )
         try transcript.write(to: dir)
         SessionState.update(dir, with: [
+            SessionState.Key.transcriptionDeferred: nil,
             "transcription_input": engine.input.metadataName,
             "echo_filter": [
                 "ran": echoFilterRan,
@@ -579,145 +606,30 @@ actor TranscriptionCoordinator {
         }
     }
 
-    private func preparedEngine() async throws -> TranscriptionEngine {
-        if let engine { return engine }
+    /// The engine for this session, from the person's speech choice (or a
+    /// one-run override). Nothing here picks one: a choice that is missing or
+    /// cannot run on this Mac defers the session instead.
+    private func preparedEngine(
+        override: STTChoice?
+    ) async throws -> (TranscriptionEngine, STTChoice?) {
         if let fixedEngine {
-            try await fixedEngine.prepare()
-            engine = fixedEngine
-            return fixedEngine
+            if engine == nil {
+                try await fixedEngine.prepare()
+                engine = fixedEngine
+            }
+            return (fixedEngine, nil)
         }
-        let configured = Config.transcriptionEngine()
-        if !Self.knownEngines.contains(configured) {
-            FileHandle.standardError.write(Data(
-                "warning: unknown transcription engine \"\(configured)\" — choosing automatically\n".utf8
-            ))
+        let resolution = override.map(STTRuntime.check) ?? resolve()
+        guard case .ready(let choice) = resolution else {
+            throw TranscriptionDeferred(resolution)!
         }
-        let provider = Self.cloudProvider(configured: configured)
-        let hasKey = Self.cloudKey(for: provider) != nil
-        if configured == "parakeet", !Platform.supportsLocalModels, hasKey {
-            FileHandle.standardError.write(Data(
-                "warning: parakeet needs Apple Silicon — transcribing with \(provider)\n".utf8
-            ))
-        }
-        let engine: TranscriptionEngine
-        switch Self.resolveEngine(
-            configured: configured,
-            hasKey: hasKey,
-            localModels: Platform.supportsLocalModels
-        ) {
-        case .cloud:
-            engine = try Self.cloudEngine(provider)
-        case .local:
-            engine = ParakeetEngine()
-        case .cloudOrLocal:
-            engine = await Self.bestAvailableEngine(provider)
-        case .unavailable:
-            throw EngineUnavailable.noLocalModels
-        }
+        if let engine, engineChoice == choice { return (engine, choice) }
+        await releaseEngine()
+        let engine = try STTRuntime.engine(for: choice)
         try await engine.prepare()
         self.engine = engine
-        return engine
-    }
-
-    private static let knownEngines: Set<String> = ["auto", "assemblyai", "openai", "parakeet"]
-
-    /// Which cloud service a configuration means. A configured engine naming
-    /// a provider outright is that provider; anything else defers to the
-    /// `cloud` setting, which is what the setup window's two cards write.
-    static func cloudProvider(configured: String) -> String {
-        Config.cloudEngines.contains(configured)
-            ? configured
-            : Config.transcriptionCloudProvider()
-    }
-
-    private static func cloudKey(for provider: String) -> String? {
-        provider == "openai" ? Config.openAIKey() : Config.assemblyAIKey()
-    }
-
-    private static func cloudEngine(_ provider: String) throws -> TranscriptionEngine {
-        provider == "openai"
-            ? try OpenAITranscriptionEngine()
-            : try AssemblyAIEngine()
-    }
-
-    /// Which engine the configuration adds up to, before the network is
-    /// consulted. Pure so the whole matrix — including the Intel half of the
-    /// universal binary, which cannot run a local model at all — is testable
-    /// on whichever machine happens to be running the tests.
-    enum EngineChoice: Equatable {
-        /// Cloud, with no local rescue if it turns out to be unreachable.
-        case cloud
-        /// Local, no network involved.
-        case local
-        /// Cloud when it answers, local when it doesn't.
-        case cloudOrLocal
-        /// Neither: an Intel Mac with no API key. Nothing to run.
-        case unavailable
-    }
-
-    static func resolveEngine(
-        configured: String,
-        hasKey: Bool,
-        localModels: Bool
-    ) -> EngineChoice {
-        // An explicit provider keeps failing on a missing key rather than
-        // quietly transcribing locally: the person asked for diarization.
-        if Config.cloudEngines.contains(configured) { return .cloud }
-        // An explicit parakeet on a Mac that cannot run it is the one place
-        // we override a stated preference — the alternative is no transcript.
-        if configured == "parakeet" {
-            if localModels { return .local }
-            return hasKey ? .cloud : .unavailable
-        }
-        guard hasKey else { return localModels ? .local : .unavailable }
-        return localModels ? .cloudOrLocal : .cloud
-    }
-
-    /// No engine this Mac can run. Not permanent — the missing half is an
-    /// API key, and adding one is a thing a person does after reading this.
-    enum EngineUnavailable: TranscriptionFailure, CustomStringConvertible {
-        case noLocalModels
-
-        var isPermanent: Bool { false }
-
-        var description: String {
-            "local transcription needs Apple Silicon, and this Mac has no key "
-                + "for a cloud engine — put an AssemblyAI one in "
-                + "\(Config.assemblyAIKeyPath.path) or an OpenAI one in "
-                + "\(Config.openAIKeyPath.path) (chmod 600), or set "
-                + "ASSEMBLYAI_API_KEY / OPENAI_API_KEY"
-        }
-    }
-
-    /// Cloud when it's actually usable, local otherwise. Checked at the moment
-    /// there is work rather than at launch, because the answer changes: the
-    /// laptop that recorded a meeting on a train is transcribing it on a train.
-    private static func bestAvailableEngine(_ provider: String) async -> TranscriptionEngine {
-        guard await cloudReachable(provider) else {
-            FileHandle.standardError.write(Data(
-                "\(provider) unreachable — transcribing locally with parakeet\n".utf8
-            ))
-            return ParakeetEngine()
-        }
-        return (try? cloudEngine(provider)) ?? ParakeetEngine()
-    }
-
-    /// A short, cheap "is the API there" probe. Any HTTP answer counts,
-    /// including an unauthorized one: the question is whether the network is
-    /// up, not whether the key is good.
-    private static func cloudReachable(_ provider: String) async -> Bool {
-        let url = provider == "openai"
-            ? URL(string: "https://api.openai.com/v1/models")!
-            : URL(string: "https://api.assemblyai.com/v2/transcript")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "HEAD"
-        request.timeoutInterval = 5
-        do {
-            _ = try await URLSession.shared.data(for: request)
-            return true
-        } catch {
-            return false
-        }
+        engineChoice = choice
+        return (engine, choice)
     }
 
     /// Fires the configured on_stop shell command with the session directory
@@ -828,6 +740,9 @@ struct Transcript: Codable {
 
     let engine: String
     let model: String
+    /// The language asked for (`auto` when the model detected it).
+    var language: String? = nil
+    /// The speaker separation model, when one was used.
     let created_at: String
     let segments: [Segment]
 

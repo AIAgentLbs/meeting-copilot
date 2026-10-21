@@ -2,27 +2,16 @@ import AVFoundation
 import FluidAudio
 import Foundation
 
-/// Parakeet TDT 0.6B via FluidAudio's Core ML port. Models download once into
-/// FluidAudio's managed cache (~600 MB); after that, transcription runs
-/// entirely on-device at roughly 20 seconds per hour of audio on Apple
-/// Silicon.
+/// A Parakeet TDT model via FluidAudio's Core ML port, run on-device. Which
+/// version is the person's `stt.choice`; the files must already be in
+/// FluidAudio's cache (downloads happen only from Getting started).
 ///
-/// Two model versions, selected with `transcription.model`: v3 is multilingual
-/// (25 European languages, Russian included) and detects the spoken language
-/// itself; v2 is English-only with marginally higher recall on English.
-///
-/// v3 needs no language flag, but a language can be passed as a script hint:
-/// it makes the decoder skip candidate tokens from the wrong script, which is
-/// what keeps Russian from coming back transliterated into Latin (and vice
-/// versa). The hint is v3-only — FluidAudio ignores it for v2.
-///
-/// The hint is a *script* filter and nothing finer — Russian and Ukrainian are
-/// the same value to it, as are English and Polish. So it cannot be set from
-/// the configured language alone: someone whose meetings are mostly Russian
-/// still holds the occasional English one, and a Cyrillic filter over English
-/// speech forbids the decoder every letter it needs. Where the expected
-/// languages share an alphabet the filter is known up front; where they don't,
-/// the audio decides — `sharedScript(of:)` and `dominantScript(of:)` below.
+/// A chosen language is passed as a script hint: it makes the decoder skip
+/// candidate tokens from the wrong script, which is what keeps Russian from
+/// coming back transliterated into Latin (and vice versa). FluidAudio applies
+/// it where the model supports it and ignores it elsewhere. `auto` passes no
+/// hint. When several languages are expected and their scripts differ, the
+/// audio decides: `sharedScript(of:)` and `dominantScript(of:)` below.
 actor ParakeetEngine: TranscriptionEngine {
     enum EngineError: Error, CustomStringConvertible {
         case notPrepared
@@ -38,64 +27,30 @@ actor ParakeetEngine: TranscriptionEngine {
         }
     }
 
-    /// The configured model version, warning and falling back rather than
-    /// silently transcribing with one the user didn't ask for. Shared with
-    /// `meetingcopilot doctor` so the cache check can't drift from what we download.
-    static func configuredVersion() -> AsrModelVersion {
-        switch Config.transcriptionModel() {
-        case "v3": return .v3
-        case "v2": return .v2
-        case let other:
-            FileHandle.standardError.write(Data(
-                "warning: unknown parakeet model \"\(other)\" — using v3\n".utf8
-            ))
-            return .v3
-        }
-    }
-
-    nonisolated let name = "parakeet"
+    nonisolated let name = STTChoice.localEngine
     nonisolated let model: String
     nonisolated let input: TranscriptionInput = .perTrack
 
     private let version: AsrModelVersion
-    /// The languages this recording may be in — one, two, or none at all.
+    /// The languages this recording may be in: one, or none for `auto`.
     private let expected: [Language]
     private var manager: AsrManager?
 
-    init(version: AsrModelVersion = ParakeetEngine.configuredVersion()) {
+    init(version: AsrModelVersion, language: String) {
         self.version = version
-
-        let configured = Config.transcriptionLanguage()
-        let codes = MeetingLanguages.expected(primary: configured)
-        if let configured, !configured.isEmpty, MeetingLanguages.name(for: configured) == nil {
-            let warning = "warning: parakeet doesn't know language \"\(configured)\" — "
-                + "transcribing without a script hint\n"
-            FileHandle.standardError.write(Data(warning.utf8))
-        }
-        // v2 is English-only and doesn't fail on other languages — it forces
-        // them through English phonetics and returns a plausible transcript.
-        // Pairing it with a non-English language is that exact trap, so say so.
-        if version == .v2, let configured, !configured.isEmpty, configured.lowercased() != "en" {
-            let warning = "warning: parakeet v2 is English-only but language is "
-                + "\"\(configured)\" — it will transcribe phonetic nonsense "
-                + "rather than fail; set transcription.model to \"v3\"\n"
-            FileHandle.standardError.write(Data(warning.utf8))
-        }
-        // The script hint is a v3 decoder feature; FluidAudio ignores it
-        // elsewhere, so don't record provenance implying it was applied.
-        expected = version == .v3 ? codes.compactMap { Language(rawValue: $0) } : []
-
-        let base = version == .v2
-            ? "parakeet-tdt-0.6b-v2-coreml"
-            : "parakeet-tdt-0.6b-v3-coreml"
-        model = expected.isEmpty
-            ? base
-            : "\(base) (\(expected.map(\.rawValue).joined(separator: "+")))"
+        model = LocalSTTModel.parakeet(version).id
+        expected = Language(rawValue: language).map { [$0] } ?? []
     }
 
     func prepare() async throws {
         guard manager == nil else { return }
-        let models = try await AsrModels.downloadAndLoad(version: version)
+        let directory = AsrModels.defaultCacheDirectory(for: version)
+        // Load only: a missing model is a deferred session, never a download.
+        guard AsrModels.modelsExist(at: directory, version: version) else {
+            throw TranscriptionDeferred(
+                kind: .unavailable, reason: "\(model) is not downloaded; download it in Getting started")
+        }
+        let models = try await AsrModels.load(from: directory, version: version)
         let manager = AsrManager()
         try await manager.loadModels(models)
         self.manager = manager
@@ -142,7 +97,7 @@ actor ParakeetEngine: TranscriptionEngine {
 
     private func run(_ audio: URL, hint: Language?) async throws -> ASRResult {
         guard let manager else { throw EngineError.notPrepared }
-        var state = try TdtDecoderState()
+        var state = TdtDecoderState.make(decoderLayers: await manager.decoderLayerCount)
         return try await manager.transcribe(audio, decoderState: &state, language: hint)
     }
 
@@ -203,7 +158,7 @@ actor ParakeetEngine: TranscriptionEngine {
     /// Group word timings into readable segments: break on sentence-ending
     /// punctuation (parakeet emits punctuation), a silence gap, or a hard
     /// length cap so a run-on speaker still wraps.
-    private static func segments(from words: [WordTiming]) -> [TranscriptSegment] {
+    static func segments(from words: [WordTiming]) -> [TranscriptSegment] {
         var out: [TranscriptSegment] = []
         var current: [WordTiming] = []
 

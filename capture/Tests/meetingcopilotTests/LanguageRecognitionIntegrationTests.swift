@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import FluidAudio
 import Foundation
 import os.lock
 import Testing
@@ -10,9 +9,9 @@ import Testing
 /// checking recordings or meeting text into Git. No model is downloaded here.
 @Suite(.serialized)
 struct LanguageRecognitionIntegrationTests {
-    @Test("English audio stays English with a Russian meeting preference",
+    @Test("English audio is recognised as English",
           .enabled(if: ProcessInfo.processInfo.environment["MEETING_COPILOT_ASR_EN_FIXTURE"] != nil))
-    func englishWithRussianPreference() async throws {
+    func englishSpeech() async throws {
         let fixture = try #require(ProcessInfo.processInfo.environment["MEETING_COPILOT_ASR_EN_FIXTURE"])
         let text = try await recognize(fixture)
         let words = Set(text.lowercased().split { !$0.isLetter }.map(String.init))
@@ -57,18 +56,18 @@ struct LanguageRecognitionIntegrationTests {
         #expect(words.contains("reunión"))
     }
 
+    /// Runs the live recognizer for the speech model chosen in Getting
+    /// started: nothing here picks a model or a language.
     private func recognize(_ path: String) async throws -> String {
-        let language = LiveTranscriptionLanguage.prompt(for: "ru")
-        let store = LiveTranscriptionModelStore()
-        try #require(store.isReady(language: language), "Install the multilingual live model before running acceptance")
-        let manager = StreamingNemotronMultilingualAsrManager()
-        try await manager.loadModels(from: store.variantDirectory(language: language))
-        await manager.setLanguage(language)
+        guard case .ready(let choice) = Config.speechRecognition() else {
+            Issue.record("choose a local speech model in Getting started before running acceptance")
+            return ""
+        }
+        let recognizer = try await LiveModels.load(choice).recognizer(source: .system)
         let pulse = OSAllocatedUnfairLock(initialState: false)
-        await manager.setPartialCallback { _ in pulse.withLock { $0 = true } }
+        await recognizer.setPartialCallback { _ in pulse.withLock { $0 = true } }
         do {
             let file = try AVAudioFile(forReading: URL(fileURLWithPath: path))
-            let converter = AudioConverter()
             var silence = 0.0
             var committed: [String] = []
             while file.framePosition < file.length {
@@ -76,23 +75,23 @@ struct LanguageRecognitionIntegrationTests {
                     pcmFormat: file.processingFormat,
                     frameCapacity: AVAudioFrameCount(file.processingFormat.sampleRate)))
                 try file.read(into: buffer)
-                let samples = try converter.resampleBuffer(buffer)
-                _ = try await manager.process(samples: samples)
+                let seconds = Double(buffer.frameLength) / file.processingFormat.sampleRate
+                try await recognizer.process(buffer)
                 let spoke = pulse.withLock { value in
                     defer { value = false }
                     return value
                 }
-                silence = spoke ? 0 : silence + Double(samples.count) / 16000
-                if silence >= 2 {
-                    committed.append(try await LiveUtteranceDecoder.finish(manager))
+                silence = spoke ? 0 : silence + seconds
+                if silence >= recognizer.pauseEndingUtterance {
+                    committed.append(try await recognizer.finishUtterance())
                     silence = 0
                 }
             }
-            committed.append(try await manager.finish())
-            await manager.cleanup()
+            committed.append(try await recognizer.finishUtterance())
+            await recognizer.cleanup()
             return committed.joined(separator: " ")
         } catch {
-            await manager.cleanup()
+            await recognizer.cleanup()
             throw error
         }
     }

@@ -195,87 +195,6 @@ struct SetupTests {
         #expect(DoctorReport.allOK([DoctorReport.checkLiveRecording(root)]))
     }
 
-    @Test("A detected tool's status is visible inside its choice card")
-    @MainActor
-    func choiceCardShowsStatus() {
-        let card = ChoiceCard(id: "tool", title: "Tool", detail: "A backend")
-        card.report("answers · 1.0", good: true)
-
-        let labels = card.allDescendants
-            .filter { !$0.isHidden }
-            .compactMap { ($0 as? NSTextField)?.stringValue }
-        #expect(labels.contains("answers · 1.0"))
-    }
-
-    /// Catches the border looking clickable while only the small radio title
-    /// actually responds.
-    @Test("Clicking the body of a choice card selects it")
-    @MainActor
-    func choiceCardBodySelects() throws {
-        let card = ChoiceCard(id: "tool", title: "Tool", detail: "A backend")
-        var selected: String?
-        card.onSelect = { selected = $0 }
-        let event = try #require(NSEvent.mouseEvent(
-            with: .leftMouseDown,
-            location: NSPoint(x: 150, y: 50),
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 1,
-            pressure: 1))
-
-        card.mouseDown(with: event)
-
-        #expect(selected == "tool")
-    }
-
-    /// Static labels must behave as part of the card, while controls placed
-    /// inside it keep receiving their own clicks.
-    /// The regression this catches made every card except the leftmost one
-    /// inert: `hitTest` is asked in the superview's coordinates, and a test
-    /// against `bounds` answers "not mine" for anything not at the origin.
-    @Test("A card away from the origin of its row still takes the click")
-    @MainActor
-    func choiceCardAwayFromOriginIsHit() throws {
-        let first = ChoiceCard(id: "first", title: "First", detail: "A backend")
-        let second = ChoiceCard(id: "second", title: "Second", detail: "Another")
-        let row = NSStackView(views: [first, second])
-        row.orientation = .horizontal
-        row.distribution = .fillEqually
-        row.spacing = 12
-        row.frame = NSRect(x: 0, y: 0, width: 400, height: 120)
-        row.layoutSubtreeIfNeeded()
-
-        #expect(second.frame.minX > 0, "the second card should not be at the origin")
-        let insideSecond = NSPoint(x: second.frame.midX, y: second.frame.midY)
-        #expect(row.hitTest(insideSecond) != nil)
-        #expect(second.hitTest(insideSecond) != nil)
-        // And the first card must not claim a point that belongs to its neighbour.
-        #expect(first.hitTest(insideSecond) == nil)
-    }
-
-    @Test("Choice-card labels route clicks to the whole card")
-    @MainActor
-    func choiceCardLabelsArePartOfHitArea() throws {
-        let accessory = NSButton(title: "Install", target: nil, action: nil)
-        let card = ChoiceCard(
-            id: "tool", title: "Tool", detail: "A backend", accessories: [accessory])
-        card.frame = NSRect(x: 0, y: 0, width: 220, height: 120)
-        card.layoutSubtreeIfNeeded()
-
-        let detail = try #require(card.allDescendants.compactMap { $0 as? NSTextField }
-            .first { $0.stringValue == "A backend" })
-        let pointOnDetail = card.convert(
-            NSPoint(x: detail.bounds.midX, y: detail.bounds.midY), from: detail)
-        let pointOnAccessory = card.convert(
-            NSPoint(x: accessory.bounds.midX, y: accessory.bounds.midY), from: accessory)
-
-        #expect(card.hitTest(pointOnDetail) === card)
-        #expect(card.hitTest(pointOnAccessory) === accessory)
-    }
-
     /// It was the one checkbox in a window of switches, and a checkbox's
     /// title is part of the checkbox. A switch with a dead label beside it
     /// would be a smaller target than the thing it replaced, so the label
@@ -389,139 +308,53 @@ struct SetupTests {
         #expect(row.frame.height - placed.maxY == SetupLayout.rowInsets.top)
     }
 
-    /// Ollama is the one row in the window that `ChoiceCard` builds itself,
-    /// and it had the same complaint as the wrapping rows in a milder form: a
-    /// stack whose height nobody stated came out two points short of its own
-    /// insets, and `.centerY` split the shortfall between top and bottom. It
-    /// gets the same answer as every other row rather than a second one.
-    @Test("The compact card is a row, and keeps a row's insets")
+    /// Which engine and model transcribe is chosen in Getting started; the
+    /// form only reports it. No switch, card, key field or menu for it here.
+    @Test("Setup offers no speech choice of its own and points to Getting started")
     @MainActor
-    func compactCardKeepsRowInsets() throws {
-        let card = ChoiceCard(
-            id: "ollama", title: "Ollama", detail: "No account, no network.",
-            accessories: [], compact: true)
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 690, height: 100))
-        host.addSubview(card)
-        card.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            card.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            card.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            card.topAnchor.constraint(equalTo: host.topAnchor),
-        ])
-        host.layoutSubtreeIfNeeded()
+    func speechIsChosenInGettingStarted() throws {
+        let form = SetupForm()
+        defer { form.stop() }
+        form.speechResolution = { .needsChoice(STTChoice.needsChoiceMessage) }
+        form.refresh()
+        let views = form.view.allDescendants
+        let labels = views.compactMap { ($0 as? NSTextField)?.stringValue }
 
-        let stack = try #require(card.subviews.compactMap { $0 as? NSStackView }.first)
-        let heading = try #require(stack.arrangedSubviews.first)
-        let placed = card.convert(heading.bounds, from: heading)
+        #expect(views.compactMap { $0 as? NSSecureTextField }.isEmpty)
+        #expect(views.compactMap { $0 as? NSPopUpButton }.isEmpty)
+        for old in ["In the cloud", "On this Mac", "Speech languages"] {
+            #expect(!labels.contains(old), "\(old) is back")
+        }
+        #expect(labels.contains("Not chosen yet. Choose it in Getting started, in the assistant."))
+        #expect(form.outstanding.contains(.speechChoice))
 
-        #expect(card.frame.height >= SetupLayout.rowHeight)
-        #expect(placed.minY >= SetupLayout.rowInsets.bottom)
-        #expect(card.frame.height - placed.maxY >= SetupLayout.rowInsets.top)
+        form.speechResolution = {
+            .ready(STTChoice(engine: "assemblyai", model: "test-model", language: "ru"))
+        }
+        form.refresh()
+        #expect(!form.outstanding.contains(.speechChoice))
+        #expect(form.view.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue }
+            .contains { $0.hasPrefix("assemblyai · test-model.") })
     }
 
-    @Test("A chosen card reports bad news as a problem, an unchosen one as a note")
+    /// A switch nobody wired is the defect this file exists because of.
+    @Test("The live transcript switch is wired, and says why it cannot run",
+          .enabled(if: Platform.supportsLocalModels))
     @MainActor
-    func chosenCardColoursItsBadNews() throws {
-        let card = ChoiceCard(id: "claude-cli", title: "Claude Code", detail: "No key.")
-        card.report("not here")
-        let label = try #require(card.allDescendants
+    func liveSwitchIsWired() throws {
+        let form = SetupForm()
+        defer { form.stop() }
+        let label = try #require(form.view.allDescendants
             .compactMap { $0 as? NSTextField }
-            .first { $0.stringValue == "not here" })
+            .first { $0.stringValue == "I want a live transcript during meetings" })
+        let row = try #require(label.superview?.superview as? NSStackView)
+        let toggle = try #require(row.arrangedSubviews.first as? NSSwitch)
+        #expect(toggle.target != nil)
+        #expect(toggle.action != nil)
 
-        #expect(label.textColor == .secondaryLabelColor)
-        card.isSelected = true
-        #expect(label.textColor == .systemOrange)
-        // Good news is what the caller says it is, rather than what the words
-        // happen to start with — a card whose colour was read out of its own
-        // text would go grey in the other language.
-        card.report("answers · 1.0", good: true)
-        #expect(label.textColor == .systemGreen)
-    }
-
-    /// The transcription section is two switches, and a switch nobody wired
-    /// is the defect this file exists because of — the Summaries one shipped
-    /// that way and silently summarised meetings that had been switched off.
-    @Test("Both transcription switches are wired to something")
-    @MainActor
-    func transcriptionSwitchesAreWired() throws {
-        let setup = SettingsWindow()
-        defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
-
-        for title in ["In the cloud", "On this Mac"] {
-            let label = try #require(panel.contentView?.allDescendants
-                .compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == title })
-            // title → words stack → the row that carries the switch.
-            let row = try #require(label.superview?.superview as? NSStackView)
-            let toggle = try #require(row.arrangedSubviews.first as? NSSwitch)
-            #expect(toggle.target != nil, "\(title) has no target")
-            #expect(toggle.action != nil, "\(title) has no action")
-        }
-    }
-
-    /// Both providers are on screen whether or not the cloud is switched on,
-    /// and each says what an hour of meeting costs: the price belongs where
-    /// the choice is made.
-    @Test("Both cloud providers are offered, with their price and their key link")
-    @MainActor
-    func providerCardsCarryPriceAndLink() throws {
-        let setup = SettingsWindow()
-        defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
-        let cards = panel.contentView?.allDescendants.compactMap { $0 as? ChoiceCard } ?? []
-
-        let assembly = try #require(cards.first { $0.id == "assemblyai" })
-        let openai = try #require(cards.first { $0.id == "openai" })
-
-        for card in [assembly, openai] {
-            let detail = card.allDescendants
-                .compactMap { $0 as? NSTextField }
-                .map(\.stringValue)
-                .joined(separator: " ")
-            #expect(detail.contains("an hour"), "\(card.id) doesn't say what it costs")
-        }
-
-        let links = [assembly, openai].compactMap { card in
-            card.allDescendants
-                .compactMap { $0 as? NSButton }
-                .first { $0.title.hasPrefix("Get a key") }?
-                .identifier?.rawValue
-        }
-        #expect(links.contains("https://www.assemblyai.com/dashboard/signup"))
-        #expect(links.contains("https://platform.openai.com/api-keys"))
-    }
-
-    /// Return in a key field must not reach the window's default button.
-    ///
-    /// It did, and Done closed the window on the keystroke that submitted the
-    /// key — so the check finished into a window nobody could see, and the
-    /// person who pasted a key never learned whether it was accepted. Found by
-    /// pasting a deliberately wrong key into the built application.
-    @Test("Return commits a key field instead of pressing Done")
-    @MainActor
-    func returnInAKeyFieldIsSwallowed() throws {
-        let setup = SettingsWindow()
-        defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
-        let keyFields = panel.contentView?.allDescendants
-            .compactMap { $0 as? NSSecureTextField } ?? []
-        // The cloud key; the summary key went with the summary cards.
-        #expect(keyFields.count == 1)
-
-        let editor = NSTextView()
-        for field in keyFields {
-            let delegate = try #require(field.delegate)
-            let swallowed = delegate.control?(
-                field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:)))
-            #expect(swallowed == true, "Return still reaches the default button")
-
-            // Everything else is left alone — Tab still moves on, and Return
-            // outside these fields still means Done.
-            let tab = delegate.control?(
-                field, textView: editor, doCommandBy: #selector(NSResponder.insertTab(_:)))
-            #expect(tab != true)
-        }
+        #expect(SetupForm.liveUnavailable(.needsChoice("nothing chosen")) == "nothing chosen")
+        let cloud = STTChoice(engine: "openai", model: "test-model", language: "ru")
+        #expect(SetupForm.liveUnavailable(.ready(cloud)) != nil)
     }
 
     @Test("The Summaries switch sits to the left of its heading")
@@ -596,26 +429,6 @@ struct SetupTests {
         #expect(note.contains("open \(ProductBrand.name)"))
     }
 
-    /// The window used to ask for a two-letter code in a text field, which
-    /// nobody could answer from the window and which accepted anything typed
-    /// into it. What replaced it has to keep the code out of sight and the
-    /// five spoken languages within reach.
-    @Test("Setup explains automatic speech languages instead of offering a decoder pin")
-    @MainActor
-    func languageIsAMenuOfNames() throws {
-        let setup = SettingsWindow()
-        defer { withExtendedLifetime(setup) {} }
-        let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
-        let label = try #require(panel.contentView?.allDescendants
-            .compactMap { $0 as? NSTextField }
-            .first { $0.stringValue == "Speech languages" })
-        let row = try #require(label.superview as? NSStackView)
-        let popup = try #require(row.arrangedSubviews.compactMap { $0 as? NSPopUpButton }.first)
-
-        #expect(!popup.isEnabled)
-        #expect(popup.itemTitles == ["Detect automatically"])
-    }
-
     /// The AI for summaries is chosen in one place, Getting started in the
     /// assistant. The setup form keeps the on/off switch and points there.
     @Test("Setup offers no summary AI choice of its own and points to Getting started")
@@ -625,20 +438,15 @@ struct SetupTests {
         defer { withExtendedLifetime(setup) {} }
         let panel = try #require(NSApp.windows.last { $0.title == "\(ProductBrand.name) settings" })
         let views = panel.contentView?.allDescendants ?? []
-        let cards = views.compactMap { $0 as? ChoiceCard }.map(\.id)
-        for old in ["claude-cli", "codex-cli", "api-key", "ollama"] {
-            #expect(!cards.contains(old), "\(old) card is back")
-        }
         #expect(views.compactMap { $0 as? NSTextField }
             .contains { $0.stringValue.contains("Getting started") })
     }
 
     /// The settings window is not allowed a second, poorer copy of the setup
     /// form: two hand-written forms over one set of settings drift the moment
-    /// either is edited. This is the cheapest way to notice — the provider
-    /// cards only exist in `SetupForm`, so finding one inside the settings
-    /// window is evidence that the window shows the form rather than
-    /// imitating it.
+    /// either is edited. This is the cheapest way to notice: the speech row
+    /// only exists in `SetupForm`, so finding it inside the settings window
+    /// is evidence that the window shows the form rather than imitating it.
     @Test("The settings window shows the setup form itself")
     @MainActor
     func settingsReusesTheSetupForm() throws {
@@ -651,8 +459,8 @@ struct SetupTests {
         #expect(tabs.tabViewItems.map(\.label) == ["Setup", "Advanced"])
         // Only the selected tab is in the hierarchy, and setup is the one a
         // person opening settings should land on.
-        let cards = panel.contentView?.allDescendants.compactMap { $0 as? ChoiceCard } ?? []
-        #expect(cards.contains { $0.id == "assemblyai" })
+        let labels = panel.contentView?.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue } ?? []
+        #expect(labels.contains("Speech recognition"))
     }
 
     @Test("Setup offers no usage statistics control")
@@ -714,8 +522,6 @@ struct SetupTests {
     func firstRunIsFocused() throws {
         let form = SetupForm(firstRun: true)
         defer { form.stop() }
-        let cards = form.view.allDescendants.compactMap { $0 as? ChoiceCard }
-        #expect(cards.isEmpty)
         let buttons = form.view.allDescendants.compactMap { $0 as? NSButton }
         let settings = try #require(buttons.first { $0.title == "Other options…" })
         var opened = false
@@ -723,7 +529,10 @@ struct SetupTests {
         _ = settings.target?.perform(settings.action, with: settings)
         #expect(opened)
         let labels = form.view.allDescendants.compactMap { ($0 as? NSTextField)?.stringValue }
-        #expect(labels.contains { $0.contains("Existing compatible files are reused") })
+        #expect(labels.contains("Speech recognition"))
+        // First run downloads nothing: the speech model is chosen, and
+        // fetched, in Getting started.
+        #expect(!form.isDownloading)
     }
 
     /// The rule these windows now live by: drawing is not deciding.
@@ -763,120 +572,6 @@ struct SetupTests {
         #expect(posts.value == 5, "a redraw wrote the config, and the write announced itself")
         #expect((try? Data(contentsOf: path)) == before, "a redraw changed the config file")
         #expect(stamped() == stamp, "a redraw rewrote the config file with the same bytes")
-    }
-
-    /// The click that shipped broken for four releases: turning the local
-    /// engine on downloaded the model and chose nothing.
-    ///
-    /// The download was started first, so that the footer could say what was
-    /// happening from the first second, and starting it redraws the form —
-    /// from a config that still said cloud, which put the switch back off.
-    /// The write that followed read the switch it had just been handed back
-    /// and saved cloud-only: 460 megabytes fetched to serve a setting that
-    /// had been re-chosen against.
-    ///
-    /// It is the case with no model on the disk and no download already
-    /// running, because both of the other cases return before the redraw —
-    /// which is why the second click appeared to work and why nobody with
-    /// the model already downloaded could reproduce it.
-    @Test(
-        "Turning the local engine on chooses it, and then downloads it",
-        .enabled(if: Platform.supportsLocalModels))
-    @MainActor
-    func localSwitchChoosesBeforeItDownloads() throws {
-        let store = TranscriptionStore(engine: "assemblyai")
-        let form = SetupForm()
-        defer { form.stop() }
-        form.storedTranscription = { store.choice }
-        form.write = { store.write($0, $1) }
-        form.parakeetIsHere = { false }
-        form.fetchParakeet = {}
-        form.refresh()
-
-        let local = try Self.toggle("On this Mac", in: form.view)
-        #expect(local.state == .off, "the form did not start from the cloud-only config")
-
-        local.performClick(nil)
-
-        #expect(local.state == .on, "the switch was put back by the redraw its own click caused")
-        #expect(store.engine == nil, "the click wrote \(store.engine ?? "nothing")")
-        #expect(store.enabled)
-        #expect(form.isDownloading, "the model was chosen but never fetched")
-    }
-
-    /// And the second attempt is no longer the one that works. That it did
-    /// was the symptom people described — click, nothing, click again, fine —
-    /// and the reason was only that a download already in flight returns
-    /// before the redraw that undid the first click.
-    @Test(
-        "A click made while the download is running writes what the first one did",
-        .enabled(if: Platform.supportsLocalModels))
-    @MainActor
-    func clickingAgainDuringTheDownloadWritesTheSame() throws {
-        let store = TranscriptionStore(engine: "assemblyai")
-        let form = SetupForm()
-        defer { form.stop() }
-        form.storedTranscription = { store.choice }
-        form.write = { store.write($0, $1) }
-        form.parakeetIsHere = { false }
-        form.fetchParakeet = {}
-        form.refresh()
-
-        let local = try Self.toggle("On this Mac", in: form.view)
-        local.performClick(nil)
-        let first = store.log
-        #expect(form.isDownloading)
-
-        local.performClick(nil)
-        #expect(local.state == .off)
-        store.log = []
-        local.performClick(nil)
-
-        #expect(local.state == .on)
-        #expect(form.isDownloading, "the download stopped when the switch went off and on")
-        #expect(store.log == first, "the same click wrote something different the second time")
-    }
-
-    /// The worse half of the same bug, which nobody reported because the
-    /// window said nothing was wrong: with transcription switched off
-    /// altogether, the redraw handed back two switches that were both off,
-    /// and "neither engine" is written as `enabled: false`. Turning the local
-    /// engine on left transcription off, and the footer went on saying
-    /// everything meetingcopilot needs is granted.
-    @Test(
-        "Turning the local engine on from record-only turns transcription back on",
-        .enabled(if: Platform.supportsLocalModels))
-    @MainActor
-    func localSwitchLeavesRecordOnly() throws {
-        let store = TranscriptionStore(enabled: false)
-        let form = SetupForm()
-        defer { form.stop() }
-        form.storedTranscription = { store.choice }
-        form.write = { store.write($0, $1) }
-        form.parakeetIsHere = { false }
-        form.fetchParakeet = {}
-        form.refresh()
-
-        let local = try Self.toggle("On this Mac", in: form.view)
-        #expect(local.state == .off)
-
-        local.performClick(nil)
-
-        #expect(local.state == .on)
-        #expect(store.enabled, "the click rewrote the record-only setting it was leaving")
-        #expect(store.engine == "parakeet")
-    }
-
-    /// A switch in a row built by `SetupLayout.row`: the title label's
-    /// grandparent is the row, and the switch is the first thing in it.
-    @MainActor
-    private static func toggle(_ title: String, in view: NSView) throws -> NSSwitch {
-        let label = try #require(
-            view.allDescendants.compactMap { $0 as? NSTextField }
-                .first { $0.stringValue == title },
-            "no row titled \(title)")
-        let row = try #require(label.superview?.superview as? NSStackView)
-        return try #require(row.arrangedSubviews.compactMap { $0 as? NSSwitch }.first)
     }
 
     /// The bug itself, in the shape it actually happened in.
@@ -981,44 +676,6 @@ struct SetupTests {
         #expect(openAI.value(forHTTPHeaderField: "authorization") == "Bearer openai-secret")
     }
 
-    @Test("Ordinary links start visible; availability detection may hide install links")
-    @MainActor
-    func choiceCardLinkVisibility() {
-        let link = NSButton(title: "Get a key", target: nil, action: nil)
-        link.bezelStyle = .inline
-        let card = ChoiceCard(
-            id: "key", title: "My key", detail: "API", accessories: [link])
-
-        #expect(!link.isHidden)
-        card.showLink(false)
-        #expect(link.isHidden)
-        card.showLink(true)
-        #expect(!link.isHidden)
-    }
-
-    @Test("A card's border is re-read when the Mac changes appearance")
-    @MainActor
-    func cardBorderFollowsAppearance() throws {
-        // The bug this is about: a CGColor is a number, so a border read from
-        // `separatorColor` under one appearance stays that number under the
-        // other, where it is invisible. The window lost every border and
-        // hairline the first time someone switched their Mac while it was
-        // open.
-        let card = ChoiceCard(id: "one", title: "One", detail: "The first")
-
-        card.appearance = NSAppearance(named: .darkAqua)
-        #expect(card.layer?.borderColor == separator(0.6, in: .darkAqua))
-        card.appearance = NSAppearance(named: .aqua)
-        #expect(card.layer?.borderColor == separator(0.6, in: .aqua))
-
-        // The chosen card is the accent colour instead, and follows too.
-        card.isSelected = true
-        #expect(card.layer?.borderColor != separator(0.6, in: .aqua))
-        card.appearance = NSAppearance(named: .darkAqua)
-        card.isSelected = false
-        #expect(card.layer?.borderColor == separator(0.6, in: .darkAqua))
-    }
-
     @Test("A box and its hairlines are re-read when the Mac changes appearance")
     @MainActor
     func boxBorderFollowsAppearance() throws {
@@ -1058,49 +715,6 @@ struct SetupTests {
 private extension NSView {
     var allDescendants: [NSView] {
         subviews + subviews.flatMap(\.allDescendants)
-    }
-}
-
-/// The transcription section's three settings, in memory.
-///
-/// `Config.update` writes the config file of whoever is running the suite, so
-/// the form's writes went untested — and the ordering bug that made a click
-/// on the local switch save the arrangement it was leaving lived in exactly
-/// that gap. It has to be a store rather than a list of writes because the
-/// section is a loop: a click writes the choice and then redraws the switches
-/// from what it wrote, and a fake that only remembered the writing would have
-/// the form redrawing from somebody's real config file.
-@MainActor
-private final class TranscriptionStore {
-    /// nil is the setting absent from the file, which reads as `auto`.
-    var engine: String?
-    var cloud = "assemblyai"
-    var enabled = true
-    /// Every write, in order, for comparing one click against another.
-    var log: [String] = []
-
-    init(engine: String? = nil, enabled: Bool = true) {
-        self.engine = engine
-        self.enabled = enabled
-    }
-
-    var choice: TranscriptionChoice {
-        TranscriptionChoice.read(
-            engine: engine ?? "auto",
-            cloudProvider: cloud,
-            enabled: enabled,
-            localModels: Platform.supportsLocalModels)
-    }
-
-    /// nil removes the setting, exactly as it does in the file.
-    func write(_ path: [String], _ value: Any?) {
-        log.append(path.joined(separator: ".") + " = " + (value.map { "\($0)" } ?? "nil"))
-        switch path {
-        case ["transcription", "enabled"]: enabled = value as? Bool ?? true
-        case ["transcription", "engine"]: engine = value as? String
-        case ["transcription", "cloud"]: cloud = value as? String ?? "assemblyai"
-        default: Issue.record("the form wrote \(path.joined(separator: ".")), which is not ours")
-        }
     }
 }
 

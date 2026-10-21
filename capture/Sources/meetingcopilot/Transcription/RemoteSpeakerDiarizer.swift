@@ -16,35 +16,57 @@ final class RemoteSpeakerDiarizer: @unchecked Sendable {
         self.diarizer = diarizer
     }
 
-    /// Model failure must never take down transcription. DIHARD3 is the broad
-    /// mixed-condition model (up to ten voice slots); a 500 ms step keeps CPU
-    /// use reasonable on an 8 GB M2 while remaining live enough for the UI.
-    static func load() async -> RemoteSpeakerDiarizer? {
-        do {
-            let diarizer = try await LSEENDDiarizer(
-                variant: .dihard3,
-                stepSize: .step500ms,
-                timelineConfig: DiarizerTimelineConfig(
-                    numSpeakers: 10,
-                    frameDurationSeconds: 0.1,
-                    onsetThreshold: 0.42,
-                    offsetThreshold: 0.36,
-                    onsetPadFrames: 1,
-                    offsetPadFrames: 1,
-                    minFramesOn: 2,
-                    minFramesOff: 2,
-                    activityType: .sigmoids,
-                    maxStoredFrames: 36_000,
-                    storeSegments: true
-                )
-            )
-            return RemoteSpeakerDiarizer(diarizer: diarizer)
-        } catch {
-            FileHandle.standardError.write(Data(
-                "remote speaker diarization unavailable: \(error)\n".utf8
-            ))
-            return nil
+    /// A speaker model from disk only, never a download. How many voices and
+    /// how long a frame is come from the model's own metadata.
+    static func load(_ speaker: LocalSpeakerModel) throws -> RemoteSpeakerDiarizer {
+        guard speaker.isDownloaded else {
+            throw STTRuntime.Failure("\(speaker.id) is not on this Mac")
         }
+        let model = try LSEENDModel(modelURL: speaker.url)
+        // ponytail: activity thresholds are decoding constants of this adapter,
+        // not a model choice; expose them if a model ever reports its own.
+        let diarizer = try LSEENDDiarizer(
+            model: model,
+            timelineConfig: DiarizerTimelineConfig(
+                numSpeakers: model.metadata.maxSpeakers,
+                frameDurationSeconds: model.metadata.frameDurationSeconds,
+                onsetThreshold: 0.42,
+                offsetThreshold: 0.36,
+                onsetPadFrames: 1,
+                offsetPadFrames: 1,
+                minFramesOn: 2,
+                minFramesOff: 2,
+                activityType: .sigmoids,
+                maxStoredFrames: 36_000,
+                storeSegments: true
+            )
+        )
+        return RemoteSpeakerDiarizer(diarizer: diarizer)
+    }
+
+    /// Voice observations over a whole file, half a second at a time.
+    func observations(in audio: URL) throws -> [(time: Double, voice: Int)] {
+        let file = try AVAudioFile(forReading: audio)
+        let rate = file.processingFormat.sampleRate
+        let capacity = AVAudioFrameCount(rate / 2)
+        var out: [(time: Double, voice: Int)] = []
+        while file.framePosition < file.length {
+            let position = Double(file.framePosition) / rate
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: capacity)
+            else { break }
+            try file.read(into: buffer, frameCount: capacity)
+            if let voice = try process(buffer) { out.append((position, voice)) }
+        }
+        return out
+    }
+
+    /// The voice heard most within a span, or nil when none was.
+    static func voice(
+        from start: Double, to end: Double, in observations: [(time: Double, voice: Int)]
+    ) -> Int? {
+        let matching = observations.filter { $0.time >= start && $0.time < end }
+        let counts = Dictionary(grouping: matching, by: { $0.voice }).mapValues(\.count)
+        return counts.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }?.key
     }
 
     /// Returns a zero-based voice slot. A changed slot must win two model
