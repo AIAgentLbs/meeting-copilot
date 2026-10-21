@@ -1,0 +1,63 @@
+[
+  {
+    "name": "owner file: only live_analysis complete",
+    "config": {"ai": {"purposes": {
+      "live_analysis": {"provider": "codex", "model": "fixture-sol", "effort": "high", "speed": "standard"},
+      "summary": {"provider": "claude", "model": "fixture-partial"}}}},
+    "choice": {"provider": "codex", "model": "fixture-sol", "effort": "high", "speed": "standard"}
+  },
+  {
+    "name": "all complete choices identical",
+    "config": {"ai": {"purposes": {
+      "summary": {"provider": "ollama", "model": "fixture-local", "effort": "", "speed": ""},
+      "live_translation": {"provider": "ollama", "model": "fixture-local", "effort": "", "speed": ""}}}},
+    "choice": {"provider": "ollama", "model": "fixture-local", "effort": "", "speed": ""}
+  },
+  {
+    "name": "only one complete choice, not live_analysis",
+    "config": {"ai": {"purposes": {
+      "speaker_names": {"provider": "claude", "model": "fixture-c", "effort": "low", "speed": ""}}}},
+    "choice": {"provider": "claude", "model": "fixture-c", "effort": "low", "speed": ""}
+  },
+  {
+    "name": "several differ: live_analysis wins",
+    "config": {"ai": {"purposes": {
+      "summary": {"provider": "claude", "model": "fixture-c", "effort": "low", "speed": ""},
+      "live_analysis": {"provider": "codex", "model": "fixture-x", "effort": "e1", "speed": "standard"}}}},
+    "choice": {"provider": "codex", "model": "fixture-x", "effort": "e1", "speed": "standard"}
+  },
+  {
+    "name": "several differ, live_analysis not complete: needs a choice",
+    "config": {"ai": {"purposes": {
+      "summary": {"provider": "claude", "model": "fixture-c", "effort": "low", "speed": ""},
+      "speaker_names": {"provider": "codex", "model": "fixture-x", "effort": "e1", "speed": ""},
+      "live_analysis": {"provider": "codex", "model": "fixture-x"}}}},
+    "choice": null
+  },
+  {
+    "name": "nothing chosen",
+    "config": {},
+    "choice": null
+  },
+  {
+    "name": "legacy summary backend: partial choice",
+    "config": {"summary": {"backend": "claude-cli", "model": "fixture-legacy"}},
+    "choice": {"provider": "claude", "model": "fixture-legacy"}
+  },
+  {
+    "name": "legacy summary and naming agree",
+    "config": {"summary": {"backend": "ollama", "ollama_model": "fixture-o"}, "speaker_names": {"backend": "ollama"}},
+    "choice": {"provider": "ollama", "model": "fixture-o"}
+  },
+  {
+    "name": "legacy summary and naming differ: needs a choice",
+    "config": {"summary": {"backend": "codex-cli", "openai_model": "fixture-o"},
+               "speaker_names": {"backend": "claude-cli", "model": "fixture-n"}},
+    "choice": null
+  },
+  {
+    "name": "legacy auto, none and api backends are not carried over",
+    "config": {"summary": {"backend": "auto"}, "speaker_names": {"backend": "openai"}},
+    "choice": null
+  }
+]

@@ -26,6 +26,8 @@ Owner scope decision: 2026-10-19.
   come from what is installed, signed in and supported by the user's plan, read
   from the provider itself, never from a fixed list in code. Code may hold engine
   adapters, not chosen models; a missing choice is asked for, not defaulted.
+  The AI is chosen once (`ai.choice`) and every AI task uses it (owner decision
+  2026-10-21); a task the choice cannot do is unavailable with the reason.
 - One settings store for every component (owner rule 2026-10-20): the Swift
   Mac app, the C# Windows recorder and the Python web server all read and write
   `~/.config/meeting-copilot/config.json` (Windows:

@@ -146,14 +146,15 @@ enum DoctorReport {
                      remediation: "fix the JSON by hand, or move the file aside to start over")
     }
 
-    /// Summaries and speaker names each run on the AI chosen for them in
-    /// Getting started, and on nothing else.
+    /// Summaries and speaker names run on the one AI chosen in Getting
+    /// started, and on nothing else.
     static func checkSummary() -> Check {
         var problems: [String] = []
-        if Config.summary().writesSummaries, let problem = LLMBackend.resolve(.summary).problem {
+        let problem = LLMBackend.resolve().problem
+        if Config.summary().writesSummaries, let problem {
             problems.append("summary: \(problem)")
         }
-        if Config.speakerNames().enabled, let problem = LLMBackend.resolve(.speakerNames).problem {
+        if Config.speakerNames().enabled, let problem {
             problems.append("speaker names: \(problem)")
         }
         guard !problems.isEmpty else { return Check(name: "summary", status: .ok, remediation: nil) }

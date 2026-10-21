@@ -35,19 +35,22 @@ class AISettingsAPITests(unittest.TestCase):
                     self.assertEqual(status, 200)
                     self.assertEqual(body["providers"], [{"provider": "fake", "label": "Fake"}])
                     self.assertEqual(body["purposes"]["live_analysis"]["state"], "needs_choice")
+                    self.assertEqual(body["choice"]["state"], "needs_choice")
                     status, body = call("GET", "/api/ai/options?provider=fake")
                     self.assertEqual([m["id"] for m in body["options"]["models"]], ["m1", "m2", "m3"])
                     choice = {"provider": "fake", "model": "m1", "effort": "y", "speed": "quick"}
-                    self.assertEqual(call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": choice}, "https://example.test")[0], 403)
-                    status, body = call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": choice})
+                    self.assertEqual(call("POST", "/api/ai/choice", {"choice": choice}, "https://example.test")[0], 403)
+                    status, body = call("POST", "/api/ai/choice", {"choice": choice})
                     self.assertEqual((status, body["status"]["state"]), (200, "ready"))
-                    status, body = call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": {**choice, "model": "absent"}})
+                    status, body = call("POST", "/api/ai/choice", {"choice": {**choice, "model": "absent"}})
                     self.assertEqual(status, 400)
                     self.assertIn("absent", body["error"])
-                    self.assertEqual(call("GET", "/api/ai")[1]["purposes"]["live_analysis"]["choice"], choice)
+                    body = call("GET", "/api/ai")[1]
+                    self.assertEqual(body["choice"]["choice"], choice)
+                    self.assertEqual({p["choice"]["model"] for p in body["purposes"].values()}, {"m1"})
                     call("POST", "/api/getting-started/check-ai", {})
                     self.assertNotEqual(call("GET", "/api/ai")[1]["check"]["purposes"]["live_analysis"]["state"], "unchecked")
-                    call("POST", "/api/ai/choice", {"purpose": "live_analysis", "choice": {**choice, "speed": "standard"}})
+                    call("POST", "/api/ai/choice", {"choice": {**choice, "speed": "standard"}})
                     # a changed choice is never shown with the old check result
                     self.assertEqual(call("GET", "/api/ai")[1]["check"]["purposes"]["live_analysis"]["state"], "unchecked")
                 finally:
@@ -57,10 +60,9 @@ class AISettingsAPITests(unittest.TestCase):
     def test_panel_shows_the_check_snapshot_for_the_saved_choice(self):
         source = (Path(server.__file__).parent / "getting-started.js").read_text(encoding="utf-8")
         self.assertIn("checked = (aiState.check?.purposes || {})[purpose]", source)
-        self.assertIn('await api("/api/ai/choice", {purpose, choice: draft}); await loadAI(purpose);', source)
-        # saving one purpose keeps the unsaved drafts of the others
-        self.assertIn("if (saved) delete drafts[saved]; else drafts = {};", source)
+        self.assertIn('await api("/api/ai/choice", {choice: draft}); await loadAI(true);', source)
         self.assertIn("if (aiState.check) current.ai = aiState.check;", source)
+        self.assertNotIn("drafts[", source)  # one choice, no per-task rows
 
 
 if __name__ == "__main__":

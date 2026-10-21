@@ -50,7 +50,8 @@ not credentials to paste into this documentation.
   `summary.api_key_path`, `summary.openai_api_key_path`.
 - Context and speakers: `calendar`, `calendar_provider`,
   `speaker_names.enabled`, `user_name`, `speaker_names.backend`,
-  `speaker_names.model`.
+  `speaker_names.model`. The `backend` and `*model` keys are legacy: the AI is
+  chosen once in Getting started (`ai.choice`) and they are carried over once.
 - Interface/behavior: `interface_language`, `dock_icon`, `menu_bar_icon`,
   `window`, `on_stop`.
 

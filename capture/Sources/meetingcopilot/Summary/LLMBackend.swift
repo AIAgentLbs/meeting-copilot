@@ -1,11 +1,11 @@
 import Darwin
 import Foundation
 
-/// The one way of asking a language model a question for a purpose: the
-/// provider, model, effort and speed the person chose in Getting started
-/// (`ai.purposes.<purpose>` in the shared config).
+/// The one way of asking a language model a question: the provider, model,
+/// effort and speed the person chose once in Getting started (`ai.choice` in
+/// the shared config), the same for every task.
 ///
-/// There is no chain and no `auto`. A purpose without a complete choice does
+/// There is no chain and no `auto`. Without a complete choice nothing
 /// not run and says so; a choice that cannot run says why. Which model is
 /// strong enough for a summary is the person's decision, made from the list
 /// the installed provider offers, not this file's.
@@ -24,21 +24,20 @@ struct LLMBackend {
     /// limit worth sizing to (Ollama's context window); nil means no such limit.
     var inputLimit: () async throws -> Int? = { nil }
 
-    /// The backend for a purpose, from the person's config. Runs the one-time
-    /// migration of the old summary settings first.
-    static func resolve(_ purpose: AIPurpose) -> LLMBackendResolution {
+    /// The backend for the person's choice, from their config. Runs the
+    /// one-time migration of the old summary settings first.
+    static func resolve() -> LLMBackendResolution {
         Config.migrateLegacyAIChoices()
         if let problem = Config.loadProblem() { return .unavailable(problem) }
-        return resolve(purpose, config: Config.current(), tool: cliPath)
+        return resolve(config: Config.current(), tool: cliPath)
     }
 
     static func resolve(
-        _ purpose: AIPurpose,
         config: [String: Any]?,
         tool: (String) -> String?,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> LLMBackendResolution {
-        switch AIChoice.resolve(purpose, in: config) {
+        switch AIChoice.resolve(in: config) {
         case .needsChoice: return .needsChoice
         case .unavailable(let reason): return .unavailable(reason)
         case .ready(let choice):
@@ -353,7 +352,7 @@ struct LLMReply: Equatable {
 
 enum LLMBackendResolution {
     case ready(LLMBackend)
-    /// No complete choice for this purpose: ask the person, run nothing.
+    /// No complete choice: ask the person, run nothing.
     case needsChoice
     /// A choice exists and cannot run; the reason is for the person.
     case unavailable(String)

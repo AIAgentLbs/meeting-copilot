@@ -61,8 +61,10 @@ def probe_png(path, rgb=(220, 30, 30), size=16):
 
 
 class AIReadiness:
-    """Check AI: one purpose-appropriate test request per task, never meeting data.
-    A result belongs to the exact choice and executable it tested (the ticket key)."""
+    """Check AI: every task's probe runs against the one choice, never with meeting data. Tasks
+    with the same kind of probe (text, image, files) share one request. A task the choice cannot
+    do is listed unavailable with its reason and is not probed. A result belongs to the exact
+    choice and executable it tested (the ticket key)."""
     def __init__(self, service):
         self.service = service
         self.lock = threading.Lock()
@@ -82,9 +84,11 @@ class AIReadiness:
         if self.lock.locked():
             return {'state': 'checking', 'purposes': purposes, 'message': 'Checking AI access for each task...'}
         states = {item['state'] for item in purposes.values()}
-        state = ('ready' if states == {'ready'} else 'error' if states & {'error', 'unavailable'}
+        # partial: the choice works, and some tasks it cannot do are unavailable on their own
+        state = ('ready' if states == {'ready'} else 'partial' if states == {'ready', 'unavailable'}
+                 else 'error' if states & {'error', 'unavailable'}
                  else 'needs_choice' if 'needs_choice' in states else 'unchecked')
-        bad = {'error', 'unavailable'} if state == 'error' else {state}
+        bad = {'error', 'unavailable'} if state in ('error', 'partial') else {state}
         message = ('AI answered successfully for every task. Account limits still apply.' if state == 'ready'
                    else UNCHECKED if state == 'unchecked'
                    else next(item['message'] for item in purposes.values() if item['state'] in bad))
@@ -94,30 +98,44 @@ class AIReadiness:
         if not self.lock.acquire(blocking=False):
             return self.snapshot()
         try:
+            done = {}  # (probe kind, ticket key) -> result
             for purpose, ticket in self.service.tickets().items():
                 if ticket.state == 'ready':
-                    self.results[purpose] = (ticket.key, self._probe(purpose, ticket))
+                    kind = self._kind(purpose, ticket)
+                    if (kind, ticket.key) not in done:
+                        done[kind, ticket.key] = self._probe(kind, ticket)
+                    result = dict(done[kind, ticket.key])
+                    if purpose == 'live_analysis' and kind == 'text' and result['state'] == 'ready':
+                        label = getattr(self.service.adapters[ticket.choice['provider']], 'label', 'This tool')
+                        result['message'] = (f'AI answered. {label} cannot read connected folders, so live '
+                                             'analysis works only while no repositories are selected.')
+                    self.results[purpose] = (ticket.key, result)
         finally:
             self.lock.release()
         return self.snapshot()
 
-    def _probe(self, purpose, ticket):
-        """Text probe, an image probe for screenshots, a file probe for repository reading."""
+    def _kind(self, purpose, ticket):
+        if purpose == 'frame_relevance':
+            return 'image'
         adapter = self.service.adapters[ticket.choice['provider']]
+        return 'files' if purpose == 'live_analysis' and getattr(adapter, 'reads_files', False) else 'text'
+
+    def _probe(self, kind, ticket):
+        """Text probe, an image probe for screenshots, a file probe for repository reading."""
         with tempfile.TemporaryDirectory(prefix='meetontrack-check-') as directory:
             prompt, expect, options = PROBE, 'READY', {}
-            if purpose == 'frame_relevance':
+            if kind == 'image':
                 options['image'] = Path(directory) / 'probe.png'
                 probe_png(options['image'])
                 prompt, expect = 'What single colour fills this image? Reply with one lowercase English word.', 'red'
-            elif purpose == 'live_analysis' and getattr(adapter, 'reads_files', False):
+            elif kind == 'files':
                 expect = 'probe' + uuid.uuid4().hex[:8]
                 (Path(directory) / 'probe.txt').write_text(expect, encoding='utf-8')
                 options['roots'] = [directory]
                 prompt = (f'Read the file {Path(directory) / "probe.txt"} and reply with exactly the one word it '
                           'contains. Do not read anything else.')
             try:
-                reply = self.service.run(purpose, prompt, ticket=ticket, timeout=90, **options)
+                reply = self.service.run(ticket.purpose, prompt, ticket=ticket, timeout=90, **options)
             except RuntimeError as error:
                 return {'state': 'error', 'message': str(error), 'model': ''}
         if expect.lower() not in reply.text.lower():

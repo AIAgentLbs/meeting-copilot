@@ -502,7 +502,7 @@ enum SettingsSchema {
     /// reported as one it ignores.
     static let unrenderedKeys = ["transcription.assemblyai.api_key"]
 
-    /// Whole subtrees another screen owns. `ai` is the AI choice per purpose,
+    /// Whole subtrees another screen owns. `ai` is the one AI choice,
     /// written by Getting started (docs/config.schema.json) and read here for
     /// summaries and naming: known, so never "not read", and not a control.
     static let ownedSubtrees = ["ai"]
@@ -512,10 +512,11 @@ enum SettingsSchema {
     /// being reported as misspelled until its owner next edits the file.
     static let deprecatedKeys = ["compress_tracks", "keep_uncompressed"] + legacyAIKeys
 
-    /// The summary and naming settings from before `ai.purposes`. Not offered
+    /// The summary and naming settings from before `ai.choice`. Not offered
     /// anywhere: the AI is chosen in one place, Getting started. Still known,
-    /// because `AIChoice.migrateLegacy` reads them once (a `summary.backend`
-    /// "none" becomes `summary.enabled: false`).
+    /// because they are read once: the web app carries a backend over into
+    /// `ai.choice`, and `AIChoice.migrateLegacy` turns a `summary.backend`
+    /// "none" into `summary.enabled: false`.
     static let legacyAIKeys = [
         "summary.backend", "summary.model", "summary.openai_model", "summary.ollama_model",
         "summary.api_key_path", "summary.openai_api_key_path",

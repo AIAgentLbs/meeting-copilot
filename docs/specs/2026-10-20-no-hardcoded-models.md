@@ -5,6 +5,47 @@ Owner rule 2026-10-20 (see `AGENTS.md`). Status: phase 1 implemented 2026-10-20
 summary and speaker naming) implemented 2026-10-20; phases 3-4 planned. Backlog:
 `docs/TODO.md`.
 
+## Single AI choice (owner decision 2026-10-21, supersedes per-purpose selection)
+
+"I want to choose Codex once and be done." The person chooses the AI once and
+every task uses it; the reference UX is FluidVoice's single AI provider/model
+setting. Where the sections below say "per purpose", read "one choice, checked
+per task".
+
+- Settings: `ai.choice` `{provider, model, effort, speed}` in the shared
+  `config.json`, same completeness rules as before (all four keys; `effort` /
+  `speed` are `""` when discovery offers none; a missing key is needs_choice,
+  never a default). Python writes it (`AISettings.set_choice`, the locked
+  writer); Swift only reads it.
+- Every task resolves to it: Python `AIService.resolve(task)`, Swift
+  `AIChoice.resolve(in:)` / `LLMBackend.resolve()`. Task capability needs stay
+  per task: screenshots need a model discovery reports as accepting images; live
+  analysis with selected repositories needs file access (Codex, Claude Code).
+  A task the choice cannot do is unavailable with the reason ("your chosen model
+  does not accept images, so screenshots are not analysed"); no other task is
+  blocked and nothing falls back to another model.
+- Migration, once (`ai_providers.migrated_choice`): when `ai.choice` is absent,
+  the complete `ai.purposes` choices are adopted if they are all identical or
+  only one exists; if several differ, `ai.purposes.live_analysis` if complete,
+  else none (needs_choice). Without complete ones, the legacy
+  `summary.backend` / `speaker_names.backend` (phase-2 mapping) feed the choice
+  by the same rule, as a partial choice that still needs effort and speed.
+  Python writes the result; `ai.purposes` is then never read and stays in the
+  file untouched. Until Python has written it, Swift derives the same complete
+  choice in memory (`AIChoice.stored`); the shared cases are
+  `copilot/web/fixture_ai_choice_migration.json`. Swift no longer writes `ai`;
+  its `migrateLegacy` only turns `summary.backend: "none"` into
+  `summary.enabled: false`.
+- API for the Getting started UI: `GET /api/ai` returns `providers`, `choice`
+  (state, choice, reason), `purposes` (state and reason per task with the
+  choice) and `check` (last Check AI result per task); `GET /api/ai/options`
+  is discovery per provider; `POST /api/ai/choice {choice}` saves;
+  `POST /api/getting-started/check-ai` runs Check AI.
+- Check AI runs each task's probe against the one choice; tasks with the same
+  probe kind (text, image, files) share one request. A task the choice cannot do
+  is listed unavailable and not probed; overall state `partial` means the choice
+  works and only such tasks are unavailable.
+
 ## Problem (audit 2026-10-20)
 
 - Python web assistant: five separate Codex subprocess call sites, four pin
@@ -120,10 +161,12 @@ Options are read from the exact binary or service the app will call.
 
 1. Python AI provider layer + discovery + per-purpose selection UI + Check AI;
    remove all model ids from Python, JS and UI text. Release 0.1.11. Done
-   2026-10-20 except the release itself.
+   2026-10-20 except the release itself. Per-purpose selection superseded by
+   the single choice (owner decision 2026-10-21, section above).
 2. Swift summary/naming read `ai.purposes.summary` and `ai.purposes.speaker_names`
    from `config.json`; remove code defaults and the fixed order; pass the model,
-   effort and speed to every CLI. Done 2026-10-20.
+   effort and speed to every CLI. Done 2026-10-20. Superseded 2026-10-21: Swift
+   reads `ai.choice` (section above).
 3. STT engine registry on Mac (live, final, retranscription, diarization).
 4. Windows: launcher, installer and the C# recorder follow the same rule.
 

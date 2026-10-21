@@ -49,9 +49,12 @@ enabled. Finish the call and close Capture before reinstalling.
 ## Optional AI and context
 
 AI answers use an AI tool you already have: Codex, Claude Code or a local
-Ollama. In Getting started, choose the tool, model, effort and speed for
-each task; the options are read from the installed tool and your plan, and
-nothing is preselected. A short functional check confirms each choice. Relevant
+Ollama. In Getting started, choose the tool, model, effort and speed once;
+every AI task uses that choice. The options are read from the installed tool
+and your plan, and nothing is preselected. Check AI runs a short test for each
+task with that choice. A task the chosen model cannot do is shown unavailable
+with the reason, and the other tasks keep working: screenshots are analysed
+only when the model accepts images. Relevant
 conversation and connected-source excerpts are sent to the chosen AI service. Capture
 and local transcription work independently of the AI account.
 Git repository search works only with Codex or Claude Code; Ollama cannot read

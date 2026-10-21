@@ -98,9 +98,9 @@ struct ConfigFileTests {
     func unknownKeysPreserved() throws {
         let url = try scratchConfig()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-        let ai: [String: Any] = ["purposes": ["live_analysis": [
+        let ai: [String: Any] = ["choice": [
             "provider": "codex", "model": "some-model", "effort": "high", "speed": "",
-        ]]]
+        ], "purposes": ["live_analysis": ["provider": "codex"]]]
         try JSONSerialization.data(withJSONObject: [
             "ai": ai,
             "web": ["port": 8765, "nested": ["a": [1, 2]]],

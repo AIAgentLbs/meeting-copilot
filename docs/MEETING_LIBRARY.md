@@ -58,7 +58,7 @@ PLAYWRIGHT_MODULE=/path/to/playwright node scripts/test-library-ui.cjs
 ```
 
 Optional authenticated smoke, synthetic meeting text only. Point it at a
-`config.json` whose `ai.purposes.summary_rewrite` is set:
+`config.json` whose `ai.choice` is set:
 
 ```sh
 cd copilot/web

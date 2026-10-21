@@ -12,7 +12,7 @@
     "startup-audio-heading": ["1. Prepare recording", "1. Подготовьте запись"],
     "startup-recorder": ["Open recorder / finish setup", "Открыть запись / закончить настройку"],
     "startup-ai-heading": ["2. Check AI answers", "2. Проверьте ответы ИИ"],
-    "startup-ai-help": ["Choose the AI tool, model, effort and speed for each task. The lists come from the tools installed on this computer and your plan. Check AI then sends a short test for each choice, without meeting data, using a small part of your allowance.", "Выберите для каждой задачи инструмент ИИ, модель, уровень рассуждений и скорость. Списки берутся из установленных на компьютере инструментов и вашего тарифа. Проверка ИИ отправит короткий тест для каждого выбора, без встреч и документов, и использует небольшую часть лимита."],
+    "startup-ai-help": ["Choose the AI tool, model, effort and speed once. Every AI task uses this choice. The lists come from the tools installed on this computer and your plan. Check AI then sends a short test for each task, without meeting data, using a small part of your allowance.", "Выберите инструмент ИИ, модель, уровень рассуждений и скорость один раз. Все задачи ИИ используют этот выбор. Списки берутся из установленных на компьютере инструментов и вашего тарифа. Проверка ИИ отправит короткий тест для каждой задачи, без встреч и документов, и использует небольшую часть лимита."],
     "startup-ai-check": ["Check AI", "Проверить ИИ"],
     "ai-refresh": ["Refresh lists", "Обновить списки"],
     "startup-ai-login": ["Tool missing or unavailable? Install it, sign in there, then press Refresh lists.", "Инструмента нет или он недоступен? Установите его, войдите в него и нажмите «Обновить списки»."],
@@ -71,7 +71,8 @@
     const ai = current.ai || {};
     $("startup-ai-status").textContent = ai.state === "ready" ? word("AI answered successfully for every task. Account limits still apply.", "ИИ успешно ответил для всех задач. Лимиты аккаунта продолжают действовать.")
       : ai.state === "checking" ? word("Checking account and model access…", "Проверяю аккаунт и доступ к модели…")
-      : ai.state === "needs_choice" ? word("Choose a tool and model for every task, then check again.", "Выберите инструмент и модель для каждой задачи и повторите проверку.")
+      : ai.state === "partial" ? word("AI answered. Some tasks are unavailable with this choice; see the list below.", "ИИ ответил. Некоторые задачи недоступны с этим выбором, см. список ниже.")
+      : ai.state === "needs_choice" ? word("Choose the AI tool and model, then check again.", "Выберите инструмент и модель ИИ и повторите проверку.")
       : ai.state === "error" ? errorText(ai.message) : word("Access has not been checked yet.", "Доступ еще не проверен.");
     renderAI();
     $("context-folder-list").replaceChildren(...(current.folders || []).map(doc => {
@@ -85,7 +86,7 @@
       }); li.append(remove); return li;
     }));
   }
-  /* AI choice per task. Every option comes from the provider; nothing is preselected. */
+  /* The one AI choice, used by every task. Every option comes from the provider; nothing is preselected. */
   const purposes = {
     live_analysis: ["Live analysis and chat", "Анализ и чат во время звонка"],
     live_translation: ["Live translation", "Перевод во время звонка"],
@@ -94,8 +95,7 @@
     summary: ["Meeting summary", "Итог встречи"],
     speaker_names: ["Speaker names", "Имена спикеров"]
   };
-  const needsImage = new Set(["frame_relevance"]);
-  let aiState = {providers: [], purposes: {}}, drafts = {};
+  let aiState = {providers: [], purposes: {}}, draft = null;
   const options = {};
   const node = (tag, text) => {const item = document.createElement(tag); if (text) item.textContent = text; return item;};
   function picker(label, choices, value, change) {
@@ -111,10 +111,10 @@
     }
     return options[provider];
   }
-  function purposeRow(purpose) {
-    const status = aiState.purposes[purpose] || {}, checked = (aiState.check?.purposes || {})[purpose];
-    const draft = drafts[purpose] ||= {provider: "", model: "", effort: "", speed: "", ...(status.choice || {})};
-    const box = node("fieldset"); box.className = "ai-purpose"; box.append(node("legend", word(...purposes[purpose])));
+  function aiCard() {
+    const status = aiState.choice || {};
+    draft ||= {provider: "", model: "", effort: "", speed: "", ...(status.choice || {})};
+    const box = node("fieldset"); box.className = "ai-purpose"; box.append(node("legend", word("AI for every task", "ИИ для всех задач")));
     const redraw = () => renderAI();
     box.append(picker(word("AI tool", "Инструмент ИИ"), [["", word("Choose…", "Выберите…")], ...aiState.providers.map(item => [item.provider, item.label])],
       draft.provider, value => {Object.assign(draft, {provider: value, model: "", effort: "", speed: ""}); redraw();}));
@@ -124,11 +124,9 @@
     if (found?.state === "loading" || (draft.provider && !found)) box.append(node("p", word("Reading what this tool offers…", "Читаю, что предлагает инструмент…")));
     else if (found?.state === "unavailable") box.append(node("p", word("Unavailable: ", "Недоступно: ") + found.reason));
     else if (found) {
-      // A model is offered only when discovery says it can do this task; otherwise it shows why not.
-      const why = item => item.problem || (needsImage.has(purpose) && item.image !== true
-        ? (item.image === false ? word("does not accept images", "не принимает изображения") : word("image input not reported", "прием изображений не указан")) : "");
-      const model = found.models.find(item => item.id === draft.model && !why(item));
-      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...found.models.map(item => [item.id, why(item) ? `${item.label} (${why(item)})` : item.label, why(item)])],
+      const model = found.models.find(item => item.id === draft.model && !item.problem);
+      const name = item => item.problem ? `${item.label} (${item.problem})` : item.image === true ? item.label : `${item.label} (${word("no screenshots", "без снимков экрана")})`;
+      box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...found.models.map(item => [item.id, name(item), item.problem])],
         model ? draft.model : "", value => {Object.assign(draft, {model: value, effort: "", speed: ""}); redraw();}));
       if (model?.efforts.length) box.append(picker(word("Effort", "Уровень рассуждений"), [["", word("Choose…", "Выберите…")], ...model.efforts.map(item => [item, item])],
         draft.effort, value => {draft.effort = value; redraw();}));
@@ -142,25 +140,34 @@
     const save = node("button", word("Save", "Сохранить")); save.type = "button"; save.className = "quiet-button"; save.disabled = !ready;
     save.addEventListener("click", async () => {
       save.disabled = true;
-      try {await api("/api/ai/choice", {purpose, choice: draft}); await loadAI(purpose); $("ai-choice-message").textContent = word("Saved.", "Сохранено.");}
+      try {await api("/api/ai/choice", {choice: draft}); await loadAI(true); $("ai-choice-message").textContent = word("Saved.", "Сохранено.");}
       catch (error) {$("ai-choice-message").textContent = error.message; redraw();}
     });
     box.append(save);
     const speedName = speed => speed === "standard" ? word("standard speed", "обычная скорость") : speed;
-    const state = status.state === "ready" ? word("Ready to use: ", "Готово к работе: ") + [status.choice.model, status.choice.effort, speedName(status.choice.speed)].filter(Boolean).join(", ")
+    const state = status.state === "ready" ? word("Saved: ", "Сохранено: ") + [status.choice.model, status.choice.effort, speedName(status.choice.speed)].filter(Boolean).join(", ")
       : status.state === "unavailable" ? word("Saved choice is unavailable: ", "Сохраненный выбор недоступен: ") + status.reason
       : status.choice ? word("Choice is not complete: ", "Выбор не закончен: ") + status.reason
-      : word("Not chosen yet. AI does not run for this task until you choose.", "Еще не выбрано. ИИ не работает для этой задачи, пока вы не выберете.");
+      : word("Not chosen yet. AI does not run until you choose.", "Еще не выбрано. ИИ не работает, пока вы не выберете.");
     const line = node("p", state); line.setAttribute("role", "status"); box.append(line);
-    if (checked && status.state === "ready") box.append(node("p", checked.state === "ready" ? word("Check passed, model reported: ", "Проверка пройдена, модель: ") + checked.model
-      : checked.state === "unchecked" ? word("Not checked with this choice yet.", "С этим выбором проверки еще не было.") : errorText(checked.message)));
+    // Each task with this choice: ready, unavailable with the reason, or the Check AI result.
+    const tasks = node("ul");
+    for (const [purpose, names] of Object.entries(purposes)) {
+      const task = aiState.purposes[purpose] || {}, checked = (aiState.check?.purposes || {})[purpose];
+      const text = task.state && task.state !== "ready" ? (task.state === "unavailable" ? word("unavailable: ", "недоступно: ") + task.reason : task.reason)
+        : !checked || checked.state === "unchecked" ? word("not checked yet", "еще не проверено")
+        : checked.state === "ready" ? word("ok", "работает") + (checked.message && !checked.message.startsWith("AI answered successfully") ? ". " + checked.message : "")
+        : errorText(checked.message);
+      tasks.append(node("li", `${word(...names)}: ${text}`));
+    }
+    box.append(tasks);
     return box;
   }
-  function renderAI() {$("ai-purposes").replaceChildren(...Object.keys(purposes).map(purposeRow));}
-  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) delete drafts[saved]; else drafts = {}; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
+  function renderAI() {$("ai-card").replaceChildren(aiCard());}
+  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) draft = null; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
   $("ai-refresh").onclick = async () => {
     $("ai-refresh").disabled = true;
-    try {await Promise.all(Object.keys(options).map(provider => providerOptions(provider, true))); await loadAI();}
+    try {await Promise.all(Object.keys(options).map(provider => providerOptions(provider, true))); await loadAI(true);}
     finally {$("ai-refresh").disabled = false;}
   };
   async function load() {try {current = await api("/api/getting-started"); render(); void loadAI();} catch(error) {$("startup-message").textContent = error.message;}}

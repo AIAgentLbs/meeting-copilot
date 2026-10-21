@@ -79,7 +79,7 @@ class SummaryRewriteTests(unittest.TestCase):
         self.assertNotIn("model", self.archive.detail("old")["overview"])
 
     @unittest.skipUnless(os.environ.get("MEETONTRACK_AI_SMOKE_CONFIG"),
-                         "Opt-in authenticated smoke: path to a config.json whose ai.purposes.summary_rewrite is set")
+                         "Opt-in authenticated smoke: path to a config.json whose ai.choice is set")
     def test_authenticated_provider_can_rewrite_synthetic_meeting(self):
         service = AIService(os.environ["MEETONTRACK_AI_SMOKE_CONFIG"], os.environ.copy())
         jobs = SummaryRewrites(self.archive, lambda prompt: service.run("summary_rewrite", prompt, timeout=180))
