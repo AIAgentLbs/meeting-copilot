@@ -142,44 +142,44 @@ hashes, Pages removed, and the Windows installer relocated to
   choice is ready; live and final use the same model. Also covers
   MEETONTRACK-39 (labelled sizes), MEETONTRACK-40 (one active model) and
   MEETONTRACK-45 (reuse of models already on this Mac). Spec section "Phase 3".
-- [ ] Phase 4 (Windows speech): the C# recorder implements `meetontrack.stt-options/1`,
+- [ ] MEETONTRACK-69: Phase 4 (Windows speech): the C# recorder implements `meetontrack.stt-options/1`,
   `stt-download` and `stt-check` (spec "Phase 3"), reads `stt.choice`, and drops its
   built-in `gpt-4o-transcribe-diarize` default; `install.ps1` stops pinning speech
   models; the launcher check reads the same choice.
-- [ ] LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
+- [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.
-- [ ] transcribe.cpp (whisper.cpp family) as a second local Mac adapter in
+- [ ] MEETONTRACK-71: transcribe.cpp (whisper.cpp family) as a second local Mac adapter in
   `stt-options`, so local choices are not FluidAudio-only.
-- [ ] Cloud speech pricing: no prices in the UI; link each cloud engine to the
+- [ ] MEETONTRACK-72: Cloud speech pricing: no prices in the UI; link each cloud engine to the
   provider's own pricing page (`source_url`-style field in `stt-options`).
-- [ ] Speech engines offered by FluidAudio but not yet adapted: Sortformer speaker
+- [ ] MEETONTRACK-73: Speech engines offered by FluidAudio but not yet adapted: Sortformer speaker
   models, `StreamingModelVariant` (Parakeet EOU) streaming, Parakeet int4 encoder
   precision; cloud live adapters (AssemblyAI streaming, OpenAI realtime). Each is
   missing from `stt-options` until an adapter exists.
-- [ ] Model reuse scans only `~/Library/Application Support/FluidAudio/Models` and
+- [ ] MEETONTRACK-74: Model reuse scans only `~/Library/Application Support/FluidAudio/Models` and
   `~/.cache/fluidaudio/Models` (`STTReuse.roots`); sandboxed FluidAudio apps keep
   models in their own containers, which are not read. Add a container root only
   with a user-granted folder.
-- [ ] Verify against the real services once: AssemblyAI `speech_models` +
+- [ ] MEETONTRACK-75: Verify against the real services once: AssemblyAI `speech_models` +
   `speech_model_used` and OpenAI transcription models through `stt-check` with a
   real key (not exercised in tests).
-- [ ] Live transcription follows a speech choice changed during a recording
+- [ ] MEETONTRACK-76: Live transcription follows a speech choice changed during a recording
   (codex 2026-10-21, P2): `MeetingCopilot.resumeAfterConfigChange` resumes only
   final transcription; `LiveTranscriptionCoordinator` resolves the choice at
   recording start or a toggle, and its watchdog does not retry `unavailable`.
   Restart the enabled live pipeline when the choice or its readiness changes.
-- [ ] Parakeet live backpressure (codex 2026-10-21, P2):
+- [ ] MEETONTRACK-77: Parakeet live backpressure (codex 2026-10-21, P2):
   `ParakeetLiveRecognizer.process` only enqueues into FluidAudio's unbounded
   `streamAudio` queue, so the coordinator's backlog limit and stalled-decoder
   recovery never see a slow decoder. Await decoding or bound the queue and
   report real progress (`LiveRecognizer.swift`, `ponytail:` comment).
-- [ ] Replace a rejected cloud API key (codex 2026-10-21, P2): `speech.js`
+- [ ] MEETONTRACK-78: Replace a rejected cloud API key (codex 2026-10-21, P2): `speech.js`
   hides the key field once a key file exists (`has_key: true`), so a mistyped
   key that the provider rejects (OpenAI 401 listing error) cannot be replaced.
   Keep the field when the listing reports an authentication error, or validate
   the key on save.
-- [ ] Keep typed API key during polling (codex 2026-10-21, P2): while a download
+- [ ] MEETONTRACK-79: Keep typed API key during polling (codex 2026-10-21, P2): while a download
   or re-transcription runs, `speech.js` `refreshState()` rebuilds the whole
   choice form every 1.5 s and drops the key being typed. Update progress
   separately or keep the mounted form.
