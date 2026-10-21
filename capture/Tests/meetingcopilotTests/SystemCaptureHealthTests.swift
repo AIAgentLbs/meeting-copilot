@@ -19,7 +19,7 @@ struct SystemCaptureHealthTests {
         #expect(decision())
         #expect(decision(buffer: 25, audible: 10))
         #expect(decision(audible: 10, route: true))
-        #expect(!decision(audible: nil))
+        #expect(decision(audible: nil))
         #expect(!decision(playing: false))
         #expect(!decision(audible: 10))
         #expect(!decision(retry: 10))
