@@ -32,6 +32,8 @@ DOWNLOAD_EVENTS = ("done", "error", "finished", "progress")
 OPTIONS_TIMEOUT, CHECK_TIMEOUT = 60, 180
 DEFERRED_LIMIT, JOB_LIMIT = 50, 20
 SAFE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+WINDOWS = os.name == "nt"
+WINDOWS_REASON = "Speech choice on Windows is not available yet (MEETONTRACK-69)"
 
 
 def _now():
@@ -132,6 +134,10 @@ def apply_download_event(job, event):
                    message=str(event.get("message") or "download failed"))
 
 
+def _no_windows_recorder(*args, **kwargs):
+    raise OSError(WINDOWS_REASON)
+
+
 class STTService:
     def __init__(self, config_path, binary, roots, runner=subprocess.run, popen=subprocess.Popen,
                  keys_dir=None, ttl=300):
@@ -139,6 +145,11 @@ class STTService:
         self.roots = roots if callable(roots) else (lambda: [Path(roots)])
         self.keys_dir = Path(keys_dir) if keys_dir else self.config_path.parent / "keys"
         self.runner, self.popen, self.ttl = runner, popen, ttl
+        self.windows = WINDOWS
+        if self.windows:
+            # The Windows recorder has no stt-* commands yet and opens its window on any unknown
+            # arguments, so nothing here may start it (MEETONTRACK-69).
+            self.runner = self.popen = _no_windows_recorder
         self.lock, self.discovery_lock, self.write_lock = threading.Lock(), threading.Lock(), threading.Lock()
         self.cache = None  # (monotonic time, result)
         self.checks, self.downloads_by_id, self.jobs_by_id = {}, {}, {}
@@ -154,6 +165,8 @@ class STTService:
             return result
 
     def _discover(self, refresh):
+        if self.windows:
+            return {"ok": False, "error": WINDOWS_REASON}
         try:
             run = self.runner([str(self.binary), "stt-options", "--json", *(["--refresh"] if refresh else [])],
                               capture_output=True, text=True, timeout=OPTIONS_TIMEOUT)
@@ -194,7 +207,9 @@ class STTService:
         choice = complete_choice({key: stored.get(key) for key in CHOICE_KEYS} if stored else None)  # extra keys ignored
         cached = self.cache[1] if self.cache else None
         block = (cached or {}).get("choice") or {}
-        if choice is None or not all(choice[key] for key in ("engine", "model", "language")):
+        if self.windows:
+            state, reason = "", WINDOWS_REASON
+        elif choice is None or not all(choice[key] for key in ("engine", "model", "language")):
             state, reason = "needs_choice", "Choose speech recognition in Getting started."
         elif cached and cached.get("ok") and block.get("stored") == stored and block.get("state") in STATES:
             state, reason = block["state"], str(block.get("reason") or "")

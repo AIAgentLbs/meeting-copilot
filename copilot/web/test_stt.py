@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+import unittest.mock
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -55,6 +56,9 @@ class STTTestCase(unittest.TestCase):
         self.root = self.dir / "recordings"
         self.root.mkdir()
         self.runner = FakeRunner()
+        platform = unittest.mock.patch.object(stt, "WINDOWS", False)  # fixtures model the Mac recorder
+        platform.start()
+        self.addCleanup(platform.stop)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -124,6 +128,26 @@ class OptionsTests(STTTestCase):
             service.cache = (time.monotonic() - 31, result)
             service.options()
             self.assertEqual(len(runner.calls), 2)  # 30 s for failures
+
+
+class WindowsTests(STTTestCase):
+    def test_windows_never_starts_the_recorder(self):
+        popen = FakePopen([], 0)
+        with unittest.mock.patch.object(stt, "WINDOWS", True), \
+                unittest.mock.patch.object(stt.subprocess, "run") as run, \
+                unittest.mock.patch.object(stt.subprocess, "Popen") as spawn:
+            service = STTService(self.config, self.dir / "MeetingCopilotCapture.exe", self.root)
+            self.assertEqual(service.options(), {"ok": False, "error": stt.WINDOWS_REASON})
+            self.assertEqual(service.status()["reason"], stt.WINDOWS_REASON)
+            self.assertIn(stt.WINDOWS_REASON, service.check()["error"])
+            self.assertIn(stt.WINDOWS_REASON, wait_for(lambda: [service.downloads_by_id[service.start_download("m")["id"]]])["message"])
+            injected = self.service(popen=popen)
+            injected.options(refresh=True)
+            injected.check()
+        run.assert_not_called()
+        spawn.assert_not_called()
+        self.assertEqual(self.runner.calls, [])
+        self.assertIsNone(popen.args)
 
 
 class SaveChoiceTests(STTTestCase):

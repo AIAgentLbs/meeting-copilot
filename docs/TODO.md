@@ -150,6 +150,11 @@ hashes, Pages removed, and the Windows installer relocated to
   `stt-download` and `stt-check` (spec "Phase 3"), reads `stt.choice`, and drops its
   built-in `gpt-4o-transcribe-diarize` default; `install.ps1` stops pinning speech
   models; the launcher check reads the same choice.
+  Until then the web server never runs the recorder for speech on Windows
+  (`stt.WINDOWS`, 0.1.12). Windows must implement `stt-options --json`, and the
+  recorder must reject unknown arguments instead of launching the GUI: in
+  `windows/src/Amanu.App/App.xaml.cs` `Main` only `record <x>` and `--live-worker`
+  are handled, so any other arguments start the full WPF app (found 2026-10-21).
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.
