@@ -21,9 +21,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          gh release download windows-v0.1.13 --repo $env:GITHUB_REPOSITORY --pattern 'meeting-copilot-windows-v0.1.13-x64.zip' --dir candidate
+          gh release download windows-v0.1.14 --repo $env:GITHUB_REPOSITORY --pattern 'meeting-copilot-windows-v0.1.14-x64.zip' --dir candidate
           if ($LASTEXITCODE -ne 0) { throw 'Candidate download failed' }
       - name: Exact packaged installation and regressions
         shell: pwsh
         run: |
-          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meeting-copilot-windows-v0.1.13-x64.zip -ExpectedSha256 ea182811b10137060cb8c8b331976a318e023efa2491c52b505c25b2cec6e7c9 -Installer ./scripts/windows/install.ps1
+          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meeting-copilot-windows-v0.1.14-x64.zip -ExpectedSha256 8f49ad1eb30172b04e12e9f3e8ac447bdba6f6860797e77d2681b5fa9212e2bb -Installer ./scripts/windows/install.ps1
