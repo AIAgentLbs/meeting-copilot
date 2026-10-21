@@ -32,6 +32,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from private_dirs import private_dir
 
 
 def read_json(path: Path) -> dict:
@@ -190,7 +191,7 @@ class RecognitionGuard:
         self.observation = {}
 
     def _save(self, payload: dict):
-        self.state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.state_file.parent)
         temporary = self.state_file.with_suffix(".tmp")
         temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
         temporary.chmod(0o600)
@@ -200,7 +201,7 @@ class RecognitionGuard:
         now = time.time() if now is None else now
         with self.lock:
             # Protect the command AND persisted cooldown from another process.
-            self.state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private_dir(self.state_file.parent)
             with self.state_file.with_suffix(".lock").open("a+") as lease:
                 os.chmod(lease.name, 0o600)
                 try:

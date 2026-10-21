@@ -33,6 +33,7 @@ import urllib.request
 import uuid
 
 from first_run import ai_failure, pick_codex
+from private_dirs import private_dir
 
 # The AI tasks. summary and speaker_names run in the Swift recorder; Python lists and checks them.
 PURPOSES = ("live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names")
@@ -234,7 +235,7 @@ def _workdir():
     """The one empty working directory every call starts in: stable, so sessions resume, and
     outside the temp folder, which Codex would otherwise leave writable as a project root."""
     directory = Path(os.environ.get("MEETING_COPILOT_AI_WORKDIR") or Path.home() / ".cache/meeting-copilot/ai-workdir")
-    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    private_dir(directory)
     return str(directory)
 
 
@@ -666,7 +667,7 @@ class AISettings:
         """Read-modify-replace of `ai` under config.json.lock: missing file = empty, malformed =
         refuse, result written 0600 to a temp file in the same directory, then renamed over.
         Returns the `ai` section as written."""
-        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.path.parent)
         with self.lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             try:
                 text = self.path.read_text(encoding="utf-8")

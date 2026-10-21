@@ -28,6 +28,7 @@ from delivery_health import DeliveryHealth, drive_links_ready
 from recording_health import RecordingLocations
 from question_quality import register_question
 from delivery_settings import DeliverySettings, enabled as delivery_enabled
+from private_dirs import private_dir
 
 
 def _json(path: Path, fallback: Any) -> Any:
@@ -47,7 +48,7 @@ def _date(value: str | None) -> datetime | None:
 
 
 def _atomic_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    private_dir(path.parent)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -115,8 +116,8 @@ class MeetingArchive:
         self.delivery_monitor = DeliveryHealth(
             reports_root, config_root / "delivery-health.json", self.delivery_retry_days
         )
-        self.archive_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        self.reports_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.archive_root)
+        private_dir(self.reports_root)
 
     @property
     def journal(self) -> list[dict]:
@@ -722,7 +723,7 @@ class MeetingArchive:
 
             report_dir = self.reports_root / detail["meeting_id"]
             assets = report_dir / "assets"
-            assets.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private_dir(assets)
             for old in assets.glob("*.jpg"):
                 old.unlink()
 
@@ -1331,7 +1332,7 @@ class MeetingArchive:
         elif local_drive is not None and local_drive.parent.exists():
             try:
                 destination_path = local_drive / folder_name
-                destination_path.mkdir(mode=0o700, parents=True, exist_ok=True)
+                private_dir(destination_path)
                 for filename in ("index.html", "meeting-report.pdf"):
                     shutil.copy2(source / filename, destination_path / filename)
                 source_assets = source / "assets"

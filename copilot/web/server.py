@@ -44,6 +44,7 @@ from first_run import AIReadiness
 from ai_providers import AIChoiceError, AIService
 from stt import STTService
 from local_context import LocalContext
+from private_dirs import private_dir
 
 
 HOST = "127.0.0.1"
@@ -432,7 +433,7 @@ class RepositoryScope:
             else:
                 meetings[meeting_id] = value
             data = json.dumps({"version": 1, "meetings": meetings}, ensure_ascii=False, indent=2) + "\n"
-            self.selection_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private_dir(self.selection_path.parent)
             temporary = self.selection_path.with_suffix(".tmp")
             temporary.write_text(data, encoding="utf-8")
             temporary.chmod(0o600)
@@ -819,7 +820,7 @@ class MeetingJournal:
             payload = json.dumps(
                 {"version": 1, "items": self.items}, ensure_ascii=False, indent=2
             ) + "\n"
-            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private_dir(self.path.parent)
             temporary = self.path.with_suffix(".tmp")
             temporary.write_text(payload, encoding="utf-8")
             temporary.chmod(0o600)
@@ -878,7 +879,7 @@ class MeetingJournal:
                 return dict(item)
             item.update(status=status, status_source=source, evidence=evidence[:400],
                         status_updated_at=datetime.now().astimezone().isoformat(timespec="seconds"))
-            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private_dir(self.path.parent)
             temporary = self.path.with_suffix(".tmp")
             temporary.write_text(json.dumps({"version": 1, "items": self.items},
                                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1102,7 +1103,7 @@ class MeetingChat:
                 payload = json.dumps(
                     {"version": 1, "items": self.items}, ensure_ascii=False, indent=2
                 ) + "\n"
-                self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                private_dir(self.path.parent)
                 temporary = self.path.with_suffix(".tmp")
                 temporary.write_text(payload, encoding="utf-8")
                 temporary.chmod(0o600)
@@ -1571,7 +1572,7 @@ class MeetingFrames:
 
     def _persist(self) -> None:
         payload = json.dumps({"version": 1, "items": self.items}, ensure_ascii=False, indent=2) + "\n"
-        self.index_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.index_path.parent)
         temporary = self.index_path.with_suffix(".tmp")
         temporary.write_text(payload, encoding="utf-8")
         temporary.chmod(0o600)
@@ -1609,7 +1610,7 @@ class MeetingFrames:
             frame_id = str(uuid.uuid4())
             captured_at = datetime.now().astimezone().isoformat(timespec="seconds")
             frames_dir = directory / "screenshots"
-            frames_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            private_dir(frames_dir)
             filename = datetime.now().astimezone().strftime("%Y-%m-%dT%H-%M-%S%z") + ".jpg"
             path = frames_dir / filename
             shot = subprocess.run(
@@ -1937,7 +1938,7 @@ class CodexSession:
             "last_analyzed_at": self.last_analyzed_at,
             "analysis": self.analysis,
         }, ensure_ascii=False, indent=2) + "\n"
-        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.path.parent)
         temporary = self.path.with_suffix(".tmp")
         temporary.write_text(payload, encoding="utf-8")
         temporary.chmod(0o600)

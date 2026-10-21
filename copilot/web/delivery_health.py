@@ -8,6 +8,7 @@ import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
+from private_dirs import private_dir
 
 
 def _read(path: Path) -> dict:
@@ -175,7 +176,7 @@ class DeliveryHealth:
             self._save(stored)
 
     def _save(self, value: dict) -> None:
-        self.state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.state_file.parent)
         temporary = self.state_file.with_suffix(".tmp")
         temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary.chmod(0o600)

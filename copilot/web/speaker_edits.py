@@ -8,6 +8,7 @@ import threading
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from private_dirs import private_dir
 
 
 def segment_id(segment: dict) -> str:
@@ -53,7 +54,7 @@ class SpeakerEdits:
 
     def _write(self, meeting_id: str, snapshot: dict) -> None:
         path = self._path(meeting_id)
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(path.parent)
         canonical = self._read(meeting_id)
         for field in ("meeting", "status", "started_at", "updated_at", "latest_at", "capture_warnings"):
             if field in snapshot:

@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from calendar_meetings import CalendarMeetings
 from repo_preparations import RepositoryPreparations
+from private_dirs import private_dir
 
 
 KINDS = {"question", "risk", "objection"}
@@ -96,7 +97,7 @@ class CallPlans:
         return {"version": 1, "meetings": meetings if isinstance(meetings, dict) else {}}
 
     def _save(self, state: dict) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        private_dir(self.state_path.parent)
         temporary = self.state_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         temporary.chmod(0o600)

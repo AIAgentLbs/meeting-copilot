@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ai_providers import _file_lock
+from private_dirs import private_dir
 
 OPTIONS_CONTRACT = "meetontrack.stt-options/1"
 CHECK_CONTRACT = "meetontrack.stt-check/1"
@@ -280,7 +281,7 @@ class STTService:
     def _write_choice(self, choice):
         """Read-modify-replace under config.json.lock, same protocol as AISettings: missing file =
         empty object, malformed or not an object = refuse; every other key is kept."""
-        self.config_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.config_path.parent)
         with self.write_lock, _file_lock(self.config_path.with_name(self.config_path.name + ".lock")):
             try:
                 text = self.config_path.read_text(encoding="utf-8")
@@ -306,7 +307,7 @@ class STTService:
         key = key.strip() if isinstance(key, str) else ""
         if not key or any(character.isspace() for character in key):
             raise ValueError("Paste the API key as one line")
-        self.keys_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        private_dir(self.keys_dir)
         _atomic_write(self.keys_dir / engine_id, key)
         self.invalidate()
 

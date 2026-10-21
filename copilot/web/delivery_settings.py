@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 from contextlib import contextmanager
+from private_dirs import private_dir
 
 
 def read_json(path):
@@ -28,7 +29,7 @@ def read_json(path):
 
 def write_json(path, value):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_dir(path.parent)
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".delivery-")
     try:
         with os.fdopen(fd, "w") as stream:

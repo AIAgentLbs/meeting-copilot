@@ -10,6 +10,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from private_dirs import private_dir
 
 
 class BoundaryConflict(ValueError):
@@ -67,7 +68,7 @@ class MeetingBoundaries:
 
     def _commit(self, data):
         self._validate(data)
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        private_dir(self.path.parent)
         descriptor, temporary = tempfile.mkstemp(prefix=".boundaries-", dir=self.path.parent)
         try:
             with os.fdopen(descriptor, "w") as stream:
