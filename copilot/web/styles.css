@@ -543,7 +543,6 @@ input:focus-visible + span {
 
 .quiet-button,
 .repo-button,
-.segmented button,
 .suggestions button,
 .view-tabs button,
 .journal-filters button {
@@ -577,7 +576,6 @@ input:focus-visible + span {
 }
 
 .quiet-button:hover,
-.segmented button:hover,
 .language-switch button:hover,
 .suggestions button:hover,
 .view-tabs button:hover,
@@ -705,13 +703,6 @@ input:focus-visible + span {
   opacity: 0.52;
 }
 
-.segmented {
-  display: grid;
-  grid-template-columns: repeat(3, auto);
-  padding: 3px;
-  border-radius: 10px;
-  background: var(--surface-muted);
-}
 
 .transcript-actions {
   display: flex;
@@ -759,7 +750,6 @@ input:focus-visible + span {
 .board-item summary:focus-visible, .board-materials summary:focus-visible, .board-item select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .board-empty { color: var(--muted); font-size: 13px; line-height: 1.5; padding-top: 12px; }
 .copilot-pane .composer-wrap { padding: 8px 16px; }
-.copilot-pane .analysis-row { margin-bottom: 5px; }
 .copilot-pane .analysis-status { margin-bottom: 5px; }
 .copilot-pane .composer label[for="question"] { margin-bottom: 4px; }
 .copilot-pane textarea { min-height: 38px; height: 38px; }
@@ -787,20 +777,7 @@ input:focus-visible + span {
   flex: 0 0 auto;
 }
 
-.segmented button {
-  min-height: 28px;
-  padding: 4px 9px;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-}
 
-.segmented button.active {
-  border-color: var(--line);
-  background: var(--surface-strong);
-  color: var(--text);
-}
 
 .transcript,
 .chat,
@@ -1473,13 +1450,6 @@ input:focus-visible + span {
   background: var(--surface-strong);
 }
 
-.analysis-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 9px;
-}
 
 .analysis-status {
   min-height: 14px;
@@ -1968,9 +1938,6 @@ textarea::placeholder {
     grid-template-columns: 1fr;
   }
 
-  .analysis-row {
-    align-items: flex-start;
-  }
 
   .composer-input {
     grid-template-columns: 1fr;
@@ -2106,3 +2073,4 @@ textarea::placeholder {
 .context-folders input { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 10px; }
 .context-folders button { min-height: 44px; }
 .startup-example { padding: 12px 0; }
+.analysis-status:empty { display: none; }

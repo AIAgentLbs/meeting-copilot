@@ -50,7 +50,6 @@ const elements = {
   speakerSelectPending: document.querySelector("#speaker-select-pending"),
   speakerSelectClear: document.querySelector("#speaker-select-clear"),
   translationJump: document.querySelector("#translation-jump"),
-  speakerFilters: document.querySelector("#speaker-filters"),
   chat: document.querySelector("#chat"),
   chatLatest: document.querySelector("#chat-latest"),
   welcome: document.querySelector("#welcome"),
@@ -61,8 +60,6 @@ const elements = {
   note: document.querySelector("#note-button"),
   help: document.querySelector("#composer-help"),
   refresh: document.querySelector("#refresh-button"),
-  analyze: document.querySelector("#analyze-button"),
-  autoAnalysis: document.querySelector("#auto-analysis"),
   journal: document.querySelector("#journal"),
   callPlan: document.querySelector("#call-plan"),
   callBoard: document.querySelector("#call-board"),
@@ -70,9 +67,6 @@ const elements = {
   callPlanCount: document.querySelector("#call-plan-count"),
   journalList: document.querySelector("#journal-list"),
   journalCounts: {
-    questions: document.querySelector("#questions-count"),
-    objections: document.querySelector("#objections-count"),
-    decisions: document.querySelector("#decisions-count"),
     notes: document.querySelector("#notes-count"),
     entities: document.querySelector("#entities-count"),
   },
@@ -105,7 +99,6 @@ const translations = {
     "delivery.hint": "Отчёты сохранены локально. Откройте историю встреч для статуса доставки.",
     "language.label": "Язык интерфейса",
     "aria.transcript_view": "Вид левой панели",
-    "aria.speaker_filter": "Фильтр участников",
     "aria.copilot_view": "Режим правой панели",
     "aria.journal_filter": "Фильтр журнала",
     "aria.workspace_filter": "Чат и сигналы встречи",
@@ -124,7 +117,6 @@ const translations = {
     "transcript.translation_hint": "Последний перевод: {time}. Новые реплики на английском не переводятся.",
     "transcript.translation_needs_ai": "EN: выберите ИИ для перевода в разделе «Начать работу»",
     "frames.tab": "Кадры",
-    "speaker.all": "Все",
     "speakers.open": "Имена",
     "speakers.title": "Участники и реплики",
     "speakers.help": "Имя меняется во всей встрече. Если два голоса слиплись, выберите реплики и назначьте участника.",
@@ -188,18 +180,11 @@ const translations = {
     "suggestion.history": "Что мы решали раньше?",
     "suggestion.challenge": "Что здесь стоит оспорить?",
     "journal.all": "Все",
-    "journal.questions": "Вопросы",
-    "journal.objections": "Риски и возражения",
-    "journal.decisions": "Решения",
     "journal.notes": "Мои заметки",
     "journal.entities": "Ссылки и сервисы",
     "meeting_chat.note": "Видимый Zoom Chat и импорт экспорта · сообщения сохраняются отдельно от скриншотов. Скрытая история автоматически не прокручивается.",
     "meeting_chat.import": "Импорт TXT / JSON",
     "meeting_chat.questions": "Только вопросы аудитории",
-    "analysis.auto": "Анализировать разговор автоматически",
-    "analysis.now": "Проанализировать сейчас",
-    "analysis.help": "Находит вопросы, риски и решения в расшифровке. Галочка включает автоматические проверки новых реплик; кнопка запускает одну проверку сейчас. На запись звука не влияет.",
-    "analysis.initial": "Автоанализ ещё не запускался",
     "composer.label": "Вопрос или заметка к текущему созвону",
     "composer.placeholder": "Спросите Copilot или запишите мысль по ходу разговора.",
     "composer.ask": "Спросить",
@@ -333,7 +318,6 @@ const translations = {
     "delivery.hint": "Reports are saved locally. Open meeting history for delivery status.",
     "language.label": "Interface language",
     "aria.transcript_view": "Left pane view",
-    "aria.speaker_filter": "Speaker filter",
     "aria.copilot_view": "Right pane view",
     "aria.journal_filter": "Journal filter",
     "aria.workspace_filter": "Meeting chat and signals",
@@ -352,7 +336,6 @@ const translations = {
     "transcript.translation_hint": "Latest translation: {time}. New English utterances are not translated.",
     "transcript.translation_needs_ai": "EN: choose AI for translation in Getting started",
     "frames.tab": "Frames",
-    "speaker.all": "All",
     "speakers.open": "Names",
     "speakers.title": "Participants and utterances",
     "speakers.help": "A name changes throughout this meeting. If voices were merged, select utterances and assign a participant.",
@@ -416,18 +399,11 @@ const translations = {
     "suggestion.history": "What did we decide earlier?",
     "suggestion.challenge": "What should I challenge here?",
     "journal.all": "All",
-    "journal.questions": "Questions",
-    "journal.objections": "Risks & objections",
-    "journal.decisions": "Decisions",
     "journal.notes": "My notes",
     "journal.entities": "Links and services",
     "meeting_chat.note": "Visible Zoom Chat and imported exports · messages are saved independently of screenshots. Hidden history is not scrolled automatically.",
     "meeting_chat.import": "Import TXT / JSON",
     "meeting_chat.questions": "Audience questions only",
-    "analysis.auto": "Analyse the conversation automatically",
-    "analysis.now": "Analyse now",
-    "analysis.help": "Finds questions, risks and decisions in the transcript. The checkbox enables automatic checks of new utterances; the button runs one check now. Does not affect audio recording.",
-    "analysis.initial": "Auto-analysis has not run yet",
     "composer.label": "Question or note for the current meeting",
     "composer.placeholder": "Ask Copilot or capture a thought during the conversation.",
     "composer.ask": "Ask",
@@ -611,13 +587,12 @@ function applyLanguage() {
   document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(activeTranscript) });
 }
 
-let sourceFilter = "all";
 let transcriptSignature = "";
 let renderedMessages = "";
 let requestBusy = false;
 let autoAnalysisPrimed = false;
 let journalSignature = "";
-let journalFilter = "questions";
+let journalFilter = "notes";
 let meetingChatSignature = "";
 let repositoryCatalog = [];
 let selectedRepositoryPaths = new Set();
@@ -999,9 +974,6 @@ Object.assign(translations.en, {
 });
 
 const journalGroups = {
-  questions: new Set(["QUESTION", "ASK", "INCOMING_QUESTION", "OPEN_QUESTION"]),
-  objections: new Set(["CONTRADICTION", "RISK", "OBJECTION"]),
-  decisions: new Set(["DECISION", "COMMITMENT"]),
   notes: new Set(["NOTE"]),
   entities: new Set(["URL", "PRODUCT", "SERVICE"]),
 };
@@ -1249,7 +1221,7 @@ function renderTranscript(transcript) {
     elements.liveStatus.lastChild.textContent = t("status.no_fresh");
   }
 
-  const signature = `${sourceFilter}:${transcript.meeting_id}:${transcript.updated_at}:${transcript.segments.length}:${transcript.translation_revision || 0}:${transcript.speaker_revision || 0}`;
+  const signature = `${transcript.meeting_id}:${transcript.updated_at}:${transcript.segments.length}:${transcript.translation_revision || 0}:${transcript.speaker_revision || 0}`;
   if (signature === transcriptSignature) return;
   transcriptSignature = signature;
 
@@ -1267,13 +1239,8 @@ function renderTranscript(transcript) {
   const nearBottom =
     elements.transcript.scrollHeight - elements.transcript.scrollTop - elements.transcript.clientHeight < 120;
   const fragment = document.createDocumentFragment();
-  const filtered = transcript.segments.filter(
-    (segment) => sourceFilter === "all" || (segment.speaker_id
-      ? (sourceFilter === "microphone" ? segment.speaker_id === "self" : segment.speaker_id !== "self")
-      : segment.source === sourceFilter),
-  );
 
-  if (!filtered.length) {
+  if (!transcript.segments.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
     empty.append(
@@ -1286,7 +1253,7 @@ function renderTranscript(transcript) {
     );
     fragment.append(empty);
   } else {
-    for (const segment of filtered) {
+    for (const segment of transcript.segments) {
       const row = document.createElement("article");
       row.className = `utterance ${segment.source}`;
       row.dataset.timestamp = segment.timestamp;
@@ -1449,7 +1416,7 @@ function renderMessages(copilot) {
       error: analysis.message || t("analysis.error_default"),
     });
   } else {
-    elements.analysisStatus.textContent = t("analysis.initial");
+    elements.analysisStatus.textContent = "";
   }
 }
 
@@ -2039,11 +2006,6 @@ function jumpToTranscript(anchorAt) {
   });
   elements.transcript.hidden = false;
   elements.frames.hidden = true;
-  elements.speakerFilters.hidden = false;
-  sourceFilter = "all";
-  document.querySelectorAll(".segmented button").forEach((item) => {
-    item.classList.toggle("active", item.dataset.source === "all");
-  });
   transcriptSignature = "";
   if (activeTranscript) renderTranscript(activeTranscript);
 
@@ -2609,7 +2571,6 @@ async function state() {
     renderCallBoard(data.call_plan || null, data.journal || []);
     renderMeetingChat(data.meeting_chat || []);
     elements.send.disabled = requestBusy || data.copilot.busy;
-    elements.analyze.disabled = requestBusy || data.copilot.busy;
     if (stateConnectionFailed && !requestBusy) {
       elements.help.textContent = t("help.ai");
       elements.help.classList.remove("error");
@@ -2622,7 +2583,6 @@ async function state() {
       && data.copilot.analysis?.state === "idle";
     const analysisKey = `${data.transcript.meeting_id}:${data.transcript.status}:${data.transcript.latest_at}:${(data.meeting_chat || []).length}:${(data.meeting_chat || []).at(-1)?.id || ""}`;
     if (
-      elements.autoAnalysis.checked &&
       (data.transcript.live || finishedWithoutAnalysis) &&
       (data.transcript.latest_at || data.meeting_chat?.length) &&
       analysisKey !== autoAnalysisPrimed &&
@@ -2729,17 +2689,6 @@ async function analyze(force) {
   }
 }
 
-document.querySelectorAll(".segmented button").forEach((button) => {
-  button.addEventListener("click", () => {
-    sourceFilter = button.dataset.source;
-    transcriptSignature = "";
-    document.querySelectorAll(".segmented button").forEach((item) => {
-      item.classList.toggle("active", item === button);
-    });
-    void state();
-  });
-});
-
 document.querySelectorAll("[data-transcript-view]").forEach((button) => {
   button.addEventListener("click", () => {
     transcriptView = button.dataset.transcriptView;
@@ -2749,7 +2698,6 @@ document.querySelectorAll("[data-transcript-view]").forEach((button) => {
     });
     elements.transcript.hidden = framesOpen;
     elements.frames.hidden = !framesOpen;
-    elements.speakerFilters.hidden = framesOpen;
   });
 });
 
@@ -2812,7 +2760,7 @@ document.querySelector("#chat-import-input").addEventListener("change", async ev
     if (!response.ok || !data.ok) throw new Error(data.error || "Import failed");
     result.textContent = `${uiLanguage === "ru" ? "Добавлено" : "Added"}: ${data.added}`;
     renderMeetingChat(data.meeting_chat);
-    if (data.added && elements.autoAnalysis.checked) void analyze(true);
+    if (data.added) void analyze(true);
   } catch (error) { result.textContent = error.message; }
   event.target.value = "";
 });
@@ -2855,7 +2803,6 @@ elements.refresh.addEventListener("click", async () => {
   }
 });
 
-elements.analyze.addEventListener("click", () => void analyze(true));
 elements.captureFrame.addEventListener("click", async () => {
   elements.captureFrame.disabled = true;
   elements.captureFrame.textContent = t("frames.capturing");

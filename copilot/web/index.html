@@ -188,11 +188,6 @@
               <button class="active" data-transcript-view="transcript" type="button"><span data-i18n="transcript.tab">Стенограмма</span></button>
               <button data-transcript-view="frames" type="button"><span data-i18n="frames.tab">Кадры</span> <span id="frame-count">0</span></button>
             </div>
-            <div class="segmented" id="speaker-filters" role="group" aria-label="Фильтр участников" data-i18n-aria-label="aria.speaker_filter">
-              <button class="active" data-source="all" type="button" data-i18n="speaker.all">Все</button>
-              <button data-source="microphone" type="button" data-i18n="speaker.me">Я</button>
-              <button data-source="system" type="button" data-i18n="speaker.others">Собеседники</button>
-            </div>
           </div>
         </div>
         <section class="recognition-notice" id="recognition-notice" hidden aria-label="Состояние расшифровки" data-i18n-aria-label="recognition.heading">
@@ -232,9 +227,6 @@
             <button class="active" data-content-view="board" role="tab" aria-selected="true" type="button" data-i18n="board.tab">Обзор звонка</button>
             <button data-content-view="plan" id="call-plan-tab" role="tab" type="button" hidden><span data-i18n="plan.tab">Подготовка</span><span class="tab-count" id="call-plan-count">0</span></button>
             <button data-content-view="chat" role="tab" type="button" data-i18n="view.chat">Чат</button>
-            <button data-content-view="questions" role="tab" type="button"><span data-i18n="journal.questions">Вопросы</span><span class="tab-count" id="questions-count">0</span></button>
-            <button data-content-view="objections" role="tab" type="button"><span data-i18n="journal.objections">Риски и возражения</span><span class="tab-count" id="objections-count">0</span></button>
-            <button data-content-view="decisions" role="tab" type="button"><span data-i18n="journal.decisions">Решения</span><span class="tab-count" id="decisions-count">0</span></button>
             <button data-content-view="notes" role="tab" type="button"><span data-i18n="journal.notes">Мои заметки</span><span class="tab-count" id="notes-count">0</span></button>
             <button data-content-view="entities" role="tab" type="button"><span data-i18n="journal.entities">Ссылки и сервисы</span><span class="tab-count" id="entities-count">0</span></button>
             <button data-content-view="meeting-chat" role="tab" type="button"><span data-i18n="view.meeting_chat">Чат встречи</span><span class="tab-count" id="meeting-chat-count">0</span></button>
@@ -272,15 +264,7 @@
         </div>
 
         <div class="composer-wrap" id="composer-wrap">
-          <div class="analysis-row">
-            <label class="switch-label">
-              <input id="auto-analysis" type="checkbox" aria-describedby="analysis-help" checked />
-              <span data-i18n="analysis.auto">Анализировать разговор автоматически</span>
-            </label>
-            <button class="quiet-button" id="analyze-button" type="button" aria-describedby="analysis-help" data-i18n="analysis.now">Проанализировать сейчас</button>
-          </div>
-          <div class="note-help" id="analysis-help" data-i18n="analysis.help">Находит вопросы, риски и решения в расшифровке. Галочка включает автоматические проверки новых реплик; кнопка запускает одну проверку сейчас. На запись звука не влияет.</div>
-          <div class="analysis-status" id="analysis-status" data-i18n="analysis.initial">Автоанализ ещё не запускался</div>
+          <div class="analysis-status" id="analysis-status"></div>
           <form class="composer" id="chat-form">
             <label for="question" data-i18n="composer.label">Вопрос или заметка к текущему созвону</label>
             <div class="composer-input">
