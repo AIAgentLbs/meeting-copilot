@@ -42,6 +42,25 @@ class WindowsRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(active)
             self.assertEqual(set(active["tracks"]), {"mic", "system"})
 
+    def test_health_names_the_installed_version(self):
+        # MEETONTRACK-65: the launcher reuses a running server only for its own version.
+        import http.client
+        import threading
+        from http.server import ThreadingHTTPServer
+        import server
+        with patch.dict(server.UPDATES.identity, {"version": "9.9.9-windows-beta.1"}):
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+            threading.Thread(target=httpd.serve_forever, daemon=True).start()
+            try:
+                connection = http.client.HTTPConnection("127.0.0.1", httpd.server_port, timeout=5)
+                connection.request("GET", "/api/health")
+                body = json.loads(connection.getresponse().read())
+                connection.close()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+        self.assertEqual(body, {"ok": True, "service": "meeting-copilot", "version": "9.9.9-windows-beta.1"})
+
     def test_windows_liveness_never_calls_os_kill(self):
         with patch("recording_health.os.name", "nt"), patch("recording_health.os.kill") as kill, \
              patch("recording_health.windows_owner_alive", return_value=True, create=True):

@@ -14,6 +14,42 @@ $version='0.1.12-windows-beta.1'
 $url='https://github.com/AIAgentLbs/meetontrack/releases/download/windows-v0.1.12/meeting-copilot-windows-v0.1.12-x64.zip'
 $utf8=[Text.UTF8Encoding]::new($false)
 $script:copilotDownloadPython=$null
+function Test-OwnRunValue([string]$Value,[string]$VersionsRoot){
+    # Recorders before MEETONTRACK-88 registered themselves at sign-in (HKCU Run) with their own
+    # versioned path, which outlives updates and races the Startup shortcut that owns sign-in.
+    return $Value -match '^\s*"([^"]+)"' -and $Matches[1].StartsWith($VersionsRoot.TrimEnd('\')+'\','OrdinalIgnoreCase')
+}
+function Stop-OtherVersions([string]$Root,[int]$Port=43121,[switch]$KeepCapture){
+    # MEETONTRACK-65: after an update the previous version's web server keeps the port, so the
+    # new version never serves. Stop only the process listening on it, and only when it is our
+    # own Python from another versions\<v> folder; other jobs on that Python are left alone.
+    # A capture is never stopped (MEETONTRACK-88): an old one is asked to quit once idle, so a
+    # recording in progress finishes first, and a hidden waiter starts this version's capture
+    # after it has quit: the version current.json names then, so a later update wins. A capture
+    # too old for that command answers no and is replaced at next sign-in by the Startup
+    # shortcut. -KeepCapture (install without launch) leaves the capture alone. Same text in install.ps1 and meeting-copilot.ps1: the
+    # installer may unpack a package whose launcher predates this.
+    $versions=(Split-Path $Root -Parent).TrimEnd('\')+'\'
+    $own=$Root.TrimEnd('\')+'\'
+    $listeners=@(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue).OwningProcess
+    $old=@(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" | Where-Object {
+        $_.ProcessId -in $listeners -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase')})
+    foreach($process in $old){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
+    if($old.Count){
+        Wait-Process -Id $old.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+        for($i=0;$i -lt 40 -and @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue).Count;$i++){Start-Sleep -Milliseconds 250}
+    }
+    $capture=Join-Path $Root 'capture\MeetingCopilotCapture.exe'
+    $session=(Get-Process -Id $PID).SessionId  # one capture per sign-in session
+    $oldCapture=@(Get-CimInstance Win32_Process -Filter "Name='MeetingCopilotCapture.exe' AND SessionId=$session" | Where-Object {
+        $_.CommandLine -notmatch '--live-worker' -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase')})
+    if($KeepCapture -or -not $oldCapture.Count -or -not(Test-Path $capture -PathType Leaf)){return}
+    $asked=Start-Process $capture -ArgumentList 'record','quit-when-idle' -WindowStyle Hidden -Wait -PassThru
+    if($asked.ExitCode -ne 0){return}
+    $current=Join-Path (Split-Path $versions -Parent) 'current.json'
+    $waiter="Wait-Process -Id $($oldCapture.ProcessId -join ','); `$c=try{(Get-Content -ErrorAction Stop -LiteralPath '$($current -replace "'","''")' -Raw | ConvertFrom-Json).directory+'\capture\MeetingCopilotCapture.exe'}catch{'$($capture -replace "'","''")'}; if((Test-Path -LiteralPath `$c) -and -not @(Get-CimInstance Win32_Process -Filter `"Name='MeetingCopilotCapture.exe' AND SessionId=$session`" | Where-Object {`$_.CommandLine -notmatch '--live-worker'}).Count){Start-Process -FilePath `$c -ArgumentList '--background'}"
+    Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -WindowStyle Hidden -ArgumentList '-NoProfile','-EncodedCommand',([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($waiter)))
+}
 function Download-VerifiedInput([string]$Url,[string]$Target){
     if($script:copilotDownloadPython){
         $code="import sys,urllib.request,shutil; r=urllib.request.urlopen(sys.argv[1],timeout=60); f=open(sys.argv[2],'wb'); shutil.copyfileobj(r,f); f.close(); r.close()"
@@ -64,7 +100,7 @@ try {
     Copy-Item "$temporary\payload\*" $destination -Recurse -Force
     $script:copilotDownloadPython=Join-Path $destination 'python\python.exe'
     if(-not(Test-Path "$configRoot\config.json")){
-        $settings=@{recordings_dir=(Join-Path $dataRoot 'recordings'); keep_audio=$true; system_audio='all'; start_at_login=$false; interface_language='auto'; auto_record=@{enabled=$true;min_duration_seconds=300}; transcription=@{enabled=$true;engine='local';local_engine='parakeet'}; live_transcription=@{enabled=$true}; summary=@{enabled=$false;backend='none'}; speaker_names=@{backend='none'}}
+        $settings=@{recordings_dir=(Join-Path $dataRoot 'recordings'); keep_audio=$true; system_audio='all'; interface_language='auto'; auto_record=@{enabled=$true;min_duration_seconds=300}; transcription=@{enabled=$true;engine='local';local_engine='parakeet'}; live_transcription=@{enabled=$true}; summary=@{enabled=$false;backend='none'}; speaker_names=@{backend='none'}}
         [IO.File]::WriteAllText("$configRoot\config.json",($settings|ConvertTo-Json -Depth 8),$utf8)
     }
     if(Test-Path "$configRoot\SESSION.md"){
@@ -106,6 +142,7 @@ try {
         }
     }
     [IO.File]::WriteAllText("$InstallRoot\current.json",(@{version=$version;directory=$destination}|ConvertTo-Json),$utf8)
+    Stop-OtherVersions $destination -KeepCapture:$NoLaunch
     if(-not $NoShortcuts){
         # AI is optional; never pin/install an obsolete CLI or change an existing
         # user's auth. The first-run assistant offers installation and a live check.
@@ -117,6 +154,9 @@ try {
         $shortcut.IconLocation="$destination\capture\MeetingCopilotCapture.exe"
         $shortcut.Save()
         $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'MeetOnTrack.lnk'
+        $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+        $registered=(Get-ItemProperty $run -ErrorAction SilentlyContinue).MeetingCopilotCapture
+        if($registered -and (Test-OwnRunValue $registered (Join-Path $InstallRoot 'versions'))){Remove-ItemProperty $run MeetingCopilotCapture}
         Copy-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'MeetOnTrack.lnk') $startup -Force
         foreach($folder in @([Environment]::GetFolderPath('Programs'),[Environment]::GetFolderPath('Startup'))){
             $legacy=Join-Path $folder 'Meeting Copilot.lnk'

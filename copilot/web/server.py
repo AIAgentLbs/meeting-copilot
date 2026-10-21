@@ -2438,7 +2438,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, "options": AI.options(query.get("provider", [""])[0],
                                                           refresh=query.get("refresh", [""])[0] == "1")})
         elif path == "/api/health":
-            self._json({"ok": True, "service": "meeting-copilot"})
+            # The launcher reuses a running server only when it is this exact installed version.
+            self._json({"ok": True, "service": "meeting-copilot", "version": UPDATES.identity["version"]})
         elif path == "/api/state":
             transcript = annotated_snapshot()
             with FRAMES.lock:
