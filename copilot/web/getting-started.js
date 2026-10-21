@@ -207,7 +207,46 @@
     } catch(error) { $("context-folder-message").textContent = error.message; }
     finally { $("context-folder-add").disabled = false; }
   };
+  // Anything that stops the app from doing its job gets a red banner above everything, with the one
+  // button that fixes it, also during a recording (owner decision 2026-10-21: a call was recorded with
+  // no speech recognition chosen and only a small grey label said so).
+  const blockerState = {setup: null, speech: null, health: null};
+  let blockerSignature = "";
+  function openStep(id) {show(); $(id).scrollIntoView({block: "start"});}
+  async function openRecorder() {try {await api("/api/getting-started/open-recorder", {});} catch (error) {openStep("startup-audio-heading");}}
+  function blockers() {
+    const {setup, speech, health} = blockerState, found = [];
+    if (setup?.capture_installed === false) found.push([word("The recorder is not installed. Calls are not recorded.", "Приложение для записи не установлено. Звонки не записываются."), word("How to install", "Как установить"), () => openStep("startup-audio-heading")]);
+    else if (setup?.capture_running === false) found.push([word("The recorder is not running. Calls are not recorded.", "Приложение для записи не запущено. Звонки не записываются."), word("Start the recorder", "Запустить запись"), openRecorder]);
+    if (health?.state === "action_required" && health.reason === "audio_track_stalled") found.push([word("Sound is not being recorded. Check the microphone and system audio permissions in the recorder.", "Звук не записывается. Проверьте разрешения на микрофон и системный звук в окне записи."), word("Open the recorder", "Открыть окно записи"), openRecorder]);
+    if (speech?.state === "needs_choice") found.push([word("Speech recognition is not set up. Calls are recorded, but there is no transcript and no AI help.", "Распознавание речи не настроено. Звонок записывается, но стенограммы и подсказок ИИ не будет."), word("Set up speech recognition", "Настроить распознавание"), () => openStep("speech-step")]);
+    else if (speech?.state === "unavailable") found.push([word("Speech recognition does not work: ", "Распознавание речи не работает: ") + speech.reason + word(". There is no transcript and no AI help.", ". Стенограммы и подсказок ИИ не будет."), word("Fix speech recognition", "Исправить распознавание"), () => openStep("speech-step")]);
+    const ai = setup?.ai || {};
+    if (ai.state === "needs_choice") found.push([word("AI is not chosen. There is no AI help during calls.", "ИИ не выбран. Подсказок ИИ во время звонка не будет."), word("Choose AI", "Выбрать ИИ"), () => openStep("startup-ai-heading")]);
+    else if (ai.state === "error") found.push([word("AI check failed: ", "Проверка ИИ не прошла: ") + errorText(ai.message || ""), word("Fix AI", "Исправить ИИ"), () => openStep("startup-ai-heading")]);
+    return found;
+  }
+  function renderBlockers() {
+    const found = blockers(), signature = JSON.stringify(found.map(([text, label]) => [text, label]));
+    if (signature === blockerSignature) return;  // keeps the button under the pointer between polls
+    blockerSignature = signature;
+    $("blocker-banner").replaceChildren(...found.map(([text, label, fix]) => {
+      const row = document.createElement("div"), strong = document.createElement("strong"), button = document.createElement("button");
+      row.className = "blocker"; strong.textContent = text; button.type = "button"; button.textContent = label; button.onclick = fix;
+      row.append(strong, button);
+      return row;
+    }));
+    $("blocker-banner").hidden = !found.length;
+  }
+  async function refreshBlockers() {
+    const [setup, speech] = await Promise.allSettled([api("/api/getting-started"), api("/api/stt")]);
+    blockerState.setup = setup.status === "fulfilled" ? setup.value : null;
+    blockerState.speech = speech.status === "fulfilled" ? speech.value.choice : null;
+    renderBlockers();
+  }
   window.renderGettingStartedStatus = data => {
+    blockerState.health = data.recording_health || null;
+    renderBlockers();
     const wasRecording = recording;
     recording = Boolean(data.recording_health?.audio_recording);
     if(recording && starting) {starting=false; $("startup-message").textContent=word("Audio recording confirmed.","Запись звука подтверждена.");}
@@ -215,8 +254,10 @@
     $("assistant-problem").hidden=!error; $("assistant-problem-text").textContent=errorText(error);
     if(wasRecording!==recording) render();
   };
-  new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:["lang"]});
-  window.addEventListener("focus", () => {if(!$("getting-started").hidden) void load();});
+  new MutationObserver(() => {render(); renderBlockers();}).observe(document.documentElement,{attributes:true,attributeFilter:["lang"]});
+  window.addEventListener("focus", () => {if(!$("getting-started").hidden) void load(); void refreshBlockers();});
+  void refreshBlockers();
+  setInterval(refreshBlockers, 15000);
   $("repo-button").addEventListener("click", load);
   render();
   if(!localStorage.getItem("meetontrack-started")) show(); else void load();

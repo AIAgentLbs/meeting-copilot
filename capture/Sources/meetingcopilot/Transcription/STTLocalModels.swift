@@ -190,6 +190,12 @@ enum LocalSTTModel: Equatable, Sendable {
         return prompts.keys.sorted()
     }
 
+    /// When this model's folder last changed: its download or update, the
+    /// person's own last action with it.
+    var modified: Date? {
+        (try? directory.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }
+
     /// The speech models in our own model folders, complete: what the
     /// installer (or an earlier setup) downloaded. Other apps' folders do not
     /// count; nobody here chose those.

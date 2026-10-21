@@ -152,6 +152,7 @@ class STTService:
             # arguments, so nothing here may start it (MEETONTRACK-69).
             self.runner = self.popen = _no_windows_recorder
         self.lock, self.discovery_lock, self.write_lock = threading.Lock(), threading.Lock(), threading.Lock()
+        self.adopting = threading.Lock()
         self.cache = None  # (monotonic time, result)
         self.checks, self.downloads_by_id, self.jobs_by_id = {}, {}, {}
 
@@ -212,11 +213,27 @@ class STTService:
             state, reason = "", WINDOWS_REASON
         elif choice is None or not all(choice[key] for key in ("engine", "model", "language")):
             state, reason = "needs_choice", "Choose speech recognition in Getting started."
+            self._adopt_in_background()
         elif cached and cached.get("ok") and block.get("stored") == stored and block.get("state") in STATES:
             state, reason = block["state"], str(block.get("reason") or "")
         else:
             state, reason = "", "Reading what the recorder offers…"
         return {"choice": stored, "state": state, "reason": reason, "deferred": self.deferred()}
+
+    def _adopt_in_background(self):
+        """`stt-options` adopts the model downloaded last when there is no choice yet (the capture
+        app owns that rule). Run it without holding up the caller, one at a time, at most every 30 s."""
+        cached = self.cache
+        if cached and time.monotonic() - cached[0] < 30 or not self.adopting.acquire(blocking=False):
+            return
+
+        def run():
+            try:
+                self.invalidate()
+                self.options()
+            finally:
+                self.adopting.release()
+        threading.Thread(target=run, daemon=True).start()
 
     def deferred(self):
         found = []

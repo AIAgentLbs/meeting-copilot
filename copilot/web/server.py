@@ -2241,6 +2241,17 @@ class AnnotationCache:
 ANNOTATED_CACHE = AnnotationCache()
 
 
+def recorder_running() -> bool | None:
+    """Whether the recorder app is running, from the process list; None when that can't be told."""
+    if os.name == "nt":
+        return None  # ponytail: Windows liveness unknown, add a tasklist check when its banner needs it
+    try:
+        listing = subprocess.run(["/bin/ps", "-axo", "comm="], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return str(RECOGNITION_GUARD.binary) in listing.splitlines()
+
+
 def annotated_snapshot():
     return ANNOTATED_CACHE.snapshot()
 
@@ -2426,6 +2437,7 @@ class Handler(BaseHTTPRequestHandler):
                 config = {}
             self._json({"ok": True, "ai": AI_READINESS.snapshot(),
                         "capture_installed": RECOGNITION_GUARD.binary.is_file(),
+                        "capture_running": recorder_running(),
                         "live_enabled": bool(config.get("live_transcription", {}).get("enabled", False)),
                         "folders": LOCAL_CONTEXT.snapshot()})
         elif path == "/api/ai":

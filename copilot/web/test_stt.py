@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -225,6 +226,77 @@ class SaveChoiceTests(STTTestCase):
         options["choice"] = {"stored": choice, "state": "ready", "reason": ""}
         service.cache = (time.monotonic(), {**options, "ok": True})
         self.assertEqual(service.status()["state"], "ready")
+
+
+    def test_needs_choice_runs_discovery_which_adopts_a_downloaded_model(self):
+        choice = {"engine": "fluidaudio", "model": "fixture-batch-model", "language": "auto"}
+        options = {**json.loads(FIXTURE), "choice": {"stored": choice, "state": "ready", "reason": ""}}
+        runner = FakeRunner(stdout=json.dumps(options))
+        config = self.config
+
+        def adopting(args, **kwargs):  # what `stt-options` does when no choice is stored yet
+            config.write_text(json.dumps({"stt": {"choice": choice}, "other": 1}))
+            return runner(args, **kwargs)
+        service = self.service(runner=adopting)
+        self.assertEqual(service.status()["state"], "needs_choice")
+        deadline = time.monotonic() + 2
+        while service.status()["state"] != "ready" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(service.status()["state"], "ready")
+        self.assertEqual(len(runner.calls), 1)  # one run, not one per status read
+
+
+BANNER_PROBE = r"""
+const fs = require("fs");
+const elements = {};
+const stub = () => new Proxy({children: [], dataset: {}, style: {}, classList: {add() {}, remove() {}, toggle() {}}}, {
+  get(target, key) {
+    if (key in target) return target[key];
+    if (key === "replaceChildren") return (...nodes) => { target.children = nodes; };
+    if (key === "append") return (...nodes) => { target.children.push(...nodes); };
+    return () => {};
+  },
+  set(target, key, value) { target[key] = value; return true; },
+});
+const listeners = {};
+let responses = {};
+global.document = {getElementById: id => (elements[id] ||= stub()), createElement: stub, createDocumentFragment: stub,
+  createTextNode: text => ({text}), documentElement: {lang: "en"}, querySelectorAll: () => []};
+global.window = {addEventListener: (name, fn) => { listeners[name] = fn; }};
+global.localStorage = {getItem: () => "1", setItem() {}};
+global.MutationObserver = class { observe() {} };
+global.setInterval = () => 0;
+global.setTimeout = () => 0;
+global.fetch = async path => ({ok: true, json: async () => responses[path.split("?")[0]] || {ok: true}});
+const tick = () => new Promise(resolve => setImmediate(resolve));
+(async () => {
+  responses = {"/api/getting-started": {ok: true, capture_installed: true, capture_running: true, ai: {state: "ready"}},
+               "/api/stt": {ok: true, choice: {state: "needs_choice", reason: ""}}};
+  eval(fs.readFileSync(process.argv[2], "utf8"));
+  for (let i = 0; i < 5; i++) await tick();
+  const banner = elements["blocker-banner"];
+  const shown = {hidden: banner.hidden, rows: banner.children.map(row => row.children[0].textContent)};
+  responses["/api/stt"] = {ok: true, choice: {state: "ready", reason: ""}};
+  listeners.focus();
+  for (let i = 0; i < 5; i++) await tick();
+  console.log(JSON.stringify({shown, after: {hidden: banner.hidden, rows: banner.children.length}}));
+})();
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "node is not installed")
+class BlockerBannerTests(unittest.TestCase):
+    def test_banner_shows_for_needs_choice_and_goes_when_ready(self):
+        with tempfile.TemporaryDirectory() as folder:
+            probe = Path(folder) / "probe.js"
+            probe.write_text(BANNER_PROBE, encoding="utf-8")
+            run = subprocess.run(["node", str(probe), str(WEB / "getting-started.js")],
+                                 capture_output=True, text=True, timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        result = json.loads(run.stdout)
+        self.assertFalse(result["shown"]["hidden"])
+        self.assertIn("Speech recognition is not set up", result["shown"]["rows"][0])
+        self.assertEqual(result["after"], {"hidden": True, "rows": 0})
 
 
 class VocabularyParityTests(unittest.TestCase):
