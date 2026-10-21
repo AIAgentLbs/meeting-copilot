@@ -184,6 +184,14 @@ class MeetingArchive:
                 clean["segments"] = previous["segments"]
             corrected = self.annotate_speakers(clean)
             clean["segments"] = corrected["segments"]
+            # Live translations exist only in memory; this file is their durable copy.
+            # A restart or an unavailable translation provider must not erase them.
+            translated = {(s.get("source"), s.get("timestamp"), s.get("text")): s
+                          for s in previous.get("segments", []) if s.get("translation_en")}
+            for segment in clean["segments"]:
+                old = translated.get((segment.get("source"), segment.get("timestamp"), segment.get("text")))
+                if old and not segment.get("translation_en"):
+                    segment.update({key: old[key] for key in ("translation_en", "translation_partial", "language") if key in old})
             for field in ("speaker_names", "speaker_revision", "speaker_corrected_at"):
                 if field in previous:
                     clean[field] = previous[field]

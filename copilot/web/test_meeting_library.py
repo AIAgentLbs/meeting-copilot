@@ -49,6 +49,24 @@ class MeetingLibraryTests(unittest.TestCase):
         self.assertEqual(self.archive.source_signature(self.archive.detail("example")), signature,
                          "Renaming the library must not trigger automatic report regeneration/delivery")
 
+    def test_restart_without_translation_cache_keeps_archived_translation(self):
+        # Live translations live only in memory; after a service restart (or with no
+        # translation provider chosen) the re-saved snapshot lacks them.
+        translated = json.loads(json.dumps(self.snapshot))
+        translated["segments"][0].update(translation_en="We discussed it.", translation_partial=False, language="bg")
+        self.archive.sync_transcript(translated)
+        path = self.root / "archive/example/meeting.json"
+        before = path.read_bytes()
+        signature = self.archive.source_signature(self.archive.detail("example"))
+        self.archive.sync_transcript(self.snapshot)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(self.archive.source_signature(self.archive.detail("example")), signature,
+                         "A restart must not trigger report regeneration")
+        changed = json.loads(json.dumps(self.snapshot))
+        changed["segments"][0]["text"] = "Different words now."
+        self.archive.sync_transcript(changed)
+        self.assertNotIn("translation_en", json.loads(path.read_text())["segments"][0])
+
     def test_empty_or_unknown_rename_is_rejected(self):
         for identity, title in [("missing", "Test"), ("example", " "), ("example", "x" * 201)]:
             with self.subTest(identity=identity, title=title):
