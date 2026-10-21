@@ -16,7 +16,7 @@ import Foundation
 ///       "calendar": true,
 ///       "auto_record": { "enabled": true, "mic_activity": true, "calendar": false },
 ///       "summary": { "enabled": true, "language": "ru" },
-///       "ai": { "purposes": { "summary": { "provider", "model", "effort", "speed" } } },
+///       "ai": { "choice": { "provider", "model", "effort", "speed" } },
 ///       "on_stop": "my-hook"
 ///     }
 ///
@@ -263,9 +263,9 @@ enum Config {
     }
 
     /// Putting real names to the transcript's mechanical speaker labels.
-    /// Which AI does it is the person's choice in `ai.purposes.speaker_names`
-    /// (see `AIChoice`); the old `backend` and `model` keys here are read only
-    /// by the one-time migration.
+    /// Which AI does it is the person's one choice, `ai.choice` (see
+    /// `AIChoice`); the old `backend` and `model` keys here are read only by
+    /// the web app's one-time migration.
     struct SpeakerNamesSettings {
         var enabled = true
     }
@@ -437,8 +437,8 @@ enum Config {
     // MARK: - summary
 
     /// Post-transcript summarization: whether, and in what language. Which AI
-    /// writes it is the person's choice in `ai.purposes.summary` (see
-    /// `AIChoice`), never a default here.
+    /// writes it is the person's one choice, `ai.choice` (see `AIChoice`),
+    /// never a default here.
     struct SummarySettings {
         var enabled = true
         /// Language for the summary itself; the transcript's own language is

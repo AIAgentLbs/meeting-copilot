@@ -15,7 +15,7 @@ repositories and documents you already have locally.
 Project page: [English](https://meetontrack.com/) ·
 [Русский](https://meetontrack.com/ru/).
 The command currently installs the checked, pinned **v0.1.11** package, not
-unreleased features from `main`. It requires Apple Silicon, macOS 15+, no separate Python or Apple SDK. AI is optional; you choose the tool and model for each task. Google Chrome
+unreleased features from `main`. It requires Apple Silicon, macOS 15+, no separate Python or Apple SDK. AI is optional; you choose the tool and model once, for every task. Google Chrome
 is required for PDF reports. Quit Capture before reinstalling.
 
 v0.1.11 includes the freshly compiled Swift app, the matched web payload and a
@@ -40,9 +40,12 @@ and repository excerpts to the AI tool you chose for that task.
 
 - uses an AI tool you already have - Codex, Claude Code or a local Ollama.
   In Getting started you choose the tool, model, reasoning effort and speed
-  for each task; the options are read from the installed tool and your plan,
-  and nothing is preselected. Git repository search needs Codex or Claude
-  Code; Ollama cannot read repositories. Antigravity is detected but cannot be
+  once, and every AI task uses that choice; the options are read from the
+  installed tool and your plan, and nothing is preselected. A task the chosen
+  model cannot do is shown unavailable with the reason, and nothing else is
+  affected: screenshots are analysed only when the model accepts images, and
+  Git repository search needs Codex or Claude Code (Ollama cannot read
+  repositories). Antigravity is detected but cannot be
   selected yet, because it cannot be held to read-only, no-tools calls.
   Recording and local transcription work without any AI tool;
 - captures meetings without adding a bot to Zoom or Google Meet;

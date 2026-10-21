@@ -2,7 +2,7 @@ import Foundation
 
 /// Turns a finished transcript into `summary.md`.
 ///
-/// It runs on the AI chosen for `ai.purposes.summary` (see `LLMBackend`) and
+/// It runs on the person's one AI choice, `ai.choice` (see `LLMBackend`), and
 /// on nothing else; with no choice made it waits for one.
 ///
 /// Nothing here is allowed to fail loudly. A missing summary is an
@@ -34,7 +34,7 @@ enum Summarizer {
         }
 
         let backend: LLMBackend
-        switch LLMBackend.resolve(.summary) {
+        switch LLMBackend.resolve() {
         case .ready(let chosen): backend = chosen
         case let other:
             // Not a failure of this meeting: once an AI is chosen, the next

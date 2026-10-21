@@ -80,6 +80,12 @@ hashes, Pages removed, and the Windows installer relocated to
   and Ollama; one-time migration from `summary.backend/model/openai_model/
   ollama_model` only when present in the file (provider + model, effort and speed
   left for the person).
+- [x] Single AI choice (owner decision 2026-10-21, supersedes the per-task
+  choice of phases 1-2): `ai.choice` is the one choice for every task; Python
+  writes it and carries `ai.purposes` (or the legacy summary backends) over once
+  (`ai_providers.migrated_choice`, Swift mirror `AIChoice.stored`, shared cases
+  in `copilot/web/fixture_ai_choice_migration.json`). Task capability checks
+  stay per task; Check AI shares one probe per kind (text, image, files).
 - [ ] MEETONTRACK-5: Codex 0.153.2 (Homebrew) ignores the `:slash_tmp` deny and lets writes land
   under the temp dir when cwd is there; reads outside the roots are denied. Our
   workdir lives in `~/.cache/meeting-copilot/ai-workdir`, so not reachable today.

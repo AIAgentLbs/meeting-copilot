@@ -507,7 +507,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     }
 
     /// Which AI writes summaries and names speakers is chosen in one place,
-    /// Getting started in the assistant (`ai.purposes` in the shared config);
+    /// Getting started in the assistant (`ai.choice` in the shared config);
     /// this section only switches summaries on and off.
     private func summaryChoices() -> NSView {
         // Without this the switch still slides when you push it while nothing
@@ -1048,7 +1048,7 @@ final class SetupForm: NSObject, NSTextFieldDelegate {
     /// started: the one line somebody reads before pressing Done says so.
     private var chosenSummaryIsMissing: Bool {
         guard Config.summary().enabled else { return false }
-        if case .ready = AIChoice.resolve(.summary, in: Config.current()) { return false }
+        if case .ready = AIChoice.resolve(in: Config.current()) { return false }
         return true
     }
 

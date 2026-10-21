@@ -79,10 +79,9 @@ enum SpeakerNamer {
             return finish(merged, transcript: transcript, dir: dir, log: log)
         }
 
-        // Naming has its own choice (`ai.purposes.speaker_names`): it is an
-        // easier job than summarizing, and the person may pick accordingly.
+        // Naming runs on the same one AI choice as everything else (`ai.choice`).
         let backend: LLMBackend
-        switch LLMBackend.resolve(.speakerNames) {
+        switch LLMBackend.resolve() {
         case .ready(let chosen): backend = chosen
         case let other:
             log("speakers not named — \(other.problem ?? AIChoice.needsChoiceMessage)")

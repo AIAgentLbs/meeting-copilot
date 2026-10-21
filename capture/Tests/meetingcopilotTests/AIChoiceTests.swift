@@ -8,9 +8,9 @@ func sameJSON(_ value: Any?, _ expected: [String: Any]) -> Bool {
     NSDictionary(dictionary: value as? [String: Any] ?? [:]).isEqual(to: expected)
 }
 
-/// Summary and speaker naming run on the AI the person chose for them in the
-/// shared config (`ai.purposes.summary`, `ai.purposes.speaker_names`) and on
-/// nothing else: no default model, no fallback order, no `auto`.
+/// Summary and speaker naming run on the one AI the person chose in the
+/// shared config (`ai.choice`) and on nothing else: no default model, no
+/// fallback order, no `auto`.
 ///
 /// The fake CLIs here are shell scripts in a temporary folder. Each records
 /// its argv one argument per line, its stdin, and the folder it ran in, and
@@ -26,8 +26,8 @@ struct AIChoiceTests {
         return URL(fileURLWithPath: LLMBackend.realPath(dir.path), isDirectory: true)
     }
 
-    private func config(_ purposes: [String: Any]) -> [String: Any] {
-        ["ai": ["purposes": purposes]]
+    private func config(_ choice: [String: Any]) -> [String: Any] {
+        ["ai": ["choice": choice]]
     }
 
     // MARK: - resolving a choice
@@ -37,45 +37,68 @@ struct AIChoiceTests {
         let full: [String: Any] = [
             "provider": "claude", "model": "m", "effort": "", "speed": "",
         ]
-        #expect(AIChoice.resolve(.summary, in: config(["summary": full]))
+        #expect(AIChoice.resolve(in: config(full))
             == .ready(AIChoice(provider: "claude", model: "m", effort: "", speed: "")))
 
         for key in ["provider", "model", "effort", "speed"] {
             var partial = full
             partial.removeValue(forKey: key)
-            #expect(AIChoice.resolve(.summary, in: config(["summary": partial])) == .needsChoice,
+            #expect(AIChoice.resolve(in: config(partial)) == .needsChoice,
                     "missing \(key) must not run")
         }
         var empty = full
         empty["model"] = ""
-        #expect(AIChoice.resolve(.summary, in: config(["summary": empty])) == .needsChoice)
+        #expect(AIChoice.resolve(in: config(empty)) == .needsChoice)
         var wrongType = full
         wrongType["effort"] = 3
-        #expect(AIChoice.resolve(.summary, in: config(["summary": wrongType])) == .needsChoice)
+        #expect(AIChoice.resolve(in: config(wrongType)) == .needsChoice)
 
-        #expect(AIChoice.resolve(.summary, in: nil) == .needsChoice)
-        #expect(AIChoice.resolve(.speakerNames, in: config(["summary": full])) == .needsChoice,
-                "naming has its own choice and does not borrow the summary's")
+        #expect(AIChoice.resolve(in: nil) == .needsChoice)
+        #expect(AIChoice.resolve(in: ["ai": [:]]) == .needsChoice, "no default when nothing is chosen")
+        #expect(AIChoice.resolve(in: ["ai": ["choice": "codex"]]) == .needsChoice)
+        // A present ai.choice wins; the per-task choices it replaced are not read any more.
+        #expect(AIChoice.resolve(in: ["ai": ["choice": ["provider": "claude"],
+                                              "purposes": ["summary": full]]]) == .needsChoice)
     }
 
-    @Test("Antigravity is refused for every purpose")
+    @Test("Until the web app writes ai.choice, the per-task choices are carried over by the shared rule")
+    func migrationParityWithPython() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("copilot/web/fixture_ai_choice_migration.json")
+        let cases = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [[String: Any]])
+        #expect(cases.count >= 8)
+        for item in cases {
+            let name = item["name"] as? String ?? "?"
+            let expected = item["choice"] as? [String: String]
+            let resolved = AIChoice.resolve(in: item["config"] as? [String: Any])
+            // A legacy partial choice is carried over by the web app and does not run here either way.
+            if let expected, expected.count == 4 {
+                #expect(resolved == .ready(AIChoice(
+                    provider: expected["provider"]!, model: expected["model"]!,
+                    effort: expected["effort"]!, speed: expected["speed"]!)), "\(name)")
+            } else {
+                #expect(resolved == .needsChoice, "\(name)")
+            }
+        }
+    }
+
+    @Test("Antigravity is refused")
     func antigravityRefused() {
         let agy: [String: Any] = ["provider": "antigravity", "model": "m", "effort": "", "speed": ""]
-        for purpose in AIPurpose.allCases {
-            let resolved = AIChoice.resolve(purpose, in: config([purpose.rawValue: agy]))
-            #expect(resolved == .unavailable(
-                "cannot enforce read-only/no-tools: permission_mode always-proceed"))
-        }
+        #expect(AIChoice.resolve(in: config(agy)) == .unavailable(
+            "cannot enforce read-only/no-tools: permission_mode always-proceed"))
         // And it never reaches a process.
         if case .ready = LLMBackend.resolve(
-            .summary, config: config(["summary": agy]), tool: { _ in "/bin/echo" }) {
+            config: config(agy), tool: { _ in "/bin/echo" }) {
             Issue.record("antigravity must not run")
         }
     }
 
     @Test("A needs-choice purpose says where to choose")
     func needsChoiceSaysWhere() {
-        guard case .needsChoice = LLMBackend.resolve(.summary, config: [:], tool: { _ in nil })
+        guard case .needsChoice = LLMBackend.resolve(config: [:], tool: { _ in nil })
         else { Issue.record("an unset purpose must need a choice"); return }
         #expect(AIChoice.needsChoiceMessage.contains("Getting started"))
     }
@@ -97,9 +120,9 @@ struct AIChoiceTests {
             """)
 
         let backend = try ready(LLMBackend.resolve(
-            .summary, config: config(["summary": [
+            config: config([
                 "provider": "codex", "model": "test-model", "effort": "high", "speed": "priority",
-            ]]), tool: { $0 == "codex" ? codex.path : nil }))
+            ]), tool: { $0 == "codex" ? codex.path : nil }))
         let reply = try await backend.call("SYSTEM", "PROMPT")
         #expect(reply == LLMReply(text: "the answer", model: "test-model"))
 
@@ -147,14 +170,14 @@ struct AIChoiceTests {
                                  reply: #"{"type":"turn.completed"}"#)
         let choice: [String: Any] = ["provider": "codex", "model": "m", "effort": "", "speed": ""]
         let backend = try ready(LLMBackend.resolve(
-            .summary, config: config(["summary": choice]), tool: { _ in silent.path }))
+            config: config(choice), tool: { _ in silent.path }))
         await #expect(throws: LLMError.self) { try await backend.call("s", "p") }
 
         let failing = try fakeCLI(at: dir.appendingPathComponent("codex2"), log: log,
                                   reply: #"{"type":"item.completed","item":{"type":"agent_message","text":"x"}}"#,
                                   status: 1)
         let broken = try ready(LLMBackend.resolve(
-            .summary, config: config(["summary": choice]), tool: { _ in failing.path }))
+            config: config(choice), tool: { _ in failing.path }))
         await #expect(throws: LLMError.self) { try await broken.call("s", "p") }
     }
 
@@ -170,9 +193,9 @@ struct AIChoiceTests {
             """)
 
         let backend = try ready(LLMBackend.resolve(
-            .speakerNames, config: config(["speaker_names": [
+            config: config([
                 "provider": "claude", "model": "alias", "effort": "max", "speed": "fastMode",
-            ]]), tool: { $0 == "claude" ? claude.path : nil }))
+            ]), tool: { $0 == "claude" ? claude.path : nil }))
         let reply = try await backend.call("SYSTEM", "PROMPT")
         #expect(reply == LLMReply(text: "the answer", model: "actual-model-id"))
 
@@ -326,41 +349,14 @@ struct AIChoiceTests {
 
     // MARK: - migrating the old settings once
 
-    @Test("Only explicit legacy keys are migrated, and only to codex, claude or ollama")
-    func migrationUsesOnlyExplicitKeys() {
-        var codex: [String: Any] = ["summary": ["backend": "codex-cli", "openai_model": "picked"]]
-        AIChoice.migrateLegacy(&codex)
-        #expect(sameJSON(codex["ai"], [
-            "purposes": ["summary": ["provider": "codex", "model": "picked"]],
-        ]))
-
-        // A backend with no model written: the provider is kept, nothing is
-        // invented for the model, and effort and speed are left for the person.
-        var bare: [String: Any] = ["summary": ["backend": "ollama"]]
-        AIChoice.migrateLegacy(&bare)
-        let migrated = ((bare["ai"] as? [String: Any])?["purposes"] as? [String: Any])?["summary"]
-        #expect(sameJSON(migrated, ["provider": "ollama"]))
-        #expect(AIChoice.resolve(.summary, in: bare) == .needsChoice)
-
-        for backend in ["auto", "anthropic-api", "openai-api", "none"] {
+    @Test("The app never writes ai: other legacy backends are left for the web app to carry over")
+    func legacyBackendsAreNotWrittenHere() {
+        for backend in ["codex-cli", "claude-cli", "ollama", "auto", "anthropic-api", "openai-api"] {
             var json: [String: Any] = ["summary": ["backend": backend, "model": "m"]]
             AIChoice.migrateLegacy(&json)
-            #expect(json["ai"] == nil, "\(backend) must not be migrated")
+            #expect(json["ai"] == nil, "\(backend) must not be written by the app")
+            #expect((json["summary"] as? [String: Any])?["backend"] as? String == backend)
         }
-
-        var nothing: [String: Any] = ["summary": ["model": "m", "openai_model": "o"]]
-        AIChoice.migrateLegacy(&nothing)
-        #expect(nothing["ai"] == nil, "a model without a backend is not a choice")
-
-        // An existing choice is never overwritten.
-        var chosen: [String: Any] = [
-            "summary": ["backend": "codex-cli"],
-            "ai": ["purposes": ["summary": ["provider": "claude"]], "other": 1],
-        ]
-        AIChoice.migrateLegacy(&chosen)
-        #expect(sameJSON(chosen["ai"], [
-            "purposes": ["summary": ["provider": "claude"]], "other": 1,
-        ]))
     }
 
     @Test("A legacy backend of none becomes summaries off, once, and can be turned back on")
@@ -389,38 +385,22 @@ struct AIChoiceTests {
         #expect(sameJSON(written["summary"], ["enabled": false]))
     }
 
-    @Test("Speaker naming migrates from its own backend")
-    func namingMigration() {
-        var json: [String: Any] = [
-            "speaker_names": ["backend": "claude-cli", "model": "namer"],
-            "summary": ["model": "summarizer"],
-        ]
-        AIChoice.migrateLegacy(&json)
-        let purposes = (json["ai"] as? [String: Any])?["purposes"] as? [String: Any]
-        #expect(sameJSON(purposes?["speaker_names"], ["provider": "claude", "model": "namer"]))
-        #expect(purposes?["summary"] == nil, "the summary had no backend of its own")
-    }
-
     @Test("Migration goes through the locked writer and keeps everything else")
     func migrationWritesTheFile() throws {
         let dir = try scratch()
         defer { try? FileManager.default.removeItem(at: dir) }
         let url = dir.appendingPathComponent("config.json")
+        let ai: [String: Any] = ["purposes": ["live_analysis": ["provider": "codex"]]]
         try JSONSerialization.data(withJSONObject: [
-            "summary": ["backend": "claude-cli", "model": "picked", "language": "ru"],
-            "ai": ["purposes": ["live_analysis": ["provider": "codex"]]],
+            "summary": ["backend": "none", "language": "ru"], "ai": ai,
         ]).write(to: url)
 
         Config.migrateLegacyAIChoices(file: url)
 
         let json = try #require(
             JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
-        let purposes = try #require((json["ai"] as? [String: Any])?["purposes"] as? [String: Any])
-        #expect(sameJSON(purposes, [
-            "live_analysis": ["provider": "codex"],
-            "summary": ["provider": "claude", "model": "picked"],
-        ]))
-        #expect((json["summary"] as? [String: Any])?["language"] as? String == "ru")
+        #expect(sameJSON(json["ai"], ai))
+        #expect(sameJSON(json["summary"], ["enabled": false, "language": "ru"]))
         let mode = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
         #expect(mode as? Int == 0o600)
     }

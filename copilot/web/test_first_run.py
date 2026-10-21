@@ -49,25 +49,46 @@ class PickCodexTests(unittest.TestCase):
 
 
 class CheckAITests(unittest.TestCase):
-    def test_every_purpose_gets_its_own_purpose_appropriate_probe(self):
-        from test_ai_providers import FakeAdapter, M1, M2
+    def test_every_task_is_probed_against_the_one_choice(self):
+        from test_ai_providers import FakeAdapter, M1
         with tempfile.TemporaryDirectory() as root:
             adapter = FakeAdapter()
             service = AIService(Path(root) / "config.json", {}, adapters=[adapter])
-            for purpose, choice in (("live_analysis", M2), ("summary_rewrite", M2), ("frame_relevance", M1)):
-                service.save(purpose, choice)
             readiness = AIReadiness(service)
+            self.assertEqual(readiness.check()["state"], "needs_choice")
+            self.assertEqual(adapter.calls, [])
+            service.save(M1)
             self.assertEqual(readiness.snapshot()["purposes"]["live_analysis"]["state"], "unchecked")
             result = readiness.check()
             options = {call[1][:20]: call[2] for call in adapter.calls}
-            self.assertEqual(len(adapter.calls), 3)  # same choice for two tasks is still tested twice
+            self.assertEqual(len(adapter.calls), 3)  # one text, one image, one file probe shared by six tasks
+            self.assertEqual({call[0]["model"] for call in adapter.calls}, {"m1"})
             self.assertIn("roots", next(o for p, o in options.items() if p.startswith("Read the file")))
             self.assertTrue(next(o for p, o in options.items() if p.startswith("What single")).get("image"))
-            self.assertEqual(result["purposes"]["summary_rewrite"]["state"], "ready")
+            self.assertEqual(set(result["purposes"]), {"live_analysis", "live_translation", "frame_relevance",
+                                                       "summary_rewrite", "summary", "speaker_names"})
+            for purpose in ("summary_rewrite", "live_translation", "summary", "speaker_names"):
+                self.assertEqual(result["purposes"][purpose]["state"], "ready", purpose)
             self.assertEqual(result["purposes"]["live_analysis"]["state"], "error")  # the fake cannot read files
-            self.assertEqual(result["purposes"]["live_translation"]["state"], "needs_choice")
-            service.save("summary_rewrite", {**M1, "speed": "standard"})
+            self.assertEqual(result["purposes"]["frame_relevance"]["state"], "error")  # nor tell the colour
+            service.save({**M1, "speed": "standard"})
             self.assertEqual(readiness.snapshot()["purposes"]["summary_rewrite"]["state"], "unchecked")
+
+    def test_a_task_the_choice_cannot_do_is_listed_unavailable_and_others_still_pass(self):
+        from test_ai_providers import FakeAdapter, M2
+        with tempfile.TemporaryDirectory() as root:
+            adapter = FakeAdapter()
+            adapter.reads_files = False
+            service = AIService(Path(root) / "config.json", {}, adapters=[adapter])
+            service.save(M2)  # m2 does not accept images
+            result = AIReadiness(service).check()
+            self.assertEqual(len(adapter.calls), 1)  # text only: no image probe for a model without images
+            self.assertEqual(result["purposes"]["frame_relevance"]["state"], "unavailable")
+            self.assertIn("screenshots are not analysed", result["purposes"]["frame_relevance"]["message"])
+            others = {p: v["state"] for p, v in result["purposes"].items() if p != "frame_relevance"}
+            self.assertEqual(set(others.values()), {"ready"})
+            self.assertIn("connected folders", result["purposes"]["live_analysis"]["message"])
+            self.assertEqual(result["state"], "partial")
 
 
 class LazyResolutionTests(unittest.TestCase):

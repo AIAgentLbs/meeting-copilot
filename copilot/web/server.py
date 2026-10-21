@@ -2414,8 +2414,10 @@ class Handler(BaseHTTPRequestHandler):
                         "live_enabled": bool(config.get("live_transcription", {}).get("enabled", False)),
                         "folders": LOCAL_CONTEXT.snapshot()})
         elif path == "/api/ai":
-            self._json({"ok": True, "providers": AI.providers(), "purposes": AI.status_all(),
-                        "check": AI_READINESS.snapshot()})
+            # The one choice, each task's state with it (a task the choice cannot do is
+            # unavailable with its reason) and the last Check AI result per task.
+            self._json({"ok": True, "providers": AI.providers(), "choice": AI.status(),
+                        "purposes": AI.status_all(), "check": AI_READINESS.snapshot()})
         elif path == "/api/ai/options":
             query = parse_qs(urlparse(self.path).query)
             self._json({"ok": True, "options": AI.options(query.get("provider", [""])[0],
@@ -2520,7 +2522,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/getting-started/check-ai":
                 self._json({"ok": True, "ai": AI_READINESS.check()})
             elif path == "/api/ai/choice":
-                self._json({"ok": True, "status": AI.save(str(payload.get("purpose") or ""), payload.get("choice"))})
+                self._json({"ok": True, "status": AI.save(payload.get("choice"))})
             elif path == "/api/getting-started/open-recorder":
                 binary = RECOGNITION_GUARD.binary
                 if not binary.is_file():

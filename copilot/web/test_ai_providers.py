@@ -288,8 +288,8 @@ class AntigravityTests(unittest.TestCase):
             self.assertEqual(found["state"], "unavailable")
             self.assertIn("always-proceed", found["reason"])
             path = Path(tmp) / "config.json"
-            path.write_text(json.dumps({"ai": {"purposes": {p: {"provider": "antigravity", "model": "solo", "effort": "",
-                                                                "speed": ""} for p in ai_providers.PURPOSES}}}))
+            path.write_text(json.dumps({"ai": {"choice": {"provider": "antigravity", "model": "solo", "effort": "",
+                                                          "speed": ""}}}))
             service = AIService(path, {}, adapters=[adapter])
             for purpose in ai_providers.PURPOSES:
                 status = service.status(purpose)
@@ -456,7 +456,7 @@ class FakeAdapter:
 
 
 @contextmanager
-def chosen_codex(directory, server, purpose="live_analysis"):
+def chosen_codex(directory, server):
     """A real CodexAdapter with fixture discovery and a saved choice, patched into server.AI."""
     adapter = CodexAdapter(lambda: "/fake/codex")
     offered = {"provider": "codex", "label": "Codex", "state": "available", "reason": "", "executable": "/fake/codex",
@@ -464,7 +464,7 @@ def chosen_codex(directory, server, purpose="live_analysis"):
     service = AIService(Path(directory) / "config.json", {}, adapters=[adapter])
     with patch.object(adapter, "discover", return_value=offered), patch.object(adapter, "identity", return_value="id"), \
             patch.object(server, "AI", service):
-        service.save(purpose, {"provider": "codex", "model": "fixture-model", "effort": "fixture-effort", "speed": ""})
+        service.save({"provider": "codex", "model": "fixture-model", "effort": "fixture-effort", "speed": ""})
         yield service
 
 
@@ -480,8 +480,8 @@ class SettingsStoreTests(unittest.TestCase):
         self.adapter = FakeAdapter()
         self.service = AIService(self.path, {}, adapters=[self.adapter])
 
-    def write(self, purposes):
-        self.path.write_text(json.dumps({"ai": {"purposes": purposes}}))
+    def write(self, choice):
+        self.path.write_text(json.dumps({"ai": {"choice": choice}}))
 
     def test_missing_or_partial_choice_needs_choice_and_call_refuses(self):
         self.assertEqual(self.service.status("summary_rewrite")["state"], "needs_choice")
@@ -489,7 +489,7 @@ class SettingsStoreTests(unittest.TestCase):
             self.service.run("summary_rewrite", "p")
         self.assertEqual(raised.exception.state, "needs_choice")
         self.assertTrue(str(raised.exception).startswith("AI_CHOICE"))
-        self.write({"summary": {"provider": "fake", "model": "m1"}})  # e.g. migrated without effort and speed
+        self.write({"provider": "fake", "model": "m1"})  # e.g. migrated without effort and speed
         status = self.service.status("summary")
         self.assertEqual(status["state"], "needs_choice")
         self.assertIn("effort", status["reason"])
@@ -500,27 +500,50 @@ class SettingsStoreTests(unittest.TestCase):
                               ({**M2, "speed": "standard"}, "needs_choice"),
                               ({"provider": "fake", "model": "m3", "effort": "", "speed": ""}, "unavailable")):
             with self.subTest(choice=choice):
-                self.write({"live_translation": choice})
+                self.write(choice)
                 self.assertEqual(self.service.status("live_translation")["state"], state)
 
     def test_screenshots_need_a_model_reported_to_accept_images(self):
-        self.write({"frame_relevance": M2})
+        self.write(M2)
         self.assertIn("images", self.service.status("frame_relevance")["reason"])
-        self.write({"frame_relevance": M1})
+        self.write(M1)
         self.assertEqual(self.service.status("frame_relevance")["state"], "ready")
+
+    def test_a_task_the_choice_cannot_do_is_unavailable_alone(self):
+        """One choice, no image input: screenshots alone are unavailable with the reason; every
+        other task is ready and runs on that choice, nothing falls back to another model."""
+        self.service.save(M2)
+        statuses = self.service.status_all()
+        self.assertEqual(statuses.pop("frame_relevance")["state"], "unavailable")
+        self.assertIn("screenshots are not analysed", self.service.status("frame_relevance")["reason"])
+        self.assertEqual({purpose: status["state"] for purpose, status in statuses.items()},
+                         dict.fromkeys(statuses, "ready"))
+        self.assertEqual(self.service.status()["state"], "ready")
+        with self.assertRaises(AIChoiceError):
+            self.service.run("frame_relevance", "p")
+        self.assertEqual(self.adapter.calls, [])
+        self.service.run("live_translation", "p")
+        self.assertEqual(self.adapter.calls[-1][0], M2)
+
+    def test_every_task_resolves_to_the_one_choice(self):
+        self.service.save(M1)
+        tickets = self.service.tickets()
+        self.assertEqual(set(tickets), set(ai_providers.PURPOSES))
+        self.assertEqual({ticket.choice["model"] for ticket in tickets.values()}, {"m1"})
+        self.assertEqual(len({ticket.key for ticket in tickets.values()}), 1)
 
     def test_save_preserves_other_sections_and_writes_private_files(self):
         swift_written = {"auto_record": {"enabled": True, "min_duration_seconds": 30},
                          "live_transcription": {"enabled": False}, "recordings_dir": "~/x", "unknown": [1, 2.5, None]}
         self.path.write_text(json.dumps(swift_written, indent=2, sort_keys=True))
         self.path.chmod(0o644)
-        self.service.save("live_analysis", M1)
+        self.service.save(M1)
         saved = json.loads(self.path.read_text())
         self.assertEqual({k: v for k, v in saved.items() if k != "ai"}, swift_written)
-        self.assertEqual(saved["ai"]["purposes"]["live_analysis"], M1)
+        self.assertEqual(saved["ai"], {"choice": M1})
         self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o600)
-        self.service.save("summary_rewrite", M2)
-        self.assertEqual(set(json.loads(self.path.read_text())["ai"]["purposes"]), {"live_analysis", "summary_rewrite"})
+        self.service.save(M2)
+        self.assertEqual(json.loads(self.path.read_text())["ai"], {"choice": M2})
 
     def test_shared_config_contract_with_swift_writer(self):
         """fixture_shared_config.json is shaped like Swift Config.write output (sorted keys,
@@ -528,46 +551,43 @@ class SettingsStoreTests(unittest.TestCase):
         leave the other purposes alone; the schema lists every purpose and choice key."""
         fixture = json.loads((WEB / "fixture_shared_config.json").read_text())
         self.path.write_text(json.dumps(fixture))
-        self.service.save("summary_rewrite", M2)
+        self.service.save(M2)
         saved = json.loads(self.path.read_text())
         self.assertEqual({k: v for k, v in saved.items() if k != "ai"}, {k: v for k, v in fixture.items() if k != "ai"})
-        self.assertEqual(saved["ai"]["purposes"]["live_analysis"], fixture["ai"]["purposes"]["live_analysis"])
+        self.assertEqual(saved["ai"]["choice"], M2)
+        self.assertEqual(saved["ai"]["purposes"], fixture["ai"]["purposes"])  # not ours any more, kept untouched
         schema = json.loads((WEB.parents[1] / "docs/config.schema.json").read_text())
-        allowed = set(schema["properties"]["ai"]["properties"]["purposes"]["propertyNames"]["enum"])
         keys = set(schema["$defs"]["choice"]["properties"])
         self.assertEqual(keys, set(ai_providers.CHOICE_KEYS))
-        for purpose, choice in saved["ai"]["purposes"].items():
-            self.assertIn(purpose, allowed)
-            self.assertEqual(set(choice), keys)  # Python always writes a complete choice
-        self.assertEqual(set(ai_providers.PURPOSES), allowed)
+        self.assertEqual(schema["properties"]["ai"]["properties"]["choice"], {"$ref": "#/$defs/choice"})
+        self.assertEqual(set(saved["ai"]["choice"]), keys)  # Python always writes a complete choice
+        self.assertEqual(set(schema["$defs"]["task"]["enum"]), set(ai_providers.PURPOSES))
 
     def test_malformed_config_is_never_overwritten(self):
         self.path.write_text("{not json")
         with self.assertRaises(ValueError):
-            self.service.save("live_translation", M2)
+            self.service.save(M2)
         self.assertEqual(self.path.read_text(), "{not json")
 
     def test_rejects_choices_the_provider_does_not_offer(self):
         for bad in ({**M2, "model": "absent"}, {**M1, "effort": ""}, {**M1, "effort": "z"},
                     {**M2, "speed": "quick"}, {**M2, "provider": "nobody"}, {**M1, "speed": ""}):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
-                self.service.save("live_analysis", bad)
-        with self.assertRaises(ValueError):
-            self.service.save("no_such_purpose", M2)
+                self.service.save(bad)
 
     def test_stored_choice_no_longer_offered_is_unavailable_with_reason(self):
-        self.write({"frame_relevance": {**M2, "model": "gone"}})
+        self.write({**M2, "model": "gone"})
         status = self.service.status("frame_relevance")
         self.assertEqual(status["state"], "unavailable")
         self.assertIn("gone", status["reason"])
         with self.assertRaisesRegex(AIChoiceError, "AI_UNAVAILABLE"):
             self.service.run("frame_relevance", "p")
         offline = AIService(self.path, {}, adapters=[FakeAdapter("down")])
-        self.write({"live_translation": M2})
+        self.write(M2)
         self.assertIn("fixture offline", offline.status("live_translation")["reason"])
 
     def test_run_routes_choice_to_the_discovered_executable_and_caches_discovery(self):
-        self.service.save("live_analysis", {**M1, "effort": "x"})
+        self.service.save({**M1, "effort": "x"})
         reply = self.service.run("live_analysis", "hello", roots=["/r"])
         self.service.run("live_analysis", "again")
         self.assertEqual(reply.model, "m1-reported")
@@ -577,7 +597,7 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(self.adapter.discoveries, 1)
 
     def test_executable_change_rediscovers_and_changes_the_key(self):
-        self.service.save("live_analysis", M1)
+        self.service.save(M1)
         before = self.service.resolve("live_analysis")
         self.adapter.version = "v2"
         after = self.service.resolve("live_analysis")
@@ -586,18 +606,19 @@ class SettingsStoreTests(unittest.TestCase):
         self.assertEqual(after.executable, "/fake/v2")
 
     def test_a_ticket_is_a_snapshot(self):
-        self.service.save("live_analysis", M1)
+        self.service.save(M1)
         ticket = self.service.resolve("live_analysis")
-        self.service.save("live_analysis", M2)
+        self.service.save(M2)
         self.service.run("live_analysis", "p", ticket=ticket)
         self.assertEqual(self.adapter.calls[-1][0], M1)
 
     def test_concurrent_threads_do_not_lose_updates(self):
-        purposes = list(ai_providers.PURPOSES)
-        threads = [threading.Thread(target=self.service.settings.set_purpose, args=(p, M2)) for p in purposes * 3]
+        names = [f"t{n}" for n in range(18)]
+        threads = [threading.Thread(target=self.service.settings._update, args=(lambda s, n=n: s.__setitem__(n, 1),))
+                   for n in names]
         for t in threads: t.start()
         for t in threads: t.join()
-        self.assertEqual(set(json.loads(self.path.read_text())["ai"]["purposes"]), set(purposes))
+        self.assertEqual(set(json.loads(self.path.read_text())["ai"]), set(names))
 
     def test_processes_python_and_native_style_writers_do_not_lose_updates(self):
         """A native-style writer (the Swift protocol: flock on config.json.lock held across
@@ -607,7 +628,7 @@ class SettingsStoreTests(unittest.TestCase):
             from ai_providers import AISettings
             settings = AISettings(sys.argv[1])
             for n in range(15):
-                settings.set_purpose(f"p{{sys.argv[2]}}_{{n}}", {{"provider": "x", "model": "y", "effort": "", "speed": ""}})
+                settings._update(lambda section: section.__setitem__(f"p{{sys.argv[2]}}_{{n}}", 1))
         """)
         native_writer = textwrap.dedent("""
             import fcntl, json, os, sys, tempfile, time
@@ -631,9 +652,75 @@ class SettingsStoreTests(unittest.TestCase):
                    for n in range(3) for source in (python_writer, native_writer)]
         self.assertEqual([w.wait(60) for w in workers], [0] * len(workers))
         saved = json.loads(self.path.read_text())
-        self.assertEqual(len(saved["ai"]["purposes"]), 45)
+        self.assertEqual(len(saved["ai"]), 45)
         self.assertEqual(len([k for k in saved if k.startswith("native")]), 45)
         self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o600)
+
+
+class MigrationTests(unittest.TestCase):
+    """`ai.choice` is carried over once from the per-task choices (and the legacy summary
+    settings); the cases are shared with the Swift tests (fixture_ai_choice_migration.json)."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = Path(self.tmp.name) / "config.json"
+
+    def test_shared_cases(self):
+        cases = json.loads((WEB / "fixture_ai_choice_migration.json").read_text())
+        for case in cases:
+            with self.subTest(case["name"]):
+                self.assertEqual(ai_providers.migrated_choice(case["config"]), case["choice"])
+
+    def test_the_owner_file_shape_adopts_live_analysis_once_and_keeps_purposes(self):
+        owner = {"provider": "codex", "model": "fixture-sol", "effort": "high", "speed": "standard"}
+        data = {"ai": {"purposes": {"live_analysis": owner, "summary": {"provider": "claude", "model": "x"}}},
+                "summary": {"backend": "claude-cli", "model": "x"}, "recordings_dir": "~/r"}
+        self.path.write_text(json.dumps(data))
+        settings = ai_providers.AISettings(self.path)
+        self.assertEqual(settings.choice(), owner)
+        saved = json.loads(self.path.read_text())
+        self.assertEqual(saved["ai"]["choice"], owner)
+        self.assertEqual(saved["ai"]["purposes"], data["ai"]["purposes"])
+        self.assertEqual({k: v for k, v in saved.items() if k != "ai"}, {k: v for k, v in data.items() if k != "ai"})
+        # once: afterwards purposes are not read, even when they change
+        saved["ai"]["purposes"]["live_analysis"] = {**owner, "model": "other"}
+        self.path.write_text(json.dumps(saved))
+        self.assertEqual(settings.choice(), owner)
+
+    def test_legacy_backend_feeds_a_partial_choice_that_needs_effort_and_speed(self):
+        self.path.write_text(json.dumps({"summary": {"backend": "codex-cli", "openai_model": "picked"}}))
+        service = AIService(self.path, {}, adapters=[FakeAdapter()])
+        status = service.status("summary")
+        self.assertEqual((status["state"], status["choice"]), ("needs_choice", {"provider": "codex", "model": "picked"}))
+        self.assertEqual(json.loads(self.path.read_text())["ai"]["choice"], {"provider": "codex", "model": "picked"})
+
+    def test_no_default_when_keys_are_missing(self):
+        for data in ({}, {"ai": {}}, {"ai": {"choice": {}}}, {"ai": {"choice": {"provider": "fake"}}},
+                     {"ai": {"choice": {"provider": "fake", "model": "m2", "effort": ""}}},
+                     {"ai": {"purposes": {"live_analysis": {"provider": "fake", "model": "m2"}}}}):
+            with self.subTest(data=data):
+                self.path.write_text(json.dumps(data))
+                adapter = FakeAdapter()
+                service = AIService(self.path, {}, adapters=[adapter])
+                self.assertEqual({s["state"] for s in service.status_all().values()}, {"needs_choice"})
+                self.assertEqual(adapter.discoveries, 0)
+                with self.assertRaises(AIChoiceError):
+                    service.run("live_analysis", "p")
+                self.assertEqual(adapter.calls, [])
+
+    def test_a_choice_saved_meanwhile_is_never_overwritten_by_the_migration(self):
+        mine = {"provider": "fake", "model": "m2", "effort": "", "speed": ""}
+        self.path.write_text(json.dumps({"ai": {"purposes": {"live_analysis": M1}}}))
+        settings = ai_providers.AISettings(self.path)
+        real_update = settings._update
+
+        def racing(change):
+            settings._update = real_update
+            settings.set_choice(mine)  # another writer gets in before the migration's write
+            return real_update(change)
+        settings._update = racing
+        self.assertEqual(settings.choice(), mine)
+        self.assertEqual(json.loads(self.path.read_text())["ai"]["choice"], mine)
 
 
 class SessionOwnershipTests(unittest.TestCase):

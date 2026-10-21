@@ -7,17 +7,15 @@
   "additionalProperties": true,
   "properties": {
     "ai": {
-      "description": "Owner: Python web server (copilot/web/ai_providers.py); the Swift Mac app writes it once only to carry over old summary settings (Summary/AIChoice.swift migrateLegacy). AI provider choice per task. Values are user choices read from the installed provider's own discovery; no component may hold or fill in a default model, effort or speed.",
+      "description": "Owner: Python web server (copilot/web/ai_providers.py), the only writer. The one AI choice the person makes in Getting started; every AI task uses it (owner decision 2026-10-21). Values are user choices read from the installed provider's own discovery; no component may hold or fill in a default model, effort or speed.",
       "type": "object",
       "additionalProperties": true,
       "properties": {
+        "choice": { "$ref": "#/$defs/choice" },
         "purposes": {
           "type": "object",
-          "description": "A missing purpose means the user has not chosen; the purpose then reports needs_choice and does not run.",
-          "propertyNames": {
-            "description": "Python runs the first four; Swift runs summary and speaker_names. Python lists, saves and checks all six.",
-            "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names"]
-          },
+          "description": "Superseded 2026-10-21 by choice. Read once: when choice is absent, the complete per-task choices are carried over (all identical, or only one: that one; several differ: live_analysis if complete, else none), and without any, the old summary.backend / speaker_names.backend by the same rule. Never read once choice exists; left in the file untouched.",
+          "propertyNames": { "$ref": "#/$defs/task" },
           "additionalProperties": { "$ref": "#/$defs/choice" }
         }
       }
@@ -25,8 +23,8 @@
     "recordings_dir": { "description": "Owner: Swift Mac app / C# recorder." },
     "transcription": { "description": "Owner: Swift Mac app / C# recorder. Speech-to-text; the engine registry is phase 3." },
     "live_transcription": { "description": "Owner: Swift Mac app / C# recorder." },
-    "summary": { "description": "Owner: Swift Mac app. Moves to ai.purposes.summary in phase 2." },
-    "speaker_names": { "description": "Owner: Swift Mac app. Moves to ai.purposes.speaker_names in phase 2." },
+    "summary": { "description": "Owner: Swift Mac app. Its old backend/model keys feed ai.choice once (see ai.purposes)." },
+    "speaker_names": { "description": "Owner: Swift Mac app. Its old backend/model keys feed ai.choice once (see ai.purposes)." },
     "auto_record": { "description": "Owner: Swift Mac app / C# recorder. Also read by the Python web server." },
     "interface_language": { "description": "Owner: Swift Mac app. Also read by the Python web server." },
     "calendar": { "description": "Owner: Swift Mac app." },
@@ -43,10 +41,14 @@
     "window": { "description": "Owner: Swift Mac app." }
   },
   "$defs": {
+    "task": {
+      "description": "The AI tasks, all run on ai.choice. Python runs the first four; Swift runs summary and speaker_names. A task the choice cannot do (frame_relevance needs a model discovery reports as accepting images; live_analysis with selected repositories needs Codex or Claude Code) is unavailable with its reason; no other task is affected and nothing falls back to another model.",
+      "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names"]
+    },
     "choice": {
       "type": "object",
       "required": ["provider"],
-      "description": "A choice runs only when all four keys are present; a partial choice (for example provider and model carried over once from the old summary settings) means not finished and every component reports needs_choice.",
+      "description": "A choice runs only when all four keys are present; a missing ai.choice or a partial one (for example provider and model carried over once from the old summary settings) means not chosen: every task reports needs_choice and nothing runs.",
       "additionalProperties": false,
       "properties": {
         "provider": { "type": "string", "minLength": 1, "description": "Adapter name, e.g. codex, claude, antigravity, ollama." },

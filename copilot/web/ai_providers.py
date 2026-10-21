@@ -1,9 +1,11 @@
-"""AI provider layer: discovery, per-purpose choice and calls. Holds no model ids.
+"""AI provider layer: discovery, the one AI choice and calls. Holds no model ids.
 
 Adapters read the options (models, efforts, speed tiers, input types, plan) from the exact
-binary or service that will run, and turn a stored choice into a call. The choice lives in
-the shared ~/.config/meeting-copilot/config.json under `ai` (schema: docs/config.schema.json);
-this module writes only that subtree. Nothing here runs at import time.
+binary or service that will run, and turn the stored choice into a call. The person chooses
+once (`ai.choice` in the shared ~/.config/meeting-copilot/config.json, schema:
+docs/config.schema.json) and every task (PURPOSES) runs on it; a task the choice cannot do
+reports unavailable on its own. This module writes only the `ai` subtree. Nothing here runs
+at import time.
 
 File boundary: a call reads only the `roots` it is given (the selected repositories), an
 empty working directory and, for screenshots, the one image. Codex enforces it with a
@@ -32,7 +34,7 @@ import uuid
 
 from first_run import ai_failure, pick_codex
 
-# summary and speaker_names run in the Swift recorder; Python lists, checks and saves them.
+# The AI tasks. summary and speaker_names run in the Swift recorder; Python lists and checks them.
 PURPOSES = ("live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names")
 NEEDS_IMAGE = {"frame_relevance"}
 CHOICE_KEYS = ("provider", "model", "effort", "speed")
@@ -40,8 +42,9 @@ STANDARD = "standard"  # an explicit "no speed tier" when a model offers tiers
 DISCOVERY_TIMEOUT = 20
 OUTPUT_LIMIT = 8 << 20  # characters kept per stream; the rest is read and dropped
 LINE_LIMIT = 1 << 20
-NO_CHOICE = ("Choose an AI provider and model for this task in Getting started, then retry. "
+NO_CHOICE = ("Choose an AI tool and model in Getting started, then retry. "
              "Audio recording is independent.")
+LEGACY_BACKENDS = {"claude-cli": "claude", "codex-cli": "codex", "ollama": "ollama"}
 Reply = namedtuple("Reply", "text model session")
 Ticket = namedtuple("Ticket", "purpose state reason choice key executable")
 Result = namedtuple("Result", "returncode stdout stderr")
@@ -54,7 +57,7 @@ CODEX_ISOLATION = ["--disable", "shell_tool", "--disable", "unified_exec", "--di
 
 
 class AIChoiceError(RuntimeError):
-    """A purpose cannot run: no complete choice (needs_choice) or the provider cannot run it."""
+    """A task cannot run: no complete choice (needs_choice) or the choice cannot do it."""
     def __init__(self, state, reason):
         self.state, self.reason = state, reason
         super().__init__(("AI_CHOICE: " if state == "needs_choice" else "AI_UNAVAILABLE: ") + reason)
@@ -637,18 +640,32 @@ class AISettings:
         self.path = Path(path)
         self.lock = threading.Lock()
 
-    def purposes(self):
+    def choice(self):
+        """The stored `ai.choice` (a dict, possibly partial) or None. When the file has none yet,
+        the old per-task choices are carried over once (`migrated_choice`) and written."""
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return {}
+            return None
         section = data.get("ai") if isinstance(data, dict) else None
-        purposes = section.get("purposes") if isinstance(section, dict) else None
-        return purposes if isinstance(purposes, dict) else {}
+        if isinstance(section, dict) and "choice" in section:
+            return section["choice"] if isinstance(section["choice"], dict) else None
+        adopted = migrated_choice(data) if isinstance(data, dict) else None
+        if adopted is None:
+            return None
+        try:  # under the lock, only if still absent: a choice saved meanwhile wins
+            written = self._update(lambda section: section.setdefault("choice", adopted)).get("choice")
+        except (OSError, ValueError):
+            return adopted
+        return written if isinstance(written, dict) else None
 
-    def set_purpose(self, purpose, choice):
-        """Read-modify-replace under config.json.lock: missing file = empty, malformed = refuse,
-        result written 0600 to a temp file in the same directory, then renamed over."""
+    def set_choice(self, choice):
+        self._update(lambda section: section.__setitem__("choice", choice))
+
+    def _update(self, change):
+        """Read-modify-replace of `ai` under config.json.lock: missing file = empty, malformed =
+        refuse, result written 0600 to a temp file in the same directory, then renamed over.
+        Returns the `ai` section as written."""
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with self.lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             try:
@@ -658,13 +675,12 @@ class AISettings:
             try:
                 data = {} if text is None else json.loads(text)
             except ValueError:
-                raise ValueError(f"{self.path} is not valid JSON; fix it before saving AI choices") from None
+                raise ValueError(f"{self.path} is not valid JSON; fix it before saving the AI choice") from None
             if not isinstance(data, dict):
                 raise ValueError(f"{self.path} must hold a JSON object")
-            section = data.get("ai") if isinstance(data.get("ai"), dict) else {}
-            purposes = dict(section.get("purposes") or {})
-            purposes[purpose] = choice
-            data["ai"] = {**section, "purposes": purposes}
+            section = dict(data["ai"]) if isinstance(data.get("ai"), dict) else {}
+            change(section)
+            data["ai"] = section
             handle, temporary = tempfile.mkstemp(dir=self.path.parent, prefix=".config.", suffix=".tmp")
             try:
                 if os.name != "nt":
@@ -677,6 +693,37 @@ class AISettings:
             except BaseException:
                 Path(temporary).unlink(missing_ok=True)
                 raise
+            return section
+
+
+def _legacy_choice(data, name):
+    """{provider[, model]} from the settings before `ai` (summary.backend, speaker_names.backend),
+    only from keys written in the file. Same mapping as the Swift migration of phase 2."""
+    def text(section, key):
+        value = section.get(key) if isinstance(section, dict) else None
+        return value.strip() if isinstance(value, str) and value.strip() else None
+    summary, section = data.get("summary"), data.get(name)
+    provider = LEGACY_BACKENDS.get(text(section, "backend") or "")
+    if not provider:
+        return None
+    model = {"claude": text(section, "model") or text(summary, "model"), "codex": text(summary, "openai_model"),
+             "ollama": text(summary, "ollama_model")}[provider]  # naming used the summary's codex/ollama model
+    return {"provider": provider, **({"model": model} if model else {})}
+
+
+def migrated_choice(data):
+    """The one choice carried over when `ai.choice` is absent (owner decision 2026-10-21).
+    Complete per-task choices: all identical, or only one, is adopted; several that differ adopt
+    live_analysis if it is complete, else nothing. Without any, the legacy summary/naming
+    backends feed it by the same rule (partial: the person still picks effort and speed)."""
+    section = data.get("ai") if isinstance(data.get("ai"), dict) else {}
+    purposes = section.get("purposes") if isinstance(section.get("purposes"), dict) else {}
+    complete = [choice for choice in map(_normal, purposes.values()) if choice]
+    if complete:
+        return complete[0] if all(choice == complete[0] for choice in complete) else \
+            _normal(purposes.get("live_analysis"))
+    legacy = [choice for choice in (_legacy_choice(data, name) for name in ("summary", "speaker_names")) if choice]
+    return legacy[0] if legacy and all(choice == legacy[0] for choice in legacy) else None
 
 
 def _normal(choice):
@@ -688,7 +735,8 @@ def _normal(choice):
 
 
 def choice_problem(found, choice, purpose=""):
-    """(state, reason) for running this choice for this purpose with the provider as discovered now."""
+    """(state, reason) for running the choice (for one task when `purpose` is given) with the
+    provider as discovered now. A task-specific need fails only that task."""
     label, model_id = found.get("label") or choice["provider"], choice["model"]
     if found.get("state") != "available":
         return "unavailable", f"{label} is unavailable: {found.get('reason') or 'unknown reason'}"
@@ -699,7 +747,8 @@ def choice_problem(found, choice, purpose=""):
         return "unavailable", f"{label} cannot run {model_id}: {model['problem']}."
     if purpose in NEEDS_IMAGE and model.get("image") is not True:
         why = "does not accept images" if model.get("image") is False else "is not reported to accept images"
-        return "unavailable", f"{model_id} {why}; screenshots need image input. Choose another model."
+        return "unavailable", (f"Your chosen model {model_id} {why}, so screenshots are not analysed. "
+                               "Choose a model that accepts images to turn this on.")
     if model["efforts"] and choice["effort"] not in model["efforts"]:
         return "needs_choice", f"Choose an effort level for {model_id} in Getting started."
     if not model["efforts"] and choice["effort"]:
@@ -740,15 +789,16 @@ class AIService:
                 self.cache[provider] = cached
             return cached[2]
 
-    def resolve(self, purpose):
-        """Snapshot of what one invocation will run: choice, state, executable and a key that
-        changes with the choice or the executable (sessions and checks belong to a key)."""
-        stored = self.settings.purposes().get(purpose)
+    def resolve(self, purpose=""):
+        """Snapshot of what one invocation of a task will run: the one choice, its state for this
+        task (any task when `purpose` is empty), executable and a key that changes with the
+        choice or the executable (sessions and checks belong to a key)."""
+        stored = self.settings.choice()
         choice = _normal(stored)
         if choice is None:
             partial = isinstance(stored, dict) and stored.get("provider") and stored.get("model")
-            return Ticket(purpose, "needs_choice", "Finish the choice for this task (effort and speed) in Getting "
-                          "started." if partial else NO_CHOICE, stored if isinstance(stored, dict) else None, "", "")
+            return Ticket(purpose, "needs_choice", "Finish the AI choice (effort and speed) in Getting "
+                          "started." if partial else NO_CHOICE, stored, "", "")
         found = self.options(choice["provider"])
         state, reason = choice_problem(found, choice, purpose)
         key = json.dumps({"choice": choice, "identity": found.get("identity", "")}, sort_keys=True)
@@ -757,24 +807,25 @@ class AIService:
     def tickets(self):
         return {purpose: self.resolve(purpose) for purpose in PURPOSES}
 
-    def status(self, purpose):
+    def status(self, purpose=""):
+        """The choice for one task, or for no task in particular when `purpose` is empty."""
         ticket = self.resolve(purpose)
         return {"purpose": purpose, "state": ticket.state, "choice": ticket.choice, "reason": ticket.reason}
 
     def status_all(self):
         return {purpose: self.status(purpose) for purpose in PURPOSES}
 
-    def save(self, purpose, choice):
-        if purpose not in PURPOSES:
-            raise ValueError("Unknown AI purpose")
+    def save(self, choice):
+        """Save the one choice. It must be runnable as such; a task it cannot do (screenshots
+        without image input) is reported by that task's status, not refused here."""
         choice = _normal(choice)
         if choice is None:
             raise ValueError("Choose a provider, a model, an effort level and a speed")
-        state, reason = choice_problem(self.options(choice["provider"]), choice, purpose)
+        state, reason = choice_problem(self.options(choice["provider"]), choice)
         if state != "ready":
             raise ValueError(reason)
-        self.settings.set_purpose(purpose, choice)
-        return self.status(purpose)
+        self.settings.set_choice(choice)
+        return self.status()
 
     def run(self, purpose, prompt, ticket=None, **options):
         """Run with the ticket's snapshot (resolved now when none is given)."""

@@ -5,11 +5,12 @@ Product-usage statistics are not collected or sent. There is no telemetry
 switch, installation tracking identifier, event queue or usage-reporting sender.
 Audio files, repository manifests and generated reports stay on the Mac unless
 the user explicitly configures external delivery. AI features use the AI tool
-(Codex, Claude Code or a local Ollama) and model the user chose for each task
-in Getting started; nothing is sent to an AI tool for a task without a choice.
-Transcript text, OCR excerpts and connected-source excerpts may be sent to the
-tool chosen for chat and automatic analysis, and a screenshot may be sent to
-the tool chosen for screenshot relevance. A local Ollama model keeps that data
+(Codex, Claude Code or a local Ollama) and model the user chose once in
+Getting started; every AI task uses that one choice, and nothing is sent to an
+AI tool before a choice is made. Transcript text, OCR excerpts and
+connected-source excerpts may be sent to the chosen tool for chat and automatic
+analysis, and a screenshot is sent to it for screenshot relevance only when the
+chosen model accepts images. A local Ollama model keeps that data
 on the computer; Codex and Claude Code send it to their cloud service under
 the user's own account.
 
