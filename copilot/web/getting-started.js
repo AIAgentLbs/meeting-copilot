@@ -29,8 +29,7 @@
     "context-folder-add": ["Connect folder (read-only)", "Подключить папку (только чтение)"],
     "context-folder-choose": ["Choose folder…", "Выбрать папку…"],
     "context-folder-path-label": ["Or enter its absolute path", "Или укажите полный путь"],
-    "context-google-open": ["Google Drive · connect / manage", "Google Drive · подключить / настроить"],
-    "assistant-problem-fix": ["Check AI / fix access", "Проверить ИИ / восстановить доступ"]
+    "context-google-open": ["Google Drive · connect / manage", "Google Drive · подключить / настроить"]
   };
   const errorText = text => {
     if (en()) return String(text).replace(/^AI_(?:LIMIT|LOGIN|UPDATE|MODEL|MISSING|NETWORK|FAILED|CHOICE|UNAVAILABLE):\s*/, "");
@@ -173,7 +172,6 @@
   async function load() {try {current = await api("/api/getting-started"); render(); void loadAI();} catch(error) {$("startup-message").textContent = error.message;}}
   $("getting-started-open").onclick = show;
   $("getting-started-close").onclick = () => {$("getting-started").hidden = true; $("getting-started-open").setAttribute("aria-expanded","false"); localStorage.setItem("meetontrack-started", "1");};
-  $("assistant-problem-fix").onclick = show;
   $("startup-context").onclick = () => $("repo-button").click();
   $("startup-google").onclick = () => {$("settings-open").click(); $("google-context-settings").open = true; $("google-context-settings").scrollIntoView({block:"nearest"});};
   $("startup-recorder").onclick = async () => {try {await api("/api/getting-started/open-recorder",{}); $("startup-message").textContent = word("Recorder opened. Finish setup there, then return here.", "Окно записи открыто. Завершите настройку там и вернитесь сюда.");} catch(error) {$("startup-message").textContent = error.message;}};
@@ -210,15 +208,16 @@
   // Anything that stops the app from doing its job gets a red banner above everything, with the one
   // button that fixes it, also during a recording (owner decision 2026-10-21: a call was recorded with
   // no speech recognition chosen and only a small grey label said so).
-  const blockerState = {setup: null, speech: null, health: null, live: null};
+  const blockerState = {setup: null, speech: null, health: null, live: null, aiFailure: ""};
   let blockerSignature = "";
   function openStep(id) {show(); $(id).scrollIntoView({block: "start"});}
   async function openRecorder() {try {await api("/api/getting-started/open-recorder", {});} catch (error) {openStep("startup-audio-heading");}}
   function blockers() {
-    const {setup, speech, health, live} = blockerState, found = [];
+    const {setup, speech, health, live, aiFailure} = blockerState, found = [];
     if (setup?.capture_installed === false) found.push([word("The recorder is not installed. Calls are not recorded.", "Приложение для записи не установлено. Звонки не записываются."), word("How to install", "Как установить"), () => openStep("startup-audio-heading")]);
     else if (setup?.capture_running === false) found.push([word("The recorder is not running. Calls are not recorded.", "Приложение для записи не запущено. Звонки не записываются."), word("Start the recorder", "Запустить запись"), openRecorder]);
     if (health?.state === "action_required" && health.reason === "audio_track_stalled") found.push([word("Sound is not being recorded. Check the microphone and system audio permissions in the recorder.", "Звук не записывается. Проверьте разрешения на микрофон и системный звук в окне записи."), word("Open the recorder", "Открыть окно записи"), openRecorder]);
+    if (health?.state === "action_required" && ["recognition_retries_exhausted", "recognition_resume_failed"].includes(health.reason) || live?.status === "error") found.push([word("Live transcription stopped and did not restart. There is no AI help during the call.", "Расшифровка во время звонка остановилась и не восстановилась. Подсказок ИИ во время звонка не будет."), word("Resume transcription", "Возобновить расшифровку"), () => $("recognition-resume").click()]);
     if (speech?.state === "needs_choice") found.push([word("Speech recognition is not set up. Calls are recorded, but there is no transcript and no AI help.", "Распознавание речи не настроено. Звонок записывается, но стенограммы и подсказок ИИ не будет."), word("Set up speech recognition", "Настроить распознавание"), () => openStep("speech-step")]);
     else if (speech?.state === "unavailable") found.push([word("Speech recognition does not work: ", "Распознавание речи не работает: ") + speech.reason + word(". There is no transcript and no AI help.", ". Стенограммы и подсказок ИИ не будет."), word("Fix speech recognition", "Исправить распознавание"), () => openStep("speech-step")]);
     // A choice that transcribes after the call can still be one the live recognizer cannot run.
@@ -226,6 +225,7 @@
     const ai = setup?.ai || {};
     if (ai.state === "needs_choice") found.push([word("AI is not chosen. There is no AI help during calls.", "ИИ не выбран. Подсказок ИИ во время звонка не будет."), word("Choose AI", "Выбрать ИИ"), () => openStep("startup-ai-heading")]);
     else if (ai.state === "error") found.push([word("AI check failed: ", "Проверка ИИ не прошла: ") + errorText(ai.message || ""), word("Fix AI", "Исправить ИИ"), () => openStep("startup-ai-heading")]);
+    else if (aiFailure) found.push([word("AI help failed: ", "Подсказки ИИ не работают: ") + errorText(aiFailure), word("Fix AI", "Исправить ИИ"), () => openStep("startup-ai-heading")]);
     return found;
   }
   function renderBlockers() {
@@ -249,12 +249,11 @@
   window.renderGettingStartedStatus = data => {
     blockerState.health = data.recording_health || null;
     blockerState.live = data.transcript || null;
+    blockerState.aiFailure = data.copilot?.error || (data.copilot?.analysis?.state === "error" ? data.copilot.analysis.message : "");
     renderBlockers();
     const wasRecording = recording;
     recording = Boolean(data.recording_health?.audio_recording);
     if(recording && starting) {starting=false; $("startup-message").textContent=word("Audio recording confirmed.","Запись звука подтверждена.");}
-    const error=data.copilot?.error || (data.copilot?.analysis?.state==="error" ? data.copilot.analysis.message : "");
-    $("assistant-problem").hidden=!error; $("assistant-problem-text").textContent=errorText(error);
     if(wasRecording!==recording) render();
   };
   new MutationObserver(() => {render(); renderBlockers();}).observe(document.documentElement,{attributes:true,attributeFilter:["lang"]});
