@@ -31,6 +31,7 @@ function Stop-OtherVersions([string]$Root,[string]$UserHome){
         $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase') -and
         -not ($_.Name -eq 'MeetingCopilotCapture.exe' -and ($keepCaptures -or $_.ProcessId -in $owners))})
     foreach($process in $old){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
+    if($old.Count){Wait-Process -Id $old.ProcessId -Timeout 10 -ErrorAction SilentlyContinue}
     if(@($old|Where-Object {$_.Name -ne 'MeetingCopilotCapture.exe'}).Count){
         for($i=0;$i -lt 40 -and @(Get-NetTCPConnection -LocalPort 43121 -State Listen -ErrorAction SilentlyContinue).Count;$i++){Start-Sleep -Milliseconds 250}
     }
