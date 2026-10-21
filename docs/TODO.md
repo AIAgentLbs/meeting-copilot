@@ -12,12 +12,18 @@ Public Mac/Windows 0.1.10 packages and remaining hardware gates:
 [distribution acceptance](releases/2026-10-19-public-distribution.md).
 2026-10-20: public 0.1.11 Mac/Windows pre-releases (per-task AI choice):
 [0.1.11 distribution acceptance](releases/2026-10-20-0.1.11-distribution.md).
+2026-10-21: public 0.1.12 Mac/Windows pre-releases (one AI choice, Mac speech choice):
+[0.1.12 distribution acceptance](releases/2026-10-21-0.1.12-distribution.md).
 
 - [ ] MEETONTRACK-1: `scripts/check-note-ui.cjs` fails at 0.1.11 and identically at the 0.1.10
   source (`ae27f2b`): `#note-help` shows `--:--` where the test expects the
   fixture's elapsed time `02:44`. Decide whether the hint must render the call
   time before the first state poll (product fix) or the test must wait for it
   (test fix); then run it in release checks. Not run in CI today.
+- [ ] (needs a MEETONTRACK number) `copilot/web/test_meeting_boundary_ui.cjs` times out
+  (`locator.waitFor` 3 s, line 45) at 0.1.12 and identically at 0.1.11 (`effb7a2`).
+  Not in the release script set. Find whether the fixture or the UI changed,
+  fix it, then add it to the release checks.
 
 Scope: end-user software only. Website/domain, analytics, SEO, comparisons,
 keyword/trademark research and promotion are tracked exclusively in
