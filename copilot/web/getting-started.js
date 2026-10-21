@@ -95,7 +95,7 @@
     summary: ["Meeting summary", "Итог встречи"],
     speaker_names: ["Speaker names", "Имена спикеров"]
   };
-  let aiState = {providers: [], purposes: {}}, draft = null;
+  let aiState = {providers: [], purposes: {}}, draft = null, edited = false;  // edited: the person changed the draft
   const options = {};
   const node = (tag, text) => {const item = document.createElement(tag); if (text) item.textContent = text; return item;};
   function picker(label, choices, value, change) {
@@ -113,11 +113,11 @@
   }
   function aiCard() {
     const status = aiState.choice || {};
-    draft ||= {provider: "", model: "", effort: "", speed: "", ...(status.choice || {})};
+    if (!edited) draft = {provider: "", model: "", effort: "", speed: "", ...(status.choice || {})};
     const box = node("fieldset"); box.className = "ai-purpose"; box.append(node("legend", word("AI for every task", "ИИ для всех задач")));
-    const redraw = () => renderAI();
+    const redraw = () => renderAI(), edit = () => {edited = true; renderAI();};
     box.append(picker(word("AI tool", "Инструмент ИИ"), [["", word("Choose…", "Выберите…")], ...aiState.providers.map(item => [item.provider, item.label])],
-      draft.provider, value => {Object.assign(draft, {provider: value, model: "", effort: "", speed: ""}); redraw();}));
+      draft.provider, value => {Object.assign(draft, {provider: value, model: "", effort: "", speed: ""}); edit();}));
     const found = draft.provider ? options[draft.provider] : null;
     if (draft.provider && !found) void providerOptions(draft.provider).then(redraw);
     let ready = false;
@@ -127,11 +127,11 @@
       const model = found.models.find(item => item.id === draft.model && !item.problem);
       const name = item => item.problem ? `${item.label} (${item.problem})` : item.image === true ? item.label : `${item.label} (${word("no screenshots", "без снимков экрана")})`;
       box.append(picker(word("Model", "Модель"), [["", word("Choose…", "Выберите…")], ...found.models.map(item => [item.id, name(item), item.problem])],
-        model ? draft.model : "", value => {Object.assign(draft, {model: value, effort: "", speed: ""}); redraw();}));
+        model ? draft.model : "", value => {Object.assign(draft, {model: value, effort: "", speed: ""}); edit();}));
       if (model?.efforts.length) box.append(picker(word("Effort", "Уровень рассуждений"), [["", word("Choose…", "Выберите…")], ...model.efforts.map(item => [item, item])],
-        draft.effort, value => {draft.effort = value; redraw();}));
+        draft.effort, value => {draft.effort = value; edit();}));
       if (model?.speeds.length) box.append(picker(word("Speed", "Скорость"), [["", word("Choose…", "Выберите…")], ["standard", word("Standard", "Обычная")], ...model.speeds.map(item => [item.id, item.label])],
-        draft.speed, value => {draft.speed = value; redraw();}));
+        draft.speed, value => {draft.speed = value; edit();}));
       if (model && !model.efforts.length) box.append(node("p", word("This model has no effort levels.", "У этой модели нет уровней рассуждений.")));
       if (model && !model.speeds.length) box.append(node("p", word("Speed: ", "Скорость: ") + model.speed_reason));
       if (found.plan) box.append(node("p", word("Plan: ", "Тариф: ") + found.plan));
@@ -164,7 +164,7 @@
     return box;
   }
   function renderAI() {$("ai-card").replaceChildren(aiCard());}
-  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) draft = null; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
+  async function loadAI(saved) {try {aiState = await api("/api/ai"); if (aiState.check) current.ai = aiState.check; if (saved) edited = false; renderAI(); render();} catch (error) {$("ai-choice-message").textContent = error.message;}}
   $("ai-refresh").onclick = async () => {
     $("ai-refresh").disabled = true;
     try {await Promise.all(Object.keys(options).map(provider => providerOptions(provider, true))); await loadAI(true);}

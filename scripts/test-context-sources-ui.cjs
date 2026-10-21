@@ -30,7 +30,9 @@ const fetch = async (url,options) => {
     assert.equal(data.path,'/synthetic/project');
     folders=[{id:'one',name:'project',path:data.path}]; result.folders=folders;
   } else if(url==='/api/context-folders/remove') {folders=[];result.folders=folders;}
-  else if(url==='/api/ai') result={...result,providers:[],purposes:{}};
+  else if(url==='/api/ai') result={...result,providers:[{provider:'fake',label:'Fake'}],purposes:{},
+    choice:{state:'ready',choice:{provider:'fake',model:'m',effort:'',speed:''}}};
+  else if(url.startsWith('/api/ai/options')) result.options={state:'unavailable',reason:'fixture'};
   else if(url==='/api/getting-started/check-ai') result.ai={state:'error',message:'AI_LIMIT: quota'};
   return {ok:true,json:async()=>result};
 };
@@ -43,6 +45,8 @@ vm.runInNewContext(fs.readFileSync(path.join(web,'getting-started.js'),'utf8'),{
   await new Promise(resolve=>setImmediate(resolve));
   assert(!html.includes('context-document-input'), 'No upload input');
   assert.equal(el('context-folders-title').textContent,'Folders on this computer');
+  // The one AI card opens on the saved choice, not on an empty draft from the first render.
+  assert.equal(el('ai-card').children[0].children[1].children[0].value,'fake');
   await el('context-folder-choose').click();
   assert.equal(el('context-folder-path').value,'/synthetic/project');
   assert.equal(folders.length,0,'Selecting a folder must not authorize reading before Connect');
