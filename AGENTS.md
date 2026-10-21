@@ -6,6 +6,10 @@ Owner scope decision: 2026-10-19.
   transcription, context retrieval, integrations, installers, packaging,
   automatic updates, tests and user documentation.
 - Keep `docs/TODO.md` limited to that software scope.
+- Tasks for all MeetOnTrack repositories live in the maintainer's private
+  tracker (project `MEETONTRACK`, owner decision 2026-10-21). `docs/TODO.md` mirrors
+  it: every open item carries its `MEETONTRACK-N` number. Add new work to the
+  tracker first, then the mirror line; close it in the tracker.
 - Website, domain/DNS, GA4, GSC, Umami, SEO, marketing email-domain setup,
   competitor comparisons, keyword/trademark research and promotional demos belong
   to the private `AIAgentLbs/meetontrack-website` repository, deployed by
