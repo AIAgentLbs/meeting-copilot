@@ -14,6 +14,14 @@ $version='0.1.12-windows-beta.1'
 $url='https://github.com/AIAgentLbs/meetontrack/releases/download/windows-v0.1.12/meeting-copilot-windows-v0.1.12-x64.zip'
 $utf8=[Text.UTF8Encoding]::new($false)
 $script:copilotDownloadPython=$null
+function Get-CaptureRunValue([string]$Value,[string]$VersionsRoot,[string]$Capture){
+    # The recorder registers itself at login (HKCU Run) with its own path; after an update that
+    # path names an old version folder. Returns the value for the new capture, or $null to keep.
+    if($Value -notmatch '^\s*"([^"]+)"(.*)$'){return $null}
+    $exe=$Matches[1]; $rest=$Matches[2]
+    if(-not $exe.StartsWith($VersionsRoot.TrimEnd('\')+'\','OrdinalIgnoreCase') -or $exe -ieq $Capture){return $null}
+    return "`"$Capture`"$rest"
+}
 function Download-VerifiedInput([string]$Url,[string]$Target){
     if($script:copilotDownloadPython){
         $code="import sys,urllib.request,shutil; r=urllib.request.urlopen(sys.argv[1],timeout=60); f=open(sys.argv[2],'wb'); shutil.copyfileobj(r,f); f.close(); r.close()"
@@ -106,6 +114,9 @@ try {
         }
     }
     [IO.File]::WriteAllText("$InstallRoot\current.json",(@{version=$version;directory=$destination}|ConvertTo-Json),$utf8)
+    # MEETONTRACK-65: stop our previous version's server and capture (never another program's,
+    # never a capture that is recording) and wait for port 43121, so the new version serves.
+    & "$destination\meeting-copilot.ps1" --stop-old
     if(-not $NoShortcuts){
         # AI is optional; never pin/install an obsolete CLI or change an existing
         # user's auth. The first-run assistant offers installation and a live check.
@@ -117,6 +128,10 @@ try {
         $shortcut.IconLocation="$destination\capture\MeetingCopilotCapture.exe"
         $shortcut.Save()
         $startup=Join-Path ([Environment]::GetFolderPath('Startup')) 'MeetOnTrack.lnk'
+        $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+        $registered=(Get-ItemProperty $run -ErrorAction SilentlyContinue).MeetingCopilotCapture
+        $updated=if($registered){Get-CaptureRunValue $registered (Join-Path $InstallRoot 'versions') "$destination\capture\MeetingCopilotCapture.exe"}
+        if($updated){Set-ItemProperty $run MeetingCopilotCapture $updated}
         Copy-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'MeetOnTrack.lnk') $startup -Force
         foreach($folder in @([Environment]::GetFolderPath('Programs'),[Environment]::GetFolderPath('Startup'))){
             $legacy=Join-Path $folder 'Meeting Copilot.lnk'

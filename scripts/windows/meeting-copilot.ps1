@@ -1,6 +1,6 @@
 $ErrorActionPreference='Stop'
 $check=$args -contains '--check'
-if(@($args|Where-Object {$_ -notin @('--check','--no-open','--refresh')}).Count){throw 'Usage: meeting-copilot.ps1 [--check|--no-open|--refresh]'}
+if(@($args|Where-Object {$_ -notin @('--check','--no-open','--refresh','--stop-old')}).Count){throw 'Usage: meeting-copilot.ps1 [--check|--no-open|--refresh|--stop-old]'}
 $root=$PSScriptRoot
 $capture=Join-Path $root 'capture\MeetingCopilotCapture.exe'
 $python=Join-Path $root 'python\python.exe'
@@ -10,6 +10,26 @@ $config=Join-Path $env:USERPROFILE '.config\meeting-copilot'
 $data=Join-Path $env:USERPROFILE '.local\share\meeting-copilot'
 $env:PYTHONUTF8='1'
 $env:PYTHONIOENCODING='utf-8'
+function Stop-OtherVersions {
+    # MEETONTRACK-65: an update leaves the previous version's server and capture running.
+    # Stop only our own processes from another versions\<v> folder; keep a recording capture.
+    $versions=(Split-Path $root -Parent).TrimEnd('\')+'\'
+    $own=$root.TrimEnd('\')+'\'
+    $recording=$false
+    try {$recording=(Get-Content "$data\meeting-copilot-live.json" -Raw -Encoding UTF8|ConvertFrom-Json).status -in @('recording','paused','loading','overloaded')} catch {}
+    $old=@(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe' OR Name='MeetingCopilotCapture.exe'" | Where-Object {
+        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and
+        -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase') -and -not ($recording -and $_.Name -eq 'MeetingCopilotCapture.exe')})
+    foreach($process in $old){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
+    if(@($old|Where-Object {$_.Name -ne 'MeetingCopilotCapture.exe'}).Count){
+        for($i=0;$i -lt 40 -and @(Get-NetTCPConnection -LocalPort 43121 -State Listen -ErrorAction SilentlyContinue).Count;$i++){Start-Sleep -Milliseconds 250}
+    }
+}
+if($args -contains '--stop-old'){Stop-OtherVersions; exit 0}
+$release=[string](Get-Content (Join-Path $root 'release.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
+function Test-Ready {
+    try {$h=Invoke-RestMethod 'http://127.0.0.1:43121/api/health' -TimeoutSec 2; return $h.service -eq 'meeting-copilot' -and [string]$h.version -eq $release} catch {return $false}
+}
 foreach($file in @($capture,$python,$server,"$config\config.json","$config\SESSION.md")){
     if(-not(Test-Path $file -PathType Leaf)){throw "Missing installation component: $file"}
 }
@@ -38,16 +58,13 @@ if($check){
     Write-Host '[OK] Capture, bundled Python and speech models. AI tool, model and account access are chosen and checked in Getting started.'
     exit 0
 }
+Stop-OtherVersions
 if(-not(Get-Process MeetingCopilotCapture -ErrorAction SilentlyContinue)){Start-Process -FilePath $capture}
-$ready=$false
-try {$h=Invoke-RestMethod 'http://127.0.0.1:43121/api/health' -TimeoutSec 2; $ready=$h.service -eq 'meeting-copilot' -or $h.ok -eq $true} catch {}
+$ready=Test-Ready
 if(-not $ready){
     Start-Process -FilePath $pythonw -ArgumentList @('-X','utf8',"`"$server`"",'--no-open') -WorkingDirectory $root
-    for($i=0;$i -lt 40;$i++){
-        Start-Sleep -Milliseconds 250
-        try {Invoke-RestMethod 'http://127.0.0.1:43121/api/health' -TimeoutSec 1 | Out-Null; $ready=$true;break} catch {}
-    }
+    for($i=0;$i -lt 40 -and -not $ready;$i++){Start-Sleep -Milliseconds 250; $ready=Test-Ready}
 }
-if(-not $ready){throw 'MeetOnTrack web service did not start'}
+if(-not $ready){throw "MeetOnTrack $release web service did not start; port 43121 may be used by another program"}
 if($args -notcontains '--no-open'){Start-Process 'http://127.0.0.1:43121'}
 Write-Host 'MeetOnTrack: http://127.0.0.1:43121'
