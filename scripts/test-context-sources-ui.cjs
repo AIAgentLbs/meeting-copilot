@@ -38,9 +38,16 @@ const fetch = async (url,options) => {
 };
 const window={addEventListener(){}};
 const localStorage={getItem:()=>null,setItem(){}};
-vm.runInNewContext(fs.readFileSync(path.join(web,'getting-started.js'),'utf8'),{
-  document,window,fetch,localStorage,MutationObserver:class {observe(){}},setTimeout,console
-});
+// getting-started.js uses app.js's shared error wording (translations, plainError, apiError).
+const app = fs.readFileSync(path.join(web,'app.js'),'utf8');
+const start = app.indexOf('const translations = {');
+const shared = app.slice(start, app.indexOf('\n};\n', start) + 3)
+  + app.slice(app.indexOf('function apiError'), app.indexOf('// GETs retry quietly'))
+  + 'function t(key) { return translations[uiLanguage][key] || translations.ru[key] || key; }';
+const context = vm.createContext({document,window,fetch,localStorage,MutationObserver:class {observe(){}},setTimeout,setInterval:()=>0,console});
+Object.defineProperty(context,'uiLanguage',{get:()=>document.documentElement.lang});
+vm.runInContext(shared, context);
+vm.runInContext(fs.readFileSync(path.join(web,'getting-started.js'),'utf8'), context);
 (async()=>{
   await new Promise(resolve=>setImmediate(resolve));
   assert(!html.includes('context-document-input'), 'No upload input');

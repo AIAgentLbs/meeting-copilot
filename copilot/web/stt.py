@@ -216,6 +216,8 @@ class STTService:
             self._adopt_in_background()
         elif cached and cached.get("ok") and block.get("stored") == stored and block.get("state") in STATES:
             state, reason = block["state"], str(block.get("reason") or "")
+            if state == "unavailable":
+                self._adopt_in_background()  # a model downloaded since then clears it within 30 s
         else:
             state, reason = "", "Reading what the recorder offers…"
             self._adopt_in_background()  # also resolves a saved choice nobody opened Getting started for

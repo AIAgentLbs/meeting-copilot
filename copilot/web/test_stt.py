@@ -247,6 +247,22 @@ class SaveChoiceTests(STTTestCase):
         self.assertEqual(service.status()["state"], "ready")
         self.assertEqual(len(runner.calls), 1)  # one run, not one per status read
 
+    def test_unavailable_choice_is_read_again_once_the_answer_is_30_seconds_old(self):
+        choice = {"engine": "fluidaudio", "model": "fixture-batch-model", "language": "auto"}
+        self.config.write_text(json.dumps({"stt": {"choice": choice}}))
+        answer = lambda state: json.dumps({**json.loads(FIXTURE), "choice": {"stored": choice, "state": state, "reason": "not downloaded"}})
+        runner = FakeRunner(stdout=answer("unavailable"))
+        service = self.service(runner=runner)
+        service.options()
+        self.assertEqual(service.status()["state"], "unavailable")
+        self.assertEqual(len(runner.calls), 1)  # a fresh answer is trusted
+        runner.stdout = answer("ready")  # the model finished downloading
+        service.cache = (service.cache[0] - 31, service.cache[1])
+        deadline = time.monotonic() + 2
+        while service.status()["state"] != "ready" and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(service.status()["state"], "ready")
+
 
 BANNER_PROBE = r"""
 const fs = require("fs");
