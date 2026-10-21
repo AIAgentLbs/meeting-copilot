@@ -21,8 +21,8 @@ Public Mac/Windows 0.1.10 packages and remaining hardware gates:
 
 Scope: end-user software only. Website/domain, analytics, SEO, comparisons,
 keyword/trademark research and promotion are tracked exclusively in
-`AIAgentLbs/meeting-copilot`, root `SITE_TODO.md` (local sibling checkout:
-`../meeting-copilot/SITE_TODO.md` from this repository root). See `AGENTS.md`.
+`AIAgentLbs/meetontrack-website`, root `SITE_TODO.md` (local sibling checkout:
+`../meetontrack-website/SITE_TODO.md` from this repository root). See `AGENTS.md`.
 The 2026-10-19 file migration is complete: 37 website files moved with verified
 hashes, Pages removed, and the Windows installer relocated to
 `scripts/windows/install.ps1` with packaging/CI references updated.

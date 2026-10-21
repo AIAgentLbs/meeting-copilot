@@ -1,6 +1,6 @@
 # MeetOnTrack release notifications
 
-The local web service checks the public `AIAgentLbs/meeting-copilot` release list
+The local web service checks the public `AIAgentLbs/meetontrack` release list
 every 15 minutes, first checking about 30 seconds after service startup. State polling
 does not perform network requests. There is one bounded response (2 MB, 10 second
 timeout), one selected release and at most 20,000 characters of release notes.

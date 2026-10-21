@@ -16,7 +16,7 @@ Owner scope decision: 2026-10-19.
   Coolify on 5.78.46.146 (owner decision 2026-10-20). Its single website backlog
   is root `SITE_TODO.md` (local sibling checkout
   `../meetontrack-website/SITE_TODO.md`). Keep only a cross-reference here.
-- This repository is the public `AIAgentLbs/meeting-copilot`. It also hosts the
+- This repository is the public `AIAgentLbs/meetontrack`. It also hosts the
   GitHub Releases that the website download links point to. Never commit
   secrets, private client data or meeting recordings.
 - No hardcoded AI or speech providers, models or model modes anywhere (owner

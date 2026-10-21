@@ -98,7 +98,7 @@ def main():
     content, count = re.subn(r"\[string\]\$ExpectedSha256 = '[0-9a-f]+'", f"[string]$ExpectedSha256 = '{checksum}'", content, count=1)
     assert count == 1
     content = re.sub(r"(?m)^\$version='[^']+'$", f"$version='{manifest['version']}'", content)
-    url = f'https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v{args.version}/{args.output.name}'
+    url = f'https://github.com/AIAgentLbs/meetontrack/releases/download/windows-v{args.version}/{args.output.name}'
     content = re.sub(r"(?m)^\$url='[^']+'$", f"$url='{url}'", content)
     installer.write_text(content, encoding='utf-8')
     print(json.dumps({'archive': str(args.output), 'installer': str(installer), 'sha256': checksum,

@@ -10,7 +10,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const errors = [];
   let updates = {version: '0.1.9', platform: 'macos', channel: 'technical-beta', enabled: true,
     checked_at: 1000, checking: false, notify: true, latest: {version: '0.1.10',
-      url: 'https://github.com/AIAgentLbs/meeting-copilot/releases/tag/v0.1.10',
+      url: 'https://github.com/AIAgentLbs/meetontrack/releases/tag/v0.1.10',
       notes: 'Better recording.\n<script>window.UNSAFE = true</script>'}};
   try {
     const page = await browser.newPage({viewport: {width: 1440, height: 1000}});

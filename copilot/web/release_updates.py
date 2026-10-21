@@ -12,7 +12,7 @@ import threading
 import time
 from urllib.request import Request, urlopen
 
-REPOSITORY = "AIAgentLbs/meeting-copilot"
+REPOSITORY = "AIAgentLbs/meetontrack"
 RELEASE_URL = f"https://github.com/{REPOSITORY}/releases/tag/"
 # Beta fixes should be discovered promptly, without coupling network work to
 # transcript polling. Keep failures bounded too, instead of hiding fixes for a day.

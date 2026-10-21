@@ -28,7 +28,7 @@ vm.runInNewContext(fs.readFileSync('copilot/web/updates.js', 'utf8'), context);
     assert.equal(clipboard, command);
   }
   render({version: '0.1.9', platform: 'macos', enabled: true, notify: true,
-    latest: {version: '0.1.10', url: 'https://github.com/AIAgentLbs/meeting-copilot/releases/tag/v0.1.10', notes: '<script>bad()</script>'}});
+    latest: {version: '0.1.10', url: 'https://github.com/AIAgentLbs/meetontrack/releases/tag/v0.1.10', notes: '<script>bad()</script>'}});
   assert.equal(get('updates-notice').hidden, false);
   assert.equal(get('updates-notes').textContent, '<script>bad()</script>');
   document.documentElement.lang = 'ru';

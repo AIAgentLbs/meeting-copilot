@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-REPO="AIAgentLbs/meeting-copilot"
+REPO="AIAgentLbs/meetontrack"
 VERSION="v0.1.11"
 ASSET="meeting-copilot-macos.zip"
 SHA256="59b5b1c843fc6da5075deb6fe8c7891e5aa826bfaba167a8888e5fe9f62b80db"

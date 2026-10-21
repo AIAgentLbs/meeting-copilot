@@ -102,5 +102,5 @@ User settings and recordings are outside that application version directory.
 For no-audio failures, check permissions on the actual installed application
 and selected devices, then reopen Capture. For no PDF, check Chrome. If you
 report a problem, include OS, version and a redacted error at
-https://github.com/AIAgentLbs/meeting-copilot/issues. Do not upload private
+https://github.com/AIAgentLbs/meetontrack/issues. Do not upload private
 recordings, transcripts, OAuth JSON or delivery credentials.

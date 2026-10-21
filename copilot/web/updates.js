@@ -49,7 +49,7 @@
     find("updates-status").textContent = `${identity}. ${actionError ? text.saveError : status}`;
     const latest = data.latest;
     const url = latest?.url || "";
-    const trusted = /^https:\/\/github\.com\/AIAgentLbs\/meeting-copilot\/releases\/tag\/(?:windows-)?v\d+\.\d+\.\d+$/.test(url);
+    const trusted = /^https:\/\/github\.com\/AIAgentLbs\/meetontrack\/releases\/tag\/(?:windows-)?v\d+\.\d+\.\d+$/.test(url);
     find("updates-release").hidden = !latest || !trusted;
     find("updates-notice").hidden = !data.notify || !trusted;
     if (latest && trusted) {

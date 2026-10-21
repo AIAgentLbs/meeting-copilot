@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
 $version='0.1.11-windows-beta.1'
-$url='https://github.com/AIAgentLbs/meeting-copilot/releases/download/windows-v0.1.11/meeting-copilot-windows-v0.1.11-x64.zip'
+$url='https://github.com/AIAgentLbs/meetontrack/releases/download/windows-v0.1.11/meeting-copilot-windows-v0.1.11-x64.zip'
 $utf8=[Text.UTF8Encoding]::new($false)
 $script:copilotDownloadPython=$null
 function Download-VerifiedInput([string]$Url,[string]$Target){

@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="meetontrack-preview-") as directory:
         from release_updates import ReleaseUpdates
         platform = args.updates_fixture
         prefix = "windows-" if platform == "windows" else ""
-        fixture = {"tag_name": prefix + "v0.1.10", "html_url": "https://github.com/AIAgentLbs/meeting-copilot/releases/tag/" + prefix + "v0.1.10",
+        fixture = {"tag_name": prefix + "v0.1.10", "html_url": "https://github.com/AIAgentLbs/meetontrack/releases/tag/" + prefix + "v0.1.10",
                    "body": "Synthetic update preview — no installation.\nImproved recording and MeetOnTrack branding.",
                    "assets": [{"name": "meeting-copilot-windows-v0.1.10-x64.zip" if platform == "windows" else "meeting-copilot-macos.zip"}]}
         server.UPDATES = ReleaseUpdates(preview_root / "updates.json", {"version": "0.1.9", "platform": platform, "channel": "technical-beta"}, fetch=lambda: [fixture])

@@ -16,7 +16,7 @@ def release(version, platform="macos", prerelease=True, **extra):
     asset = (f"meeting-copilot-windows-v{version}-x64.zip" if platform == "windows"
              else "meeting-copilot-macos.zip")
     return dict(tag_name=tag, draft=False, prerelease=prerelease,
-                html_url=f"https://github.com/AIAgentLbs/meeting-copilot/releases/tag/{tag}",
+                html_url=f"https://github.com/AIAgentLbs/meetontrack/releases/tag/{tag}",
                 body="Changes\n<script>alert(1)</script>", assets=[{"name": asset}], **extra)
 
 

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/AIAgentLbs/meeting-copilot/docs/config.schema.json",
+  "$id": "https://github.com/AIAgentLbs/meetontrack/docs/config.schema.json",
   "title": "MeetOnTrack shared settings (~/.config/meeting-copilot/config.json)",
   "description": "One settings file for every component: the Swift Mac app (Config.swift), the Windows installer and C# recorder (AppSettingsStore, same path under the user profile) and the Python web server. Each component owns some top-level sections and writes only those, with read-modify-write that preserves every key it does not own. Writers serialize on the advisory lock file config.json.lock next to this file, write a 0600 temporary file in the same folder (mode set before any data), fsync it and replace atomically; config.json is always 0600. A file that exists but cannot be parsed blocks every save and is never treated as empty.",
   "type": "object",

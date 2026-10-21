@@ -1,9 +1,12 @@
 # Source repositories
 
-## Current layout — 2026-10-20 (owner decision)
+## Current layout — 2026-10-20 (owner decision), renamed 2026-10-21
 
-- Public `AIAgentLbs/meeting-copilot` (MIT): web assistant, macOS capture in
-  `capture/`, installers, packaging, GitHub Releases.
+- Public `AIAgentLbs/meetontrack` (MIT, renamed from `meeting-copilot` on
+  2026-10-21): web assistant, macOS capture in `capture/`, installers,
+  packaging, GitHub Releases. Local checkout directory keeps its old name.
+- Private `AIAgentLbs/meetontrack-hub` (renamed from `meetontrack` on
+  2026-10-21): project hub.
 - Public `AIAgentLbs/meetontrack-recorder` (MIT, formerly
   `amanu-private-copy`): recorder derived from Amanu, macOS `Sources/` and
   Windows `windows/` as upstream lays them out. `master` mirrors
@@ -11,8 +14,8 @@
   `feat/meeting-copilot-windows`). Local checkout
   `/Users/m/code/aiagentlbs/meetontrack-recorder`.
 - Private `AIAgentLbs/meetontrack-website`: website, deployed by Coolify.
-- `AIAgentLbs/meeting-copilot-private-copy`: archived, merged into
-  `meeting-copilot` on 2026-10-20.
+- `AIAgentLbs/meeting-copilot-private-copy`: merged into this repository on
+  2026-10-20 and deleted by the owner on 2026-10-21.
 
 Before publication both former private copies were scanned (gitleaks over all
 refs, plus private-identifier grep over our commits): no secrets or private
