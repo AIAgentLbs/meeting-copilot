@@ -67,22 +67,27 @@
     if (!engine || !model) return null;  // free-text engines: the template's facts hold for any typed id
     return engine.model_entry === "free_text" ? engine.model_template || {} : (engine.models || []).find(item => item.id === model) || null;
   }
+  // A language by its name in the page language (Intl.DisplayNames).
+  function languageName(code) {
+    try {return new Intl.DisplayNames([en() ? "en" : "ru"], {type: "language"}).of(code.split("-")[0]) || code;} catch {return code;}
+  }
+  // "1 language", "5 languages"; "1 язык", "2 языка", "5 языков", "21 язык" (Intl.PluralRules).
+  function languageCount(n) {
+    const form = new Intl.PluralRules(en() ? "en" : "ru").select(n);
+    return `${n} ${en() ? (form === "one" ? "language" : "languages") : ({one: "язык", few: "языка"}[form] || "языков")}`;
+  }
   // The recorder's name for a model (`name_parts`), composed in the page's
-  // language the way the Mac windows compose it. Language names come from
-  // Intl.DisplayNames. The picker leaves the count to describe(), not the one language.
+  // language the way the Mac windows compose it. The picker leaves the count
+  // to describe(), not the one language.
   function modelName(parts, count = true) {
     if (!parts?.base) return "";
     const name = parts.variant ? `${parts.base}, ${parts.variant}` : parts.base;
-    if (parts.language) {
-      let spoken = parts.language;
-      try {spoken = new Intl.DisplayNames([document.documentElement.lang || "en"], {type: "language"}).of(parts.language) || spoken;} catch {}
-      return `${name} (${spoken})`;
-    }
-    return count && parts.language_count > 1 ? `${name} (${word(`${parts.language_count} languages`, `языков: ${parts.language_count}`)})` : name;
+    if (parts.language) return `${name} (${languageName(parts.language)})`;
+    return count && parts.language_count > 1 ? `${name} (${languageCount(parts.language_count)})` : name;
   }
   function describe(model) {
     const parts = (model.best_for || []).map(tag => word(...(tags[tag] || [tag, tag])));
-    parts.push(model.language_entry === "free_text" ? word("any language code", "любой код языка") : word(`${(model.languages || []).length} languages`, `языков: ${(model.languages || []).length}`));
+    parts.push(model.language_entry === "free_text" ? word("any language code", "любой код языка") : (model.languages || []).length === 1 ? languageName(model.languages[0]) : languageCount((model.languages || []).length));
     if (onMac(model)) parts.push(onMac(model));
     return parts.join(", ");
   }

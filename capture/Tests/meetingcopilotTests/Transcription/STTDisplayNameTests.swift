@@ -13,7 +13,12 @@ struct STTDisplayNameTests {
         let v3 = LocalSTTModel.parakeet(.v3).id
         let twentyFive = (1...25).map { "l\($0)" }
         #expect(STTCatalog.displayName(v3, languages: twentyFive) == "Parakeet v3 (25 languages)")
-        #expect(STTCatalog.displayName(v3, languages: twentyFive, in: .russian) == "Parakeet v3 (языков: 25)")
+        #expect(STTCatalog.displayName(v3, languages: twentyFive, in: .russian) == "Parakeet v3 (25 языков)")
+        #expect(STTCatalog.displayName(LocalSTTModel.parakeet(.tdtJa).id, languages: ["ja"], in: .russian)
+            == "Parakeet 0.6B (японский)")
+        let russian = [1, 2, 5, 21].map { STTCatalog.NameParts.languages($0, in: .russian) }
+        #expect(russian == ["1 язык", "2 языка", "5 языков", "21 язык"])
+        #expect(STTCatalog.NameParts.languages(1, in: .english) == "1 language")
         #expect(STTCatalog.displayName(LocalSTTModel.parakeet(.tdtJa).id, languages: ["ja"])
             == "Parakeet 0.6B (Japanese)")
         #expect(STTCatalog.displayName(LocalSTTModel.parakeet(.tdtCtc110m).id, languages: nil) == "Parakeet 110M")

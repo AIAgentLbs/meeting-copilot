@@ -49,7 +49,17 @@ enum STTCatalog {
                 return "\(name) (\(spoken ?? language))"
             }
             guard let count = languageCount, count > 1 else { return name }
-            return name + (interface == .russian ? " (языков: \(count))" : " (\(count) languages)")
+            return name + " (\(Self.languages(count, in: interface)))"
+        }
+
+        /// "5 languages"; "21 язык", "2 языка", "5 языков": the CLDR plural
+        /// forms speech.js gets from Intl.PluralRules.
+        static func languages(_ count: Int, in interface: InterfaceLanguage) -> String {
+            guard interface == .russian else { return "\(count) " + (count == 1 ? "language" : "languages") }
+            let (ones, tens) = (count % 10, count % 100)
+            let form = ones == 1 && tens != 11 ? "язык"
+                : (2...4).contains(ones) && !(12...14).contains(tens) ? "языка" : "языков"
+            return "\(count) \(form)"
         }
     }
 
