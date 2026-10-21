@@ -169,6 +169,8 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-84: Windows AI check and questions fail with AI_FAILED, [WinError 5] Access is denied
   in the archive folder (0.1.11, owner check 2026-10-21); reproduce on 0.1.12 and fix.
   Fixed in main c65a93b (an elevated mkdir(0o700) left owner-only ACLs); ships in the next Windows build.
+- [ ] MEETONTRACK-89: Mac call-audio capture fades to silence during Chrome calls (39 of 53 min lost on 2026-10-21);
+  watchdog fix ee2e6cf limits it; live A/B against an output-clocked aggregate on the next real call.
 - [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.
 - [ ] MEETONTRACK-87: Windows: frame relevance check fails with "model answered, but not as asked".
 - [ ] MEETONTRACK-88: Recorder quit-when-idle command, so an upgrade can replace an old capture at once.
