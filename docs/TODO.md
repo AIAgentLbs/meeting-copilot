@@ -168,6 +168,10 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-83: Windows recorder labels speakers Me/Participant 1; use You/Others, drop speaker_names.backend.
 - [ ] MEETONTRACK-84: Windows AI check and questions fail with AI_FAILED, [WinError 5] Access is denied
   in the archive folder (0.1.11, owner check 2026-10-21); reproduce on 0.1.12 and fix.
+  Fixed in main c65a93b (an elevated mkdir(0o700) left owner-only ACLs); ships in the next Windows build.
+- [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.
+- [ ] MEETONTRACK-87: Windows: frame relevance check fails with "model answered, but not as asked".
+- [ ] MEETONTRACK-88: Recorder quit-when-idle command, so an upgrade can replace an old capture at once.
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.
