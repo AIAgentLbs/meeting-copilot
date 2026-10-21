@@ -2242,14 +2242,17 @@ ANNOTATED_CACHE = AnnotationCache()
 
 
 def recorder_running() -> bool | None:
-    """Whether the recorder app is running, from the process list; None when that can't be told."""
+    """Whether the recorder app is running, from the process list; None when that can't be told.
+    The app is the binary with no subcommand (or `run`); `stt-options`, `process` and the other
+    one-shot commands share its path but record nothing."""
     if os.name == "nt":
         return None  # ponytail: Windows liveness unknown, add a tasklist check when its banner needs it
     try:
-        listing = subprocess.run(["/bin/ps", "-axo", "comm="], capture_output=True, text=True, timeout=5).stdout
+        listing = subprocess.run(["/bin/ps", "-axo", "args="], capture_output=True, text=True, timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
         return None
-    return str(RECOGNITION_GUARD.binary) in listing.splitlines()
+    app = str(RECOGNITION_GUARD.binary)
+    return any(line.strip() == app or line.startswith((app + " run", app + " -psn")) for line in listing.splitlines())
 
 
 def annotated_snapshot():

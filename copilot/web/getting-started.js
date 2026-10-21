@@ -210,17 +210,19 @@
   // Anything that stops the app from doing its job gets a red banner above everything, with the one
   // button that fixes it, also during a recording (owner decision 2026-10-21: a call was recorded with
   // no speech recognition chosen and only a small grey label said so).
-  const blockerState = {setup: null, speech: null, health: null};
+  const blockerState = {setup: null, speech: null, health: null, live: null};
   let blockerSignature = "";
   function openStep(id) {show(); $(id).scrollIntoView({block: "start"});}
   async function openRecorder() {try {await api("/api/getting-started/open-recorder", {});} catch (error) {openStep("startup-audio-heading");}}
   function blockers() {
-    const {setup, speech, health} = blockerState, found = [];
+    const {setup, speech, health, live} = blockerState, found = [];
     if (setup?.capture_installed === false) found.push([word("The recorder is not installed. Calls are not recorded.", "Приложение для записи не установлено. Звонки не записываются."), word("How to install", "Как установить"), () => openStep("startup-audio-heading")]);
     else if (setup?.capture_running === false) found.push([word("The recorder is not running. Calls are not recorded.", "Приложение для записи не запущено. Звонки не записываются."), word("Start the recorder", "Запустить запись"), openRecorder]);
     if (health?.state === "action_required" && health.reason === "audio_track_stalled") found.push([word("Sound is not being recorded. Check the microphone and system audio permissions in the recorder.", "Звук не записывается. Проверьте разрешения на микрофон и системный звук в окне записи."), word("Open the recorder", "Открыть окно записи"), openRecorder]);
     if (speech?.state === "needs_choice") found.push([word("Speech recognition is not set up. Calls are recorded, but there is no transcript and no AI help.", "Распознавание речи не настроено. Звонок записывается, но стенограммы и подсказок ИИ не будет."), word("Set up speech recognition", "Настроить распознавание"), () => openStep("speech-step")]);
     else if (speech?.state === "unavailable") found.push([word("Speech recognition does not work: ", "Распознавание речи не работает: ") + speech.reason + word(". There is no transcript and no AI help.", ". Стенограммы и подсказок ИИ не будет."), word("Fix speech recognition", "Исправить распознавание"), () => openStep("speech-step")]);
+    // A choice that transcribes after the call can still be one the live recognizer cannot run.
+    else if (live?.status === "unavailable") found.push([word("Live transcript is off: ", "Расшифровка во время звонка выключена: ") + (live.status_reason || "?") + word(". There is no AI help during the call.", ". Подсказок ИИ во время звонка не будет."), word("Fix speech recognition", "Исправить распознавание"), () => openStep("speech-step")]);
     const ai = setup?.ai || {};
     if (ai.state === "needs_choice") found.push([word("AI is not chosen. There is no AI help during calls.", "ИИ не выбран. Подсказок ИИ во время звонка не будет."), word("Choose AI", "Выбрать ИИ"), () => openStep("startup-ai-heading")]);
     else if (ai.state === "error") found.push([word("AI check failed: ", "Проверка ИИ не прошла: ") + errorText(ai.message || ""), word("Fix AI", "Исправить ИИ"), () => openStep("startup-ai-heading")]);
@@ -246,6 +248,7 @@
   }
   window.renderGettingStartedStatus = data => {
     blockerState.health = data.recording_health || null;
+    blockerState.live = data.transcript || null;
     renderBlockers();
     const wasRecording = recording;
     recording = Boolean(data.recording_health?.audio_recording);

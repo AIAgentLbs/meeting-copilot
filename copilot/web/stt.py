@@ -218,11 +218,13 @@ class STTService:
             state, reason = block["state"], str(block.get("reason") or "")
         else:
             state, reason = "", "Reading what the recorder offers…"
+            self._adopt_in_background()  # also resolves a saved choice nobody opened Getting started for
         return {"choice": stored, "state": state, "reason": reason, "deferred": self.deferred()}
 
     def _adopt_in_background(self):
         """`stt-options` adopts the model downloaded last when there is no choice yet (the capture
-        app owns that rule). Run it without holding up the caller, one at a time, at most every 30 s."""
+        app owns that rule) and says whether a saved one can run. Run it without holding up the
+        caller, one at a time, at most every 30 s."""
         cached = self.cache
         if cached and time.monotonic() - cached[0] < 30 or not self.adopting.acquire(blocking=False):
             return

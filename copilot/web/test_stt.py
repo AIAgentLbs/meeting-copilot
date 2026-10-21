@@ -222,6 +222,8 @@ class SaveChoiceTests(STTTestCase):
         choice = {"engine": "fluidaudio", "model": "fixture-batch-model", "language": "auto"}
         service.save_choice(choice)
         self.assertEqual(service.status()["state"], "")  # the cached block describes no stored choice
+        with service.adopting:  # the discovery that read started has finished
+            pass
         options = json.loads(FIXTURE)
         options["choice"] = {"stored": choice, "state": "ready", "reason": ""}
         service.cache = (time.monotonic(), {**options, "ok": True})
