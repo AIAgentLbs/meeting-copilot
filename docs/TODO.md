@@ -20,7 +20,7 @@ Public Mac/Windows 0.1.10 packages and remaining hardware gates:
   fixture's elapsed time `02:44`. Decide whether the hint must render the call
   time before the first state poll (product fix) or the test must wait for it
   (test fix); then run it in release checks. Not run in CI today.
-- [ ] (needs a MEETONTRACK number) `copilot/web/test_meeting_boundary_ui.cjs` times out
+- [ ] MEETONTRACK-85: `copilot/web/test_meeting_boundary_ui.cjs` times out
   (`locator.waitFor` 3 s, line 45) at 0.1.12 and identically at 0.1.11 (`effb7a2`).
   Not in the release script set. Find whether the fixture or the UI changed,
   fix it, then add it to the release checks.
@@ -161,6 +161,13 @@ hashes, Pages removed, and the Windows installer relocated to
   recorder must reject unknown arguments instead of launching the GUI: in
   `windows/src/Amanu.App/App.xaml.cs` `Main` only `record <x>` and `--live-worker`
   are handled, so any other arguments start the full WPF app (found 2026-10-21).
+- [ ] MEETONTRACK-80: Windows recorder config.json save drops other writers' keys; fix on
+  meetontrack-recorder branch windows-check-2026-10-21 (read-modify-write under config.json.lock).
+- [ ] MEETONTRACK-81: Windows in-app updates do nothing: releases carry no Velopack update files.
+- [ ] MEETONTRACK-82: Windows recorder hardcodes AI/speech providers and models (file:line list in tracker).
+- [ ] MEETONTRACK-83: Windows recorder labels speakers Me/Participant 1; use You/Others, drop speaker_names.backend.
+- [ ] MEETONTRACK-84: Windows AI check and questions fail with AI_FAILED, [WinError 5] Access is denied
+  in the archive folder (0.1.11, owner check 2026-10-21); reproduce on 0.1.12 and fix.
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.
