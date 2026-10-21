@@ -211,6 +211,12 @@
       draft = {engine: stored.engine || "", model: stored.model || "", language: stored.language || ""};
     }
     render();
+    // A page opened mid-download or mid-run follows it to the end.
+    if ([...(state.downloads || []), ...(state.retranscribe || [])].some(item => item.state === "running")) poll();
+    // A migrated choice may lack only the language the model implies; its
+    // picker is hidden for such a model, so complete it here.
+    const missing = draft.engine && draft.model && !draft.language && implied(factsOf(draft.engine, draft.model));
+    if (missing) await choose({language: missing});
   }
   function poll() {
     if (polling) return;

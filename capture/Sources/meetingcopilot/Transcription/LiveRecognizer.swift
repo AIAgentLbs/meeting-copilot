@@ -86,27 +86,41 @@ struct NemotronLiveRecognizer: LiveRecognizer {
     func cleanup() async { await manager.cleanup() }
 }
 
+/// One FluidAudio sliding-window manager per utterance: `finish()` drains
+/// queued windows and flushes the incomplete one, and its input stream cannot
+/// be reopened, so the next utterance gets a fresh manager on the same
+/// loaded models.
 actor ParakeetLiveRecognizer: LiveRecognizer {
-    private let manager: SlidingWindowAsrManager
+    private let models: AsrModels
+    private let source: AudioSource
+    private let config = SlidingWindowAsrConfig.streaming
+    private var manager: SlidingWindowAsrManager
     private var chunks: [String] = []
     private var callback: (@Sendable (String) -> Void)?
     private var updates: Task<Void, Never>?
     nonisolated let pauseEndingUtterance: Double
 
-    private init(manager: SlidingWindowAsrManager, window: Double) {
+    private init(models: AsrModels, source: AudioSource, manager: SlidingWindowAsrManager) {
+        self.models = models
+        self.source = source
         self.manager = manager
-        pauseEndingUtterance = window
+        pauseEndingUtterance = SlidingWindowAsrConfig.streaming.chunkSeconds
+            + SlidingWindowAsrConfig.streaming.rightContextSeconds
     }
 
     static func start(models: AsrModels, source: AudioSource) async throws -> ParakeetLiveRecognizer {
-        let config = SlidingWindowAsrConfig.streaming
-        let manager = SlidingWindowAsrManager(config: config)
-        try await manager.loadModels(models)
-        try await manager.startStreaming(source: source)
         let recognizer = ParakeetLiveRecognizer(
-            manager: manager, window: config.chunkSeconds + config.rightContextSeconds)
+            models: models, source: source,
+            manager: try await started(models: models, source: source))
         await recognizer.listen()
         return recognizer
+    }
+
+    private static func started(models: AsrModels, source: AudioSource) async throws -> SlidingWindowAsrManager {
+        let manager = SlidingWindowAsrManager(config: .streaming)
+        try await manager.loadModels(models)
+        try await manager.startStreaming(source: source)
+        return manager
     }
 
     private func listen() async {
@@ -129,15 +143,21 @@ actor ParakeetLiveRecognizer: LiveRecognizer {
         self.callback = callback
     }
 
+    // ponytail: streamAudio only enqueues, so the coordinator's backlog limit
+    // does not see a slow Parakeet decoder; bound it if live falls behind.
     func process(_ buffer: sending AVAudioPCMBuffer) async throws {
         await manager.streamAudio(buffer)
     }
 
     func finishUtterance() async throws -> String {
-        let final = chunks.joined(separator: " ")
+        let finished = manager
+        let final = try await finished.finish()
+        updates?.cancel()
         chunks = []
-        try await manager.reset()
-        return final
+        await finished.cancel()
+        manager = try await Self.started(models: models, source: source)
+        await listen()
+        return final.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func cleanup() async {

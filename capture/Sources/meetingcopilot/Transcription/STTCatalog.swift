@@ -188,7 +188,10 @@ enum STTCatalog {
         let (manifest, error) = await fetch.json(try? ModelRegistry.resolveModel(repo.remotePath, "manifest.json"))
         guard let ships = (manifest as? [String: Any])?["ships"] as? [[String: Any]] else {
             // Without the manifest only ships already on disk can be listed.
-            let local = localNemotronShips().map { nemotronEntry(ship: ["path": $0], metadata: nil, tree: nil) }
+            let local = localNemotronShips().map { path in
+                nemotronEntry(ship: ["path": path], metadata: try? Data(contentsOf: LocalSTTModel.nemotron(ship: path)
+                    .directory.appendingPathComponent("metadata.json")), tree: nil)
+            }
             return (local, "\(repo.name) manifest: \(error ?? "unreadable")")
         }
         let entries = await withTaskGroup(of: (Int, SendableJSON).self) { group in

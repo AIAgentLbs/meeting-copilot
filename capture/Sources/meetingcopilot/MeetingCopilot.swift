@@ -482,6 +482,8 @@ final class AppController {
     /// When the shared config file last changed. The speech choice is saved
     /// by the assistant, another process, so the change is noticed here.
     private var configChangedAt: Date?
+    private var speechCheckedAt = Date.distantPast
+    private var speechReady = false
 
     init(root: URL) {
         self.root = root
@@ -978,12 +980,22 @@ final class AppController {
         )
     }
 
-    /// A new speech choice may be what deferred sessions were waiting for.
-    /// Retrying on the file changing, not on a timer, keeps a session deferred
-    /// for want of the network from being uploaded again every few seconds.
+    /// A new speech choice, or the chosen model finishing its download, may
+    /// be what deferred sessions were waiting for. Retrying on those changes,
+    /// not on a timer, keeps a session deferred for want of the network from
+    /// being uploaded again every few seconds.
     private func resumeAfterConfigChange() {
+        guard automaticFeaturesStarted else { return }
         let modified = Self.configModified()
-        guard automaticFeaturesStarted, modified != configChangedAt else { return }
+        var becameReady = false
+        if Date().timeIntervalSince(speechCheckedAt) >= 10 {
+            speechCheckedAt = Date()
+            let ready: Bool
+            if case .ready = Config.speechRecognition() { ready = true } else { ready = false }
+            becameReady = ready && !speechReady
+            speechReady = ready
+        }
+        guard modified != configChangedAt || becameReady else { return }
         configChangedAt = modified
         Task { [transcription, root] in await transcription.resumePending(root: root) }
     }
