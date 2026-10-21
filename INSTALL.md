@@ -12,7 +12,7 @@ included in the package. No compiler, SDK or separate Python is required.
 curl -fsSL https://meetontrack.com/install.sh | bash
 ```
 
-The command installs the checksum-pinned v0.1.11 archive. Read
+The command installs the checksum-pinned v0.1.12 archive. Read
 [install.sh](install.sh) before running it if desired. An existing installation
 must finish its call and quit Capture first. The installer checks again before
 replacement and retains timestamped app/web backups.
