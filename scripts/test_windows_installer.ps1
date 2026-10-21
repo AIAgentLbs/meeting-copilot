@@ -33,7 +33,8 @@ try {
     . ([scriptblock]::Create($functions[0]))
     $old="$temp\installed\versions\old"; $port=43199
     New-Item -ItemType Directory "$old\python","$old\capture","$temp\foreign" -Force | Out-Null
-    Copy-Item "$PSHOME\powershell.exe" "$old\python\pythonw.exe"
+    # Windows PowerShell, not $PSHOME: under pwsh that is pwsh.exe, which cannot run outside its folder.
+    Copy-Item "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" "$old\python\pythonw.exe"
     $stand['server']=Start-Process "$old\python\pythonw.exe" -ArgumentList '-NoProfile','-Command',"`$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$port); `$l.Start(); Start-Sleep 30" -WindowStyle Hidden -PassThru
     foreach($path in @("$old\python\python.exe","$old\capture\MeetingCopilotCapture.exe","$temp\foreign\pythonw.exe")){
         Copy-Item "$env:SystemRoot\System32\cmd.exe" $path
@@ -45,17 +46,15 @@ try {
     if($stand["$old\python\python.exe"].HasExited){throw 'A non-server job on the old Python was stopped'}
     if($stand["$temp\foreign\pythonw.exe"].HasExited){throw 'A process outside the versions folder was stopped'}
     if($stand["$old\capture\MeetingCopilotCapture.exe"].HasExited){throw 'A capture was stopped'}
-    # The login entry the recorder wrote for an old version now names the new capture.
+    # The login entry an old recorder wrote with its versioned path is removed; another program's is kept.
     $ast=[Management.Automation.Language.Parser]::ParseFile($Installer,[ref]$null,[ref]$null)
-    . ([scriptblock]::Create($ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-CaptureRunValue'},$true).Extent.Text))
-    $new='C:\U\MeetingCopilot\versions\0.2.0\capture\MeetingCopilotCapture.exe'
-    if((Get-CaptureRunValue '"C:\U\MeetingCopilot\versions\0.1.4\capture\MeetingCopilotCapture.exe" --background' 'C:\U\MeetingCopilot\versions' $new) -ne "`"$new`" --background"){throw 'Stale login entry not rewritten'}
-    if($null -ne (Get-CaptureRunValue '"C:\Other\MeetingCopilotCapture.exe" --background' 'C:\U\MeetingCopilot\versions' $new)){throw 'Foreign login entry rewritten'}
-    if($null -ne (Get-CaptureRunValue "`"$new`" --background" 'C:\U\MeetingCopilot\versions' $new)){throw 'Current login entry rewritten'}
+    . ([scriptblock]::Create($ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Test-OwnRunValue'},$true).Extent.Text))
+    if(-not(Test-OwnRunValue '"C:\U\MeetingCopilot\versions\0.1.4\capture\MeetingCopilotCapture.exe" --background' 'C:\U\MeetingCopilot\versions')){throw 'Stale login entry kept'}
+    if(Test-OwnRunValue '"C:\Other\MeetingCopilotCapture.exe" --background' 'C:\U\MeetingCopilot\versions'){throw 'Foreign login entry removed'}
     $rejected=$false
     try { & $Installer -PackagePath "$temp\package.zip" -ExpectedSha256 ('0'*64) -InstallRoot "$temp\bad" -UserRoot "$temp\user" -SkipModels -NoLaunch -NoShortcuts } catch {$rejected=$true}
     if(-not $rejected -or (Test-Path "$temp\bad\current.json")){throw 'Bad checksum was accepted'}
-    Write-Output 'Windows installer tests: 11 passed (install, preserve settings, remove retired setting/state, stop previous server only, keep other jobs and capture, same stop rule in launcher, rewrite stale login entry, reject checksum)'
+    Write-Output 'Windows installer tests: 11 passed (install, preserve settings, remove retired setting/state, stop previous server only, keep other jobs and capture, same stop rule in launcher, remove stale login entry, reject checksum)'
 } finally {
     foreach($process in $stand.Values){if(-not $process.HasExited){Stop-Process -Id $process.Id -Force; $process.WaitForExit(5000) | Out-Null}}
     Remove-Item -LiteralPath $temp -Recurse -Force
