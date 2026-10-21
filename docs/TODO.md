@@ -248,7 +248,7 @@ hashes, Pages removed, and the Windows installer relocated to
   promoting the unsigned Windows technical beta to a stable release.
 - MEETONTRACK-29: Windows signed distribution and automatic-install acceptance remain future
   work; verify release notifications and manual update instructions now.
-- Upgrade can keep serving the previous version (found 2026-10-21 while fixing
+- MEETONTRACK-65: Upgrade can keep serving the previous version (found 2026-10-21 while fixing
   the macOS LaunchAgent restart race). `scripts/windows/install.ps1` never stops
   the running web server, and `meeting-copilot.ps1` reuses any healthy server on
   port 43121, so the old `versions\<old>\web\server.py` keeps running after an
@@ -419,7 +419,7 @@ stored in this repository. Verify the public installed package as well as source
 
 ## Live translation: no-op "EN:" lines on Russian speech (found 2026-10-21)
 
-- [ ] Short Russian phrases are misdetected by `detect-speech-language` as
+- [ ] MEETONTRACK-64: Short Russian phrases are misdetected by `detect-speech-language` as
   `bg`/`kk` with confidence 1.0, so `live_translation.py` `_work` sends them for
   translation; the prompt says "keep Russian words as Russian", the model returns
   the Russian text unchanged, and the segment gets `translation_en` equal to its
