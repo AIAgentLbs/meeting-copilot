@@ -83,11 +83,34 @@ struct STTDownload: ParsableCommand {
                     }
                 }
                 printJSON(["event": "done", "item": item, "id": id])
+                printJSON(try runBlocking { await Self.speakerModel().sendable }.value)
         } catch {
             printJSON(["event": "error", "item": item, "id": id, "message": "\(error)"])
             throw ExitCode(1)
         }
         printJSON(["event": "finished", "ok": true])
+    }
+
+    /// The speaker model rides along with a local speech model. A failure
+    /// never fails the download: speakers are then labelled by channel. A
+    /// `note` event, which the web server ignores, says what happened.
+    static func speakerModel(
+        _ speaker: LocalSpeakerModel = .companion,
+        fetch: (LocalSpeakerModel) async throws -> Void = { try await $0.download() }
+    ) async -> [String: Any] {
+        var note: [String: Any] = ["event": "note", "item": "speaker_model", "id": speaker.id]
+        if speaker.isDownloaded {
+            note["state"] = "present"
+            return note
+        }
+        do {
+            try await fetch(speaker)
+            note["state"] = "downloaded"
+        } catch {
+            note["state"] = "failed"
+            note["message"] = "speaker model not fetched (\(error)); speakers are labelled by channel"
+        }
+        return note
     }
 }
 

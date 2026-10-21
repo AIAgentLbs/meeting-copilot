@@ -96,7 +96,7 @@ struct StatusWindowLayoutTests {
         ))
 
         let transcript = try #require(firstTextView(in: window.view))
-        for label in ["Them", "You"] {
+        for label in ["Others", "You"] {
             let range = (transcript.string as NSString).range(of: label)
             try #require(range.location != NSNotFound)
             let colour = transcript.textStorage?.attribute(

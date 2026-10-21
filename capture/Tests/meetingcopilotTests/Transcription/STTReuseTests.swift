@@ -108,4 +108,19 @@ struct LiveDiarizerChoiceTests {
     func noSpeakerModelNoDiarizer() async {
         #expect(await LiveTranscriptionCoordinator.remoteDiarizer(installed: []) == nil)
     }
+
+    @Test("A local model download brings the speaker model, and its failure fails nothing")
+    func speakerModelRidesAlong() async throws {
+        #expect(LocalSpeakerModel.companion.id == "ls_eend_dih3_500ms")
+        let missing = try #require(LocalSpeakerModel.all.first { !$0.isDownloaded })
+        let failed = await STTDownload.speakerModel(missing) { _ in throw URLError(.notConnectedToInternet) }
+        #expect(failed["event"] as? String == "note")
+        #expect(failed["state"] as? String == "failed")
+        let fetched = await STTDownload.speakerModel(missing) { _ in }
+        #expect(fetched["state"] as? String == "downloaded")
+        if let present = LocalSpeakerModel.installed.first {
+            let reused = await STTDownload.speakerModel(present) { _ in Issue.record("fetched a model already here") }
+            #expect(reused["state"] as? String == "present")
+        }
+    }
 }

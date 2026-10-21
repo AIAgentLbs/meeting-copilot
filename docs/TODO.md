@@ -164,6 +164,25 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] Verify against the real services once: AssemblyAI `speech_models` +
   `speech_model_used` and OpenAI transcription models through `stt-check` with a
   real key (not exercised in tests).
+- [ ] Live transcription follows a speech choice changed during a recording
+  (codex 2026-10-21, P2): `MeetingCopilot.resumeAfterConfigChange` resumes only
+  final transcription; `LiveTranscriptionCoordinator` resolves the choice at
+  recording start or a toggle, and its watchdog does not retry `unavailable`.
+  Restart the enabled live pipeline when the choice or its readiness changes.
+- [ ] Parakeet live backpressure (codex 2026-10-21, P2):
+  `ParakeetLiveRecognizer.process` only enqueues into FluidAudio's unbounded
+  `streamAudio` queue, so the coordinator's backlog limit and stalled-decoder
+  recovery never see a slow decoder. Await decoding or bound the queue and
+  report real progress (`LiveRecognizer.swift`, `ponytail:` comment).
+- [ ] Replace a rejected cloud API key (codex 2026-10-21, P2): `speech.js`
+  hides the key field once a key file exists (`has_key: true`), so a mistyped
+  key that the provider rejects (OpenAI 401 listing error) cannot be replaced.
+  Keep the field when the listing reports an authentication error, or validate
+  the key on save.
+- [ ] Keep typed API key during polling (codex 2026-10-21, P2): while a download
+  or re-transcription runs, `speech.js` `refreshState()` rebuilds the whole
+  choice form every 1.5 s and drops the key being typed. Update progress
+  separately or keep the mounted form.
 - [ ] MEETONTRACK-11: Phase 4 (Windows): `scripts/windows/install.ps1:67-68` writes a new
   `config.json` with pinned engine/backends and no lock or ACL; `:80-85` does a
   read-modify-write without `config.json.lock`; `:96-98` pins speech models.

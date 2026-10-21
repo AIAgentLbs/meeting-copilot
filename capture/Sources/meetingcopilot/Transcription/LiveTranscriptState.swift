@@ -8,7 +8,7 @@ struct LiveTranscriptState: Sendable {
         /// Who said it, in the window's language rather than the meeting's:
         /// this names the two microphones, not the two languages.
         var label: String {
-            self == .you ? localised("You", "Вы") : localised("Them", "Они")
+            self == .you ? localised("You", "Вы") : localised("Others", "Остальные")
         }
     }
 

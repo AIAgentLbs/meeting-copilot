@@ -413,16 +413,23 @@ live-capable choice the recording runs without a live transcript and shows why.
   as `status: "unavailable"` and `status_reason` in the live transcript file.
 - Speakers (owner decision 2026-10-21): no setting and no prompt. Cloud
   engines identify speakers themselves. Otherwise transcripts are labelled by
-  channel: microphone is you, call audio is the others. Speaker diarization
+  channel: microphone is "You" / "Вы", call audio is "Others" / "Остальные"
+  (live window, recordings window, web transcript). The transcript files keep
+  their `me` / `them` keys, so existing transcripts parse unchanged. Speaker diarization
   is unchanged from main: the live `RemoteSpeakerDiarizer` voice slots, the
   `--voices` path of `transcribe-audio` and the post-call `SpeakerNamer` run as
   before. Which diarizer files they use is not a person's choice: the first
   LS-EEND model present on this Mac (`LocalSpeakerModel.installed`, FluidAudio's
   variant and step order). With none present they are skipped and the channel
-  labels stand. The one difference from main: main's live diarizer downloaded
-  LS-EEND `dihard3`/500 ms implicitly on first use; now nothing downloads
-  outside `stt-download` and the installer, so it uses only files already
-  here. LS-EEND timeline thresholds stay adapter constants
+  labels stand. Main's live diarizer downloaded LS-EEND `dihard3`/500 ms
+  implicitly on first use; now `stt-download` fetches that same model
+  (`LocalSpeakerModel.companion`, `ls_eend_dih3_500ms`) with every local speech
+  model, reusing it when it is already in the shared FluidAudio folder (owner
+  decision 2026-10-21: speakers are never asked about and are told apart live
+  and after the call). It is an internal component, not a user choice. A failed
+  fetch never fails the download: it prints a `note` event (ignored by the web
+  server) and speakers are labelled by channel. `install.sh` downloads no
+  speech model, so it fetches none either. LS-EEND timeline thresholds stay adapter constants
   (`RemoteSpeakerDiarizer`): tuning of one adapter, not a model choice. A
   finer split of the far end in the final transcript is a separate future
   task; its hook is marked in `TranscriptionCoordinator` (`.perTrack`).
@@ -435,11 +442,6 @@ live-capable choice the recording runs without a live transcript and shows why.
   keeps engine and model but leaves `language` for the person (a cloud model's
   languages are not known offline), so their transcripts defer until the card
   is finished. Local models get their implied language (above).
-- Call audio is still labelled "Them" / "Они" as on main; the owner's wording
-  was "Others". Changing the label is left to the first-run redesign.
-- Nothing downloads a speaker model any more (main's live diarizer fetched
-  LS-EEND on first use). Should the installer or `stt-download` fetch one so
-  that live voice separation keeps working on new installs?
 - OpenAI's model list is long and unfiltered (no name heuristics allowed);
   the redesigned UI may want a search box.
 - Parakeet encoder precision (int8 or int4) is left at FluidAudio's own

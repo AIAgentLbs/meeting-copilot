@@ -118,7 +118,7 @@ struct SpeakerNames: Codable {
     ///
     /// The letter after the word is what tells two far-end voices apart, and
     /// it is left alone. That is also what keeps a row in the window and a
-    /// line in the file pointing at each other: `они A` is `them A`, and
+    /// line in the file pointing at each other: `остальные A` is `them A`, and
     /// there is only ever one `я`.
     static func described(label: String) -> String {
         let parts = label.split(separator: " ", maxSplits: 1)
@@ -126,7 +126,7 @@ struct SpeakerNames: Codable {
         let rest = parts.count > 1 ? " " + parts[1] : ""
         switch head {
         case "me": return localised("me", "я") + rest
-        case "them": return localised("them", "они") + rest
+        case "them": return localised("others", "остальные") + rest
         default: return label
         }
     }

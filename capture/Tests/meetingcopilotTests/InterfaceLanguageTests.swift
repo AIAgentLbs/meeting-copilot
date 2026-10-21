@@ -313,12 +313,12 @@ struct InterfaceLanguageTests {
     func speakerKeysAreTranslated() {
         #expect(Self.inLanguage(.english) { SpeakerNames.described(label: "me") } == "me")
         #expect(Self.inLanguage(.russian) { SpeakerNames.described(label: "me") } == "я")
-        #expect(Self.inLanguage(.russian) { SpeakerNames.described(label: "them") } == "они")
+        #expect(Self.inLanguage(.russian) { SpeakerNames.described(label: "them") } == "остальные")
 
         // The letter is what tells two far-end voices apart, and it is the
         // same letter in the file — which is how somebody reading
         // `transcript.md` finds the row this window is talking about.
-        #expect(Self.inLanguage(.russian) { SpeakerNames.described(label: "them A") } == "они A")
+        #expect(Self.inLanguage(.russian) { SpeakerNames.described(label: "them A") } == "остальные A")
         #expect(Self.inLanguage(.russian) { SpeakerNames.described(label: "me B") } == "я B")
 
         // A name is not a key and is left exactly as it is.
@@ -331,7 +331,7 @@ struct InterfaceLanguageTests {
             segments: [.init(speaker: "them A", start_ms: 0, end_ms: 1, text: "…")])
         #expect(Self.inLanguage(.russian) {
             SessionInventory.opening(of: transcript, names: nil)
-        } == "они A: …")
+        } == "остальные A: …")
     }
 
     /// A size is half number and half word, and the word is not the only

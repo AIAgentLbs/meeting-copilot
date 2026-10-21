@@ -142,10 +142,12 @@ struct ConfigFileTests {
         #expect(flock(holder, LOCK_EX) == 0)
 
         let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        // Its own thread: under a busy full suite a global-queue block can
+        // start after the timeout below and read as a lost save.
+        Thread {
             _ = Config.update(file: url, path: ["keep_audio"], value: true)
             done.signal()
-        }
+        }.start()
         #expect(done.wait(timeout: .now() + 0.5) == .timedOut, "the save did not wait for the lock")
         #expect(!FileManager.default.fileExists(atPath: url.path))
 

@@ -145,7 +145,7 @@ const translations = {
     "speaker.unverified_short": "Неясно",
     "transcript.capture_lost": "Потеря аудио",
     "transcript.capture_lost_hint": "Системная дорожка пропала. На отмеченном участке нельзя уверенно определить, кто говорит.",
-    "speaker.others": "Собеседники",
+    "speaker.others": "Остальные",
     "transcript.empty_title": "Жду стенограмму",
     "transcript.empty_text": "MeetOnTrack передаёт локальную расшифровку примерно раз в секунду.",
     "frames.local_note": "Кадры хранятся только локально вместе с записью.",
@@ -1099,7 +1099,9 @@ function speakerLabel(segment) {
   if (segment.source === "microphone") return t("speaker.me");
   const label = segment.speaker_label || segment.speaker;
   if (label && !/^(Собеседник|Спикер)\s*\d*$/.test(label)) return label;
-  return t("speaker.voice", { value: (segment.voice_id || "remote-1").replace(/^remote-/, "") });
+  // Call audio with no separated voice is everyone else (owner decision 2026-10-21).
+  if (!segment.voice_id) return t("speaker.others");
+  return t("speaker.voice", { value: segment.voice_id.replace(/^remote-/, "") });
 }
 
 let speakerEditorSnapshot = null;

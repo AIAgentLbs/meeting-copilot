@@ -259,6 +259,20 @@ struct LocalSpeakerModel: Equatable, Sendable {
     /// The speaker models in our own model folder.
     static var installed: [LocalSpeakerModel] { all.filter(\.isDownloaded) }
 
+    /// Fetched with every local speech model so that voices are told apart
+    /// live and after the call without anyone being asked (owner decision
+    /// 2026-10-21). It is an internal component of speaker separation, not a
+    /// model a person chooses, so it is outside the no-hardcoded-models rule,
+    /// which covers user choices. It is the model main fetched on first live
+    /// use (LS-EEND DIHARD3, 500 ms step).
+    static let companion = LocalSpeakerModel(variant: .dihard3, step: .step500ms)
+
+    /// From the shared FluidAudio folder when it is already there.
+    func download() async throws {
+        guard !isDownloaded else { return }
+        try await ModelHub.download(variant.repo, subdirectory: relativePath, to: repoDirectory)
+    }
+
     var id: String { variant.name(forStep: step) }
 
     static func parse(_ id: String) -> LocalSpeakerModel? {
