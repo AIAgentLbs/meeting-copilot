@@ -125,6 +125,10 @@ hashes, Pages removed, and the Windows installer relocated to
   lists models from the provider's models endpoint with the user's key, never a
   fixed model; `SummaryKeyProbe` in `Setup/SetupSelection.swift` already checks
   keys.
+- [ ] MEETONTRACK-68: Groq as an optional cloud provider (FluidVoice parity, owner 2026-10-21):
+  speech through Groq's hosted Whisper API next to the AssemblyAI/OpenAI engines, and AI tasks
+  through a Groq key with the API-key providers of MEETONTRACK-7. Models are read from Groq's
+  models endpoint, never hardcoded. The UI says what is sent to Groq.
 - [ ] MEETONTRACK-8: Ollama context sizing counts one character as at least one token
   (`LLMBackend.ollamaInputLimit`, Python `OllamaAdapter.fit`; images are not
   counted) and keeps a fixed 4096-token reply allowance.
