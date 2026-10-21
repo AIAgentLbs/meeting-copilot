@@ -22,21 +22,23 @@ function Get-CaptureRunValue([string]$Value,[string]$VersionsRoot,[string]$Captu
     if(-not $exe.StartsWith($VersionsRoot.TrimEnd('\')+'\','OrdinalIgnoreCase') -or $exe -ieq $Capture){return $null}
     return "`"$Capture`"$rest"
 }
-function Stop-OtherVersions([string]$Root){
-    # MEETONTRACK-65: after an update the previous version's web server keeps port 43121, so the
-    # new version never serves. Stop only our own Python from another versions\<v> folder and
-    # wait for the port. Capture is never stopped here: no snapshot proves it idle while a
-    # recording may start meanwhile. The single-instance recorder is replaced at next sign-in
-    # (its Run value and the Startup shortcut name the new version). Same text in install.ps1
-    # and meeting-copilot.ps1: the installer may unpack a package whose launcher predates this.
+function Stop-OtherVersions([string]$Root,[int]$Port=43121){
+    # MEETONTRACK-65: after an update the previous version's web server keeps the port, so the
+    # new version never serves. Stop only the process listening on it, and only when it is our
+    # own Python from another versions\<v> folder; other jobs on that Python are left alone.
+    # Capture is never stopped here: no snapshot proves it idle while a recording may start
+    # meanwhile. The single-instance recorder is replaced at next sign-in (its Run value and the
+    # Startup shortcut name the new version). Same text in install.ps1 and meeting-copilot.ps1:
+    # the installer may unpack a package whose launcher predates this.
     $versions=(Split-Path $Root -Parent).TrimEnd('\')+'\'
     $own=$Root.TrimEnd('\')+'\'
+    $listeners=@(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue).OwningProcess
     $old=@(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe'" | Where-Object {
-        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase')})
+        $_.ProcessId -in $listeners -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase')})
     foreach($process in $old){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
     if($old.Count){
         Wait-Process -Id $old.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
-        for($i=0;$i -lt 40 -and @(Get-NetTCPConnection -LocalPort 43121 -State Listen -ErrorAction SilentlyContinue).Count;$i++){Start-Sleep -Milliseconds 250}
+        for($i=0;$i -lt 40 -and @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue).Count;$i++){Start-Sleep -Milliseconds 250}
     }
 }
 function Download-VerifiedInput([string]$Url,[string]$Target){
