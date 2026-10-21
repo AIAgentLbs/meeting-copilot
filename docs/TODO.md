@@ -245,6 +245,14 @@ hashes, Pages removed, and the Windows installer relocated to
   promoting the unsigned Windows technical beta to a stable release.
 - Windows signed distribution and automatic-install acceptance remain future
   work; verify release notifications and manual update instructions now.
+- Upgrade can keep serving the previous version (found 2026-10-21 while fixing
+  the macOS LaunchAgent restart race). `scripts/windows/install.ps1` never stops
+  the running web server, and `meeting-copilot.ps1` reuses any healthy server on
+  port 43121, so the old `versions\<old>\web\server.py` keeps running after an
+  update until logoff. Its health check also accepts `ok: true` from an
+  unrelated service. Proposed: stop only our own server (match the process
+  command line to `MeetingCopilot\versions\*\web\server.py`), wait for the port
+  to be free, start the new one, and require `service == 'meeting-copilot'`.
 
 ## Repository meeting history
 
