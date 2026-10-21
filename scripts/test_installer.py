@@ -90,7 +90,33 @@ class InstallerTests(unittest.TestCase):
 
     def prepare_launch(self):
         # Only the OS/browser boundary is replaced; execute the real installer.
-        self.script("launchctl", 'printf "%s\\n" "$*" >> "$FIXTURE_ROOT/launches"')
+        # Fake launchd: "loaded" marks a registered job. After bootout it can
+        # linger for MOCK_UNLOAD_AFTER_PRINTS checks; bootstrap of a still
+        # registered label fails with error 5, as observed on macOS.
+        self.script("launchctl", '''
+printf "%s\\n" "$*" >> "$FIXTURE_ROOT/launches"
+loaded="$FIXTURE_ROOT/loaded"; lingering="$FIXTURE_ROOT/lingering"
+case "$1" in
+  bootout)
+    [ -f "$loaded" ] || exit 3
+    if [ "${MOCK_UNLOAD_AFTER_PRINTS:-0}" -gt 0 ]; then echo "$MOCK_UNLOAD_AFTER_PRINTS" > "$lingering"; else rm -f "$loaded"; fi
+    exit 0;;
+  print)
+    [ -f "$loaded" ] || exit 113
+    [ -f "$lingering" ] || exit 0
+    left=$(<"$lingering")
+    if [ "$left" -le 0 ]; then rm -f "$loaded" "$lingering"; exit 113; fi
+    echo $((left-1)) > "$lingering"; exit 0;;
+  bootstrap)
+    count=0
+    [ ! -f "$FIXTURE_ROOT/bootstrap-count" ] || count=$(<"$FIXTURE_ROOT/bootstrap-count")
+    count=$((count+1)); printf "%s" "$count" > "$FIXTURE_ROOT/bootstrap-count"
+    if [ -f "$loaded" ] || [ "$count" -le "${MOCK_BOOTSTRAP_FAILURES:-0}" ]; then
+      echo "Bootstrap failed: 5: Input/output error" >&2; exit 5
+    fi
+    touch "$loaded"; exit 0;;
+esac
+''')
         self.script("open", '''
 if [ "$1" = "http://127.0.0.1:43121/" ]; then
   [ -f "$FIXTURE_ROOT/healthy" ] || exit 77
@@ -139,6 +165,29 @@ exit 2
         self.assertEqual((self.root / "opened").read_text().splitlines(),
                          [str(self.root / "Applications/Meeting Copilot Capture.app")])
         self.assertLessEqual(int((self.root / "health-count").read_text()), 40)
+
+    def test_upgrade_restart_waits_for_old_job_and_retries_bootstrap(self):
+        # Regression 2026-10-21: bootstrap right after bootout failed with error 5.
+        for environment in ({"MOCK_UNLOAD_AFTER_PRINTS": "3"}, {"MOCK_BOOTSTRAP_FAILURES": "1"}):
+            with self.subTest(environment=environment):
+                for name in ("launches", "opened", "health-count", "healthy", "bootstrap-count", "lingering"):
+                    (self.root / name).unlink(missing_ok=True)
+                self.prepare_launch()
+                (self.root / "loaded").touch()
+                result = self.run_install(MEETING_COPILOT_SKIP_LAUNCH="0", **environment)
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertNotIn("Bootstrap failed", result.stderr)
+                self.assertTrue((self.root / "loaded").exists())
+                self.assertEqual((self.root / "opened").read_text().splitlines()[-1], "http://127.0.0.1:43121/")
+
+    def test_persistent_bootstrap_failure_stops_with_clear_error(self):
+        self.prepare_launch()
+        result = self.run_install(MEETING_COPILOT_SKIP_LAUNCH="0", MOCK_BOOTSTRAP_FAILURES="99")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("could not start the local assistant service", result.stderr)
+        self.assertIn("Input/output error", result.stderr)
+        self.assertEqual((self.root / "bootstrap-count").read_text(), "3")
+        self.assertFalse((self.root / "opened").exists())
 
     def test_fresh_install_and_escaped_launchagent(self):
         result = self.run_install()

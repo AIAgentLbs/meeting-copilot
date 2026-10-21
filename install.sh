@@ -145,8 +145,24 @@ with pathlib.Path(target).open("wb") as handle:
 PY
 
 if [[ "${MEETING_COPILOT_SKIP_LAUNCH:-0}" != "1" ]]; then
-  launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-  launchctl bootstrap "gui/$(id -u)" "$AGENTS/$LABEL.plist"
+  # bootout can return before launchd has removed the old job; bootstrapping the
+  # same label then fails with "5: Input/output error" (0.1.9 -> 0.1.11 upgrade).
+  # Wait until the job is gone, and retry a bounded number of times.
+  domain="gui/$(id -u)"
+  bootstrapped=false
+  for attempt in 1 2 3; do
+    launchctl bootout "$domain/$LABEL" >/dev/null 2>&1 || true
+    for wait in {1..40}; do
+      launchctl print "$domain/$LABEL" >/dev/null 2>&1 || break
+      sleep 0.25
+    done
+    if bootstrap_error="$(launchctl bootstrap "$domain" "$AGENTS/$LABEL.plist" 2>&1)"; then
+      bootstrapped=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "$bootstrapped" == true ]] || fail "Files installed, but macOS could not start the local assistant service ($bootstrap_error). Rerun the installer."
   open "$app"
   # A successful bootstrap is not yet an HTTP-ready assistant. Do not open a
   # broken browser tab or require a second terminal command from a new user.
