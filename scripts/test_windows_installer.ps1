@@ -29,7 +29,7 @@ try {
     $functions=foreach($script in @($Installer,(Join-Path $PSScriptRoot 'windows\meeting-copilot.ps1'))){
         [Management.Automation.Language.Parser]::ParseFile($script,[ref]$null,[ref]$null).Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Stop-OtherVersions'},$true).Extent.Text}
     if(-not $functions[0] -or $functions[0] -ne $functions[1]){throw 'Installer and launcher stop different processes'}
-    if((Get-Content $Installer -Raw) -notmatch '(?m)^\s*Stop-OtherVersions \$destination\s*$'){throw 'Installer does not stop the previous server'}
+    if((Get-Content $Installer -Raw) -notmatch '(?m)^\s*Stop-OtherVersions \$destination -KeepCapture:\$NoLaunch\s*$'){throw 'Installer does not stop the previous server'}
     . ([scriptblock]::Create($functions[0]))
     $old="$temp\installed\versions\old"; $port=43199
     New-Item -ItemType Directory "$old\python","$old\capture","$temp\foreign" -Force | Out-Null

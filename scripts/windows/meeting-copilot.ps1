@@ -10,14 +10,15 @@ $config=Join-Path $env:USERPROFILE '.config\meeting-copilot'
 $data=Join-Path $env:USERPROFILE '.local\share\meeting-copilot'
 $env:PYTHONUTF8='1'
 $env:PYTHONIOENCODING='utf-8'
-function Stop-OtherVersions([string]$Root,[int]$Port=43121){
+function Stop-OtherVersions([string]$Root,[int]$Port=43121,[switch]$KeepCapture){
     # MEETONTRACK-65: after an update the previous version's web server keeps the port, so the
     # new version never serves. Stop only the process listening on it, and only when it is our
     # own Python from another versions\<v> folder; other jobs on that Python are left alone.
     # A capture is never stopped (MEETONTRACK-88): an old one is asked to quit once idle, so a
     # recording in progress finishes first, and a hidden waiter starts this version's capture
-    # after it has quit. A capture too old for that command answers no and is replaced at next
-    # sign-in by the Startup shortcut. Same text in install.ps1 and meeting-copilot.ps1: the
+    # after it has quit: the version current.json names then, so a later update wins. A capture
+    # too old for that command answers no and is replaced at next sign-in by the Startup
+    # shortcut. -KeepCapture (install without launch) leaves the capture alone. Same text in install.ps1 and meeting-copilot.ps1: the
     # installer may unpack a package whose launcher predates this.
     $versions=(Split-Path $Root -Parent).TrimEnd('\')+'\'
     $own=$Root.TrimEnd('\')+'\'
@@ -33,10 +34,11 @@ function Stop-OtherVersions([string]$Root,[int]$Port=43121){
     $session=(Get-Process -Id $PID).SessionId  # one capture per sign-in session
     $oldCapture=@(Get-CimInstance Win32_Process -Filter "Name='MeetingCopilotCapture.exe' AND SessionId=$session" | Where-Object {
         $_.CommandLine -notmatch '--live-worker' -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase')})
-    if(-not $oldCapture.Count -or -not(Test-Path $capture -PathType Leaf)){return}
+    if($KeepCapture -or -not $oldCapture.Count -or -not(Test-Path $capture -PathType Leaf)){return}
     $asked=Start-Process $capture -ArgumentList 'record','quit-when-idle' -WindowStyle Hidden -Wait -PassThru
     if($asked.ExitCode -ne 0){return}
-    $waiter="Wait-Process -Id $($oldCapture.ProcessId -join ','); if(-not @(Get-CimInstance Win32_Process -Filter `"Name='MeetingCopilotCapture.exe' AND SessionId=$session`" | Where-Object {`$_.CommandLine -notmatch '--live-worker'}).Count){Start-Process -FilePath '$($capture -replace "'","''")' -ArgumentList '--background'}"
+    $current=Join-Path (Split-Path $versions -Parent) 'current.json'
+    $waiter="Wait-Process -Id $($oldCapture.ProcessId -join ','); `$c=try{(Get-Content -ErrorAction Stop -LiteralPath '$($current -replace "'","''")' -Raw | ConvertFrom-Json).directory+'\capture\MeetingCopilotCapture.exe'}catch{'$($capture -replace "'","''")'}; if((Test-Path -LiteralPath `$c) -and -not @(Get-CimInstance Win32_Process -Filter `"Name='MeetingCopilotCapture.exe' AND SessionId=$session`" | Where-Object {`$_.CommandLine -notmatch '--live-worker'}).Count){Start-Process -FilePath `$c -ArgumentList '--background'}"
     Start-Process "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -WindowStyle Hidden -ArgumentList '-NoProfile','-EncodedCommand',([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($waiter)))
 }
 $release=[string](Get-Content (Join-Path $root 'release.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version
