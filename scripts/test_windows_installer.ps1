@@ -7,7 +7,7 @@ try {
     Set-Content "$temp\package\release.json" '{"version":"fixture"}'
     Set-Content "$temp\package\capture\MeetingCopilotCapture.exe" 'synthetic binary fixture'
     Set-Content "$temp\package\python\python.exe" 'synthetic binary fixture'
-    Copy-Item (Join-Path $PSScriptRoot 'windows\meeting-copilot.ps1') "$temp\package\meeting-copilot.ps1"
+    Set-Content "$temp\package\meeting-copilot.ps1" 'exit 0'
     Set-Content "$temp\package\web\server.py" '# synthetic fixture'
     Set-Content "$temp\package\SESSION.md" '# synthetic policy'
     Compress-Archive "$temp\package\*" "$temp\package.zip"
@@ -23,16 +23,22 @@ try {
     if((Get-Content "$temp\user\.config\meeting-copilot\config.json" -Raw) -notmatch 'preserve'){throw 'Existing user settings overwritten'}
     if((Get-Content "$temp\user\.config\meeting-copilot\config.json" -Raw) -match 'analytics'){throw 'Retired usage setting was preserved'}
     if((Test-Path "$retiredRoot\analytics.json") -or (Test-Path "$retiredRoot\analytics-pending.json")){throw 'Retired usage state was preserved'}
-    # MEETONTRACK-65: an update stops our previous version's server and capture, nothing else.
-    $old="$temp\installed\versions\old"
-    New-Item -ItemType Directory "$old\python","$old\capture","$temp\foreign" -Force | Out-Null
-    foreach($path in @("$old\python\pythonw.exe","$old\capture\MeetingCopilotCapture.exe","$temp\foreign\pythonw.exe")){
+    # MEETONTRACK-65: an update stops our previous version's server and idle capture, nothing
+    # else, even when the package's own launcher (here a stub) predates that step.
+    $old="$temp\installed\versions\old"; $rec="$temp\installed\versions\recording"
+    New-Item -ItemType Directory "$old\python","$old\capture","$rec\capture","$temp\foreign","$temp\user\MeetOnTrack Recordings\call" -Force | Out-Null
+    foreach($path in @("$old\python\pythonw.exe","$old\capture\MeetingCopilotCapture.exe","$rec\capture\MeetingCopilotCapture.exe","$temp\foreign\pythonw.exe")){
         Copy-Item "$env:SystemRoot\System32\cmd.exe" $path
         $stand[$path]=Start-Process $path -ArgumentList '/c','ping -n 30 127.0.0.1 >nul' -WindowStyle Hidden -PassThru
     }
+    Set-Content "$temp\user\MeetOnTrack Recordings\call\.recording.json" ('{"pid":'+$stand["$rec\capture\MeetingCopilotCapture.exe"].Id+'}')
     & $Installer -PackagePath "$temp\package.zip" -ExpectedSha256 $hash -InstallRoot "$temp\installed" -UserRoot "$temp\user" -SkipModels -NoLaunch -NoShortcuts
     if(-not $stand["$old\python\pythonw.exe"].WaitForExit(5000) -or -not $stand["$old\capture\MeetingCopilotCapture.exe"].WaitForExit(5000)){throw 'Previous version server/capture left running'}
     if($stand["$temp\foreign\pythonw.exe"].HasExited){throw 'A process outside the versions folder was stopped'}
+    if($stand["$rec\capture\MeetingCopilotCapture.exe"].HasExited){throw 'A recording capture was stopped'}
+    $functions=foreach($script in @($Installer,(Join-Path $PSScriptRoot 'windows\meeting-copilot.ps1'))){
+        [Management.Automation.Language.Parser]::ParseFile($script,[ref]$null,[ref]$null).Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Stop-OtherVersions'},$true).Extent.Text}
+    if(-not $functions[0] -or $functions[0] -ne $functions[1]){throw 'Installer and launcher stop different processes'}
     # The login entry the recorder wrote for an old version now names the new capture.
     $ast=[Management.Automation.Language.Parser]::ParseFile($Installer,[ref]$null,[ref]$null)
     . ([scriptblock]::Create($ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-CaptureRunValue'},$true).Extent.Text))
@@ -43,7 +49,7 @@ try {
     $rejected=$false
     try { & $Installer -PackagePath "$temp\package.zip" -ExpectedSha256 ('0'*64) -InstallRoot "$temp\bad" -UserRoot "$temp\user" -SkipModels -NoLaunch -NoShortcuts } catch {$rejected=$true}
     if(-not $rejected -or (Test-Path "$temp\bad\current.json")){throw 'Bad checksum was accepted'}
-    Write-Output 'Windows installer tests: 8 passed (install, preserve settings, remove retired setting/state, stop previous version only, rewrite stale login entry, reject checksum)'
+    Write-Output 'Windows installer tests: 10 passed (install, preserve settings, remove retired setting/state, stop previous version only, keep recording capture, same stop rule in launcher, rewrite stale login entry, reject checksum)'
 } finally {
     foreach($process in $stand.Values){if(-not $process.HasExited){Stop-Process -Id $process.Id -Force; $process.WaitForExit(5000) | Out-Null}}
     Remove-Item -LiteralPath $temp -Recurse -Force

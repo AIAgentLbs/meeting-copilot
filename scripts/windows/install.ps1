@@ -22,6 +22,31 @@ function Get-CaptureRunValue([string]$Value,[string]$VersionsRoot,[string]$Captu
     if(-not $exe.StartsWith($VersionsRoot.TrimEnd('\')+'\','OrdinalIgnoreCase') -or $exe -ieq $Capture){return $null}
     return "`"$Capture`"$rest"
 }
+function Stop-OtherVersions([string]$Root,[string]$UserHome){
+    # MEETONTRACK-65: an update leaves the previous version's server and capture running.
+    # Stop only our own processes from another versions\<v> folder. Keep a capture that owns a
+    # recording marker (written before recording starts), and every capture when a marker is
+    # unreadable or the live transcript says a recording is on. Same text in install.ps1 and
+    # meeting-copilot.ps1: the installer may unpack a package whose launcher predates this.
+    $versions=(Split-Path $Root -Parent).TrimEnd('\')+'\'
+    $own=$Root.TrimEnd('\')+'\'
+    $data=Join-Path $UserHome '.local\share\meeting-copilot'
+    $roots=@((Join-Path $UserHome 'MeetOnTrack Recordings'),(Join-Path $UserHome 'Recordings'),(Join-Path $data 'recordings'))
+    try {$chosen=[string](Get-Content (Join-Path $UserHome '.config\meeting-copilot\config.json') -Raw -Encoding UTF8|ConvertFrom-Json).recordings_dir; if($chosen){$roots+=$chosen}} catch {}
+    $owners=@(); $keepCaptures=$false
+    foreach($folder in @($roots|Where-Object {Test-Path -LiteralPath $_ -PathType Container}|ForEach-Object {Get-ChildItem -LiteralPath $_ -Directory -ErrorAction SilentlyContinue})){
+        $marker=Join-Path $folder.FullName '.recording.json'
+        if(Test-Path -LiteralPath $marker){try {$owners+=[int](Get-Content -LiteralPath $marker -Raw -Encoding UTF8|ConvertFrom-Json).pid} catch {$keepCaptures=$true}}
+    }
+    try {if((Get-Content (Join-Path $data 'meeting-copilot-live.json') -Raw -Encoding UTF8|ConvertFrom-Json).status -in @('recording','paused','loading','overloaded')){$keepCaptures=$true}} catch {}
+    $old=@(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' OR Name='python.exe' OR Name='MeetingCopilotCapture.exe'" | Where-Object {
+        $_.ExecutablePath -and $_.ExecutablePath.StartsWith($versions,'OrdinalIgnoreCase') -and -not $_.ExecutablePath.StartsWith($own,'OrdinalIgnoreCase') -and
+        -not ($_.Name -eq 'MeetingCopilotCapture.exe' -and ($keepCaptures -or $_.ProcessId -in $owners))})
+    foreach($process in $old){Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue}
+    if(@($old|Where-Object {$_.Name -ne 'MeetingCopilotCapture.exe'}).Count){
+        for($i=0;$i -lt 40 -and @(Get-NetTCPConnection -LocalPort 43121 -State Listen -ErrorAction SilentlyContinue).Count;$i++){Start-Sleep -Milliseconds 250}
+    }
+}
 function Download-VerifiedInput([string]$Url,[string]$Target){
     if($script:copilotDownloadPython){
         $code="import sys,urllib.request,shutil; r=urllib.request.urlopen(sys.argv[1],timeout=60); f=open(sys.argv[2],'wb'); shutil.copyfileobj(r,f); f.close(); r.close()"
@@ -114,9 +139,7 @@ try {
         }
     }
     [IO.File]::WriteAllText("$InstallRoot\current.json",(@{version=$version;directory=$destination}|ConvertTo-Json),$utf8)
-    # MEETONTRACK-65: stop our previous version's server and capture (never another program's,
-    # never a capture that is recording) and wait for port 43121, so the new version serves.
-    & "$destination\meeting-copilot.ps1" --stop-old
+    Stop-OtherVersions $destination $UserRoot
     if(-not $NoShortcuts){
         # AI is optional; never pin/install an obsolete CLI or change an existing
         # user's auth. The first-run assistant offers installation and a live check.
