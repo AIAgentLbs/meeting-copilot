@@ -413,3 +413,17 @@ stored in this repository. Verify the public installed package as well as source
 - [ ] `live_translation.py` ~77: an English/Russian/undetected segment clears
   `needs_choice` while foreign segments still wait for a translation choice.
   Keep the status while unresolved jobs need a choice.
+
+## Live translation: no-op "EN:" lines on Russian speech (found 2026-10-21)
+
+- [ ] Short Russian phrases are misdetected by `detect-speech-language` as
+  `bg`/`kk` with confidence 1.0, so `live_translation.py` `_work` sends them for
+  translation; the prompt says "keep Russian words as Russian", the model returns
+  the Russian text unchanged, and the segment gets `translation_en` equal to its
+  own text. The UI and the report (`archive.py` ~1751) then show a duplicate
+  "EN:" line. Seen on meeting 51FE8DC8 (2026-10-20): 4 such segments. Proposed:
+  store no translation when the result equals the source text (case/space
+  normalized), and consider skipping Cyrillic-only text detected as bg/kk/uk
+  when the meeting language is Russian. Since 2026-10-21 `sync_transcript` keeps
+  archived translations across restarts, so previously stored no-op lines stay
+  until the text changes or a cleanup pass drops them.
