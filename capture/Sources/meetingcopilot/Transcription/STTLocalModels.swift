@@ -292,5 +292,13 @@ struct LocalSpeakerModel: Equatable, Sendable {
 
     var url: URL { repoDirectory.appendingPathComponent(relativePath, isDirectory: true) }
 
-    var isDownloaded: Bool { FileManager.default.fileExists(atPath: url.path) }
+    /// The compiled bundle's own files, not just its folder: an interrupted
+    /// download leaves the folder behind, and the next download resumes it.
+    var isDownloaded: Bool { Self.bundleComplete(at: url) }
+
+    static func bundleComplete(at bundle: URL) -> Bool {
+        ["coremldata.bin", "model.mil", "metadata.json", "weights/weight.bin"].allSatisfy {
+            FileManager.default.fileExists(atPath: bundle.appendingPathComponent($0).path)
+        }
+    }
 }

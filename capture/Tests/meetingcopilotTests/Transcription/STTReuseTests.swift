@@ -118,6 +118,15 @@ struct LiveDiarizerChoiceTests {
         #expect(failed["state"] as? String == "failed")
         let fetched = await STTDownload.speakerModel(missing) { _ in }
         #expect(fetched["state"] as? String == "downloaded")
+        // A folder left by an interrupted download is not a model.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("meetontrack-speaker-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("weights"), withIntermediateDirectories: true)
+        #expect(!LocalSpeakerModel.bundleComplete(at: root))
+        for file in ["coremldata.bin", "model.mil", "metadata.json", "weights/weight.bin"] {
+            try Data().write(to: root.appendingPathComponent(file))
+        }
+        #expect(LocalSpeakerModel.bundleComplete(at: root))
         if let present = LocalSpeakerModel.installed.first {
             let reused = await STTDownload.speakerModel(present) { _ in Issue.record("fetched a model already here") }
             #expect(reused["state"] as? String == "present")
