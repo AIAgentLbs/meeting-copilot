@@ -226,6 +226,19 @@ enum STTCatalog {
         return cardLanguages(json)
     }
 
+    /// The languages a downloaded Nemotron ship serves, as discovery lists
+    /// them: its prompts narrowed by the cached manifest (a vocabulary-pruned
+    /// ship keeps the full prompt dictionary). nil without the manifest.
+    static func cachedNemotronLanguages(_ model: LocalSTTModel) -> [String]? {
+        guard case .nemotron(let path) = model, let prompts = model.localNemotronPrompts,
+            let url = try? ModelRegistry.resolveModel(model.repo.remotePath, "manifest.json"),
+            let data = Fetcher(cache: Fetcher.defaultCache, refresh: false).cached(url),
+            let ships = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["ships"] as? [[String: Any]],
+            let ship = ships.first(where: { $0["path"] as? String == path })
+        else { return nil }
+        return nemotronLanguages(prompts: prompts, served: ship["languages_served"] as? [String])
+    }
+
     /// Sum of the tree entries FluidAudio downloads. An estimate when one of
     /// the names it asks for is not in the listing.
     static func parakeetSize(tree: [[String: Any]]?, files: Set<String>) -> (bytes: Int?, estimate: Bool) {

@@ -190,12 +190,12 @@ enum LocalSTTModel: Equatable, Sendable {
         return prompts.keys.sorted()
     }
 
-    /// The languages this Mac knows the model takes without the network: a
-    /// ship's own prompt list on disk, or the cached model card. nil when
-    /// neither is here.
+    /// The languages this Mac knows the model takes without the network, the
+    /// same list discovery gives: a ship's prompts narrowed by the cached
+    /// manifest, or the cached model card. nil when they are not here.
     var offlineLanguages: [String]? {
         switch self {
-        case .nemotron: return localNemotronPrompts?.filter { $0 != STTChoice.autoLanguage }
+        case .nemotron: return STTCatalog.cachedNemotronLanguages(self)
         case .parakeet: return STTCatalog.cachedCardLanguages(self)
         }
     }
