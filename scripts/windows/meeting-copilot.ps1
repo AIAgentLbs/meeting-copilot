@@ -23,7 +23,7 @@ if($codexPath){
     $env:MEETING_COPILOT_CODEX=$codexPath
     $codexTools=Join-Path (Split-Path (Split-Path $codexPath)) 'codex-path'
     if(Test-Path "$codexTools\rg.exe"){$env:PATH="$codexTools;$env:PATH"}
-} else {Write-Host 'AI is optional. Install/sign in to Codex from Getting started; recording remains available.'}
+} else {Write-Host 'AI is optional. Choose an AI tool and model for each task in Getting started; recording remains available.'}
 if($args -contains '--refresh'){
     & $python "$root\refresh-repos.py" --config-root $config
     if($LASTEXITCODE -ne 0){throw 'Read-only repository inventory failed'}

@@ -5,7 +5,7 @@ it is hidden by default and available through **Meetings** as a non-modal drawer
 Manually opened history is not dismissed by polling. Closing it does not reopen
 it on the next poll. A real transition to a completed call returns to the library.
 
-Browsing never binds the live Codex session to an archived meeting, resets a call,
+Browsing never binds the live AI session to an archived meeting, resets a call,
 changes recording, submits an analysis request, or clears an unsent note. Browser
 request generations prevent late archive/search responses from replacing a newer
 selection or reopening closed history. Labels, drafts, and DOM state stay separate.
@@ -35,11 +35,15 @@ The correction field updates only the selected completed meeting's overview.
 It does not modify PDFs, delivered reports, global preferences, or live assistant
 state. There is no background AI call when merely browsing a meeting.
 
-The worker uses a separate ephemeral Codex session with explicit `gpt-6.1-sol`,
-read-only sandbox, approval `never`, disabled shell/exec/delegation/web/skill tools,
-and suppressed automatic skill catalogue. It reuses the user's existing Codex
-authorization and may receive that account's general Codex instructions. It is not
-an API-only strict single-purpose inference boundary; the UI discloses this.
+The worker uses a separate session of the AI tool, model, effort and speed chosen
+for summary rewrites in Getting started (Codex, Claude Code or a local Ollama).
+Without a usable choice the rewrite does not run and the previous result is kept.
+The call starts in an empty working directory with no repositories: Codex runs
+with a read-only permissions profile, approval `never` and its tools disabled;
+Claude Code runs restricted with no tools, no user settings and no MCP servers;
+Ollama receives only the prompt. It reuses the chosen tool's existing sign-in, so
+a cloud account's own policies still apply. It is not an API-only strict
+single-purpose inference boundary; the UI discloses this.
 
 The prompt contains bounded selected-meeting material and the current overview.
 One job runs at a time. At commit, the meeting must still be completed and its
@@ -53,11 +57,12 @@ python3 -m unittest discover -s copilot/web -p 'test_*.py'
 PLAYWRIGHT_MODULE=/path/to/playwright node scripts/test-library-ui.cjs
 ```
 
-Optional authenticated smoke, synthetic meeting text only:
+Optional authenticated smoke, synthetic meeting text only. Point it at a
+`config.json` whose `ai.purposes.summary_rewrite` is set:
 
 ```sh
 cd copilot/web
-MEETONTRACK_CODEX_SMOKE=1 python3 -m unittest test_summary_rewrite.SummaryRewriteTests.test_authenticated_codex_can_rewrite_synthetic_meeting
+MEETONTRACK_AI_SMOKE_CONFIG=/path/to/config.json python3 -m unittest test_summary_rewrite.SummaryRewriteTests.test_authenticated_provider_can_rewrite_synthetic_meeting
 ```
 
 Browser fixtures verify desktop/mobile layout and controls, not physical iPhone

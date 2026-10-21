@@ -2,12 +2,13 @@
 
 Private, bot-free live meeting intelligence for macOS. MeetOnTrack captures
 your microphone and system audio, keeps a live transcript on your Mac, and lets
-Codex check what is being said against the Git repositories and documents you
-already have locally.
+an AI tool you already have check what is being said against the Git
+repositories and documents you already have locally.
 
 > Technical beta. macOS 15+, Apple Silicon. Audio/transcript files are stored
 > locally; AI analysis can send relevant dialogue and repository excerpts to
-> your configured Codex service. Usage follows your CLI account and policy.
+> the AI tool you chose for that task. Usage follows that tool's account, plan
+> and policy.
 
 ## Install
 
@@ -33,10 +34,17 @@ window or in its menu-bar menu.
 See [INSTALL.md](INSTALL.md) for dependencies, first-run permissions, manual
 updates and troubleshooting. Automatic in-app updates are not enabled in this
 beta. Audio/transcription run locally; AI analysis can send relevant transcript
-and repository excerpts through the configured Codex service.
+and repository excerpts to the AI tool you chose for that task.
 
 ## What it does
 
+- uses an AI tool you already have - Codex, Claude Code or a local Ollama.
+  In Getting started you choose the tool, model, reasoning effort and speed
+  for each task; the options are read from the installed tool and your plan,
+  and nothing is preselected. Git repository search needs Codex or Claude
+  Code; Ollama cannot read repositories. Antigravity is detected but cannot be
+  selected yet, because it cannot be held to read-only, no-tools calls.
+  Recording and local transcription work without any AI tool;
 - captures meetings without adding a bot to Zoom or Google Meet;
 - updates a local near-live transcript with speaker separation where available;
 - detects mixed meeting languages and shows an English translation next to
@@ -58,7 +66,7 @@ and repository manifests are stored under `~/.config/meeting-copilot`. The
 installer neither uploads repositories nor runs `git pull`, `fetch`, `clone`,
 `checkout`, `reset`, `clean`, `commit` or `push`.
 Language detection runs on the Mac. Translation sends only the relevant text
-fragments through your authenticated Codex CLI, not raw audio.
+fragments to the AI tool you chose for live translation, not raw audio.
 
 ## Repository layout
 

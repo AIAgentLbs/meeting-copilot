@@ -21,7 +21,7 @@ replacement and retains timestamped app/web backups.
 2. Approve Microphone and Screen & System Audio Recording for MeetOnTrack in
    macOS settings. Existing installation paths keep the legacy Capture filename.
 3. Complete local speech-model setup. Recording and transcription need no paid
-   AI key or Codex account.
+   AI key or AI tool account.
 4. The installer starts the local service and opens the assistant in your browser
    automatically. Completing setup also opens it. Reopen it anytime with
    **Open MeetOnTrack assistant** at the top of the recorder window or in the
@@ -54,6 +54,9 @@ each task; the options are read from the installed tool and your plan, and
 nothing is preselected. A short functional check confirms each choice. Relevant
 conversation and connected-source excerpts are sent to the chosen AI service. Capture
 and local transcription work independently of the AI account.
+Git repository search works only with Codex or Claude Code; Ollama cannot read
+repositories. Antigravity is detected but cannot be selected yet, because it
+cannot be held to read-only, no-tools calls.
 
 Connect local folders in Context sources; Git is optional. Current local formats
 are UTF-8 text, Markdown, CSV and source code. Google context is optional and
