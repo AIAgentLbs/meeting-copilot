@@ -353,6 +353,14 @@ stored in this repository. Verify the public installed package as well as source
   cloud providers, file locations and advanced choices into settings. Distinguish
   local transcription costs from optional AI-provider charges. Validate with a
   first-time user who has not received instructions from the developer.
+  Owner rule 2026-10-21: the fewest clicks, no confirmations. A speech model the
+  installer downloaded counts as chosen. Auto-record is on by default and lives in
+  Settings. Interface language lives in Settings only. Never ask how to split speakers:
+  label by channel, then use the existing live diarizer and post-call speaker naming.
+- [ ] MEETONTRACK-67: One-time in-app showcase at first launch, before setup: what
+  MeetOnTrack does differently (live answers from your files with sources, both sides
+  recorded locally, your own AI). Scripted, synthetic, skippable, replayable from
+  Settings. Separate from the short real test recording at the end of setup.
 - [ ] MEETONTRACK-40: Make live meeting assistance reachable after setup. The reviewed capture
   screen has live transcription disabled and a separate final transcription model;
   explain this distinction and make the required live path explicit. After either
