@@ -1750,25 +1750,31 @@ class MeetingFrames:
         # voice is the call channel, not a person: name each phrase from its
         # nearest frame instead of naming the whole channel after one person.
         # The user's own tile is highlighted too while they talk: a name seen
-        # mostly nearer microphone speech than call audio is not a remote voice.
+        # mostly during microphone speech rather than call audio is not a remote
+        # voice. Frames between phrases abstain.
         def moment(value) -> datetime | None:
             try:
                 return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
             except ValueError:
                 return None
 
-        spoken_at = [(at, segment.get("source")) for segment in segments
-                     if segment.get("source") in {"system", "microphone"}
-                     and (at := moment(segment.get("timestamp") or "")) is not None]
+        spoken_at = []
+        for segment in segments:
+            start = moment(segment.get("timestamp") or "")
+            end = moment(segment.get("end_timestamp") or "") or start
+            if segment.get("source") in {"system", "microphone"} and start is not None and end is not None:
+                spoken_at.append((start, end, segment["source"]))
         remote_score: dict[str, int] = {}
         for frame in meeting_frames:
             captured = moment(frame.get("captured_at") or "")
-            if (not frame.get("speaker") or captured is None or not spoken_at
-                    or frame.get("speaker_confidence") == "meet-active-tile"):
+            if not frame.get("speaker") or captured is None or frame.get("speaker_confidence") == "meet-active-tile":
                 continue
-            nearest_source = min(spoken_at, key=lambda item: abs((item[0] - captured).total_seconds()))[1]
-            name = str(frame["speaker"])
-            remote_score[name] = remote_score.get(name, 0) + (1 if nearest_source == "system" else -1)
+            sources = {source for start, end, source in spoken_at
+                       if abs((start - captured).total_seconds()) <= 2
+                       or start <= captured <= end}
+            if len(sources) == 1:
+                name = str(frame["speaker"])
+                remote_score[name] = remote_score.get(name, 0) + (1 if "system" in sources else -1)
         visible_speakers = {name for name, score in remote_score.items() if score > 0}
         channel_only = len(acoustic_slots) <= 1 and len(visible_speakers) >= 2
         frame_window = 15 if channel_only else 8
@@ -1884,6 +1890,11 @@ class MeetingFrames:
             if channel_only:
                 segment.pop("voice_id", None)
                 if segment.get("speaker"):
+                    continue
+                # A self-introduction names only its own phrase on a shared channel.
+                if introduced := spoken_name(str(segment.get("text") or "")):
+                    segment["speaker"] = introduced
+                    segment["speaker_confidence"] = "spoken-self-introduction"
                     continue
             nearest = nearest_named_frame(segment) if not voice_id or channel_only else None
             if nearest and nearest[1].get("speaker_confidence") != "meet-active-tile":

@@ -11,8 +11,13 @@ def frame(at, speaker):
             "speaker": speaker, "speaker_confidence": "visual-active-speaker"}
 
 
-def phrase(at, voice="remote-1"):
-    return {"source": "system", "voice_id": voice, "timestamp": f"2026-10-22T10:{at}Z", "text": "x"}
+def phrase(at, voice="remote-1", until=None, text="x", source="system"):
+    segment = {"source": source, "timestamp": f"2026-10-22T10:{at}Z", "text": text}
+    if voice and source == "system":
+        segment["voice_id"] = voice
+    if until:
+        segment["end_timestamp"] = f"2026-10-22T10:{until}Z"
+    return segment
 
 
 class VisualSpeakerTests(unittest.TestCase):
@@ -27,16 +32,24 @@ class VisualSpeakerTests(unittest.TestCase):
 
     def test_single_undiarized_voice_is_named_per_phrase(self):
         items = [frame("00:00", "Alice"), frame("01:00", "Bob")]
-        segments = [phrase("00:02"), phrase("01:03"), phrase("00:05")]
+        segments = [phrase("00:00", until="00:04"), phrase("00:58", until="01:03"), phrase("00:05")]
         self.assertEqual(self.annotate(items, segments), ["Alice", "Bob", "Alice"])
         self.assertEqual(self.annotate(items, segments, "speaker_label"), ["Alice", "Bob", "Alice"])
 
     def test_own_highlighted_tile_is_not_a_second_remote_speaker(self):
         names = self.annotate(
-            [frame("00:00", "Bob"), frame("01:00", "Mike")],
-            [phrase("00:02"), {"source": "microphone", "timestamp": "2026-10-22T10:01:01Z", "text": "y"},
-             phrase("03:00")])
-        self.assertEqual(names, ["Bob", "Bob"])
+            [frame("00:00", "Bob"), frame("00:55", "Mike")],
+            [phrase("00:00", until="00:04"),
+             phrase("00:10", until="01:00", source="microphone"),  # long own turn
+             phrase("01:05"), phrase("03:00")])
+        self.assertEqual(names, ["Bob", "Bob", "Bob"])
+
+    def test_self_introduction_names_only_its_phrase_on_shared_channel(self):
+        names = self.annotate(
+            [frame("00:00", "Alice"), frame("01:00", "Bob")],
+            [phrase("00:00", until="00:04"), phrase("00:58", until="01:03"),
+             phrase("01:05", text="My name is Carol")])
+        self.assertEqual(names, ["Alice", "Bob", "Carol"])
 
     def test_diarized_voices_keep_one_name_per_voice(self):
         names = self.annotate(
