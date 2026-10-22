@@ -79,7 +79,7 @@ build: localvqe
 
 # Drawn by the same renderer the menu bar and native windows use.
 icon:
-	@mkdir -p .build
+	@mkdir -p .build Resources
 	@swiftc Sources/meetingcopilot/UI/BrandIcon.swift Packaging/GenerateMeetingCopilotIcon.swift -o .build/generate-brand-icon
 	@.build/generate-brand-icon .build/MeetingCopilot.iconset
 	@iconutil -c icns .build/MeetingCopilot.iconset -o $(ICON)
