@@ -137,6 +137,7 @@ class MeetingArchive:
         self.transcript_annotator = transcript_annotator or (lambda snapshot: snapshot)
         # meeting_id -> (meeting.json, report.json) versions already found up to date.
         self._history_checked: dict[str, tuple] = {}
+        self._history_failed: dict[str, float] = {}
         private_dir(self.archive_root, recover=True)
         private_dir(self.reports_root, recover=True)
 
@@ -344,11 +345,14 @@ class MeetingArchive:
                 version = (path.stat().st_mtime_ns, _mtime(self.reports_root / meeting_id / "report.json"))
                 if self._history_checked.get(meeting_id) == version:
                     continue
+                if time.monotonic() - self._history_failed.get(meeting_id, -1e9) < 1800:
+                    continue  # A failed report is tried again every 30 minutes, not every minute.
                 # Remember "nothing to do" only once the 2-minute settling time is long over.
                 if not self.create_due_report(meeting_id) and ended and (now - ended).total_seconds() > 600:
                     self._history_checked[meeting_id] = version
             except Exception as exc:
-                print(f"meeting history report failed: {type(exc).__name__}", flush=True)
+                self._history_failed[meeting_id] = time.monotonic()
+                print(f"meeting history report failed for {meeting_id}: {type(exc).__name__}: {exc}", flush=True)
 
     def _recordings(self) -> list[dict]:
         operation = getattr(self._index_state, "values", None)
@@ -1154,8 +1158,13 @@ class MeetingArchive:
         try:
             stable = 0
             prior = -1
-            for _ in range(80):
+            # A long call with many frames takes Chrome 20 s or more under load;
+            # a fixed 20 s window failed every such report forever (MEETONTRACK-98).
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
                 time.sleep(0.25)
+                if process.poll() is not None:
+                    break  # Chrome has exited: the file is as complete as it gets.
                 size = temporary.stat().st_size if temporary.exists() else 0
                 if size > 4096 and size == prior:
                     stable += 1
