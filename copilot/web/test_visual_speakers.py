@@ -52,6 +52,13 @@ class VisualSpeakerTests(unittest.TestCase):
              phrase("00:11", until="00:15"), phrase("03:00")])
         self.assertEqual(names, ["Bob", "Bob", "Bob"])
 
+    def test_live_blocks_without_end_time_last_until_next_phrase(self):
+        # Live call 2026-10-22: Katya's tile was captured 4 s into her block.
+        names = self.annotate(
+            [frame("04:08", "Katya"), frame("09:00", "Andrew"), frame("10:31", "Andrew")],
+            [phrase("04:12", until="04:42"), phrase("08:58"), phrase("10:31")])
+        self.assertEqual(names, ["Katya", "Andrew", "Andrew"])
+
     def test_self_introduction_names_only_its_phrase_on_shared_channel(self):
         names = self.annotate(
             [frame("00:00", "Alice"), frame("01:00", "Bob")],

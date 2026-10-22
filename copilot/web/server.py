@@ -1759,13 +1759,20 @@ class MeetingFrames:
                 return None
 
         spoken_at = []
+        starts = sorted(start for start in (moment(segment.get("timestamp") or "") for segment in segments)
+                        if start is not None)
         for segment in segments if len(acoustic_slots) <= 1 else []:
             start = moment(segment.get("timestamp") or "")
             end = moment(segment.get("end_timestamp") or "")
             if segment.get("source") in {"system", "microphone"} and start is not None:
-                # Without an end time, a phrase covers 2 s around its start.
-                spoken_at.append((start - timedelta(seconds=0 if end else 2),
-                                  end or start + timedelta(seconds=2), segment["source"]))
+                # Live blocks carry no end time: a block lasts until the next
+                # phrase starts, at most 2 minutes.
+                if end is None:
+                    following = next((value for value in starts if value > start), None)
+                    end = min(following or start + timedelta(seconds=120), start + timedelta(seconds=120))
+                # Recognised starts lag the highlighted tile by a few seconds
+                # (live call 2026-10-22: tile 17:04:08, phrase 17:04:12).
+                spoken_at.append((start - timedelta(seconds=5), end + timedelta(seconds=2), segment["source"]))
         remote_score: dict[str, int] = {}
         for frame in meeting_frames if spoken_at else []:
             captured = moment(frame.get("captured_at") or "")
@@ -1786,6 +1793,14 @@ class MeetingFrames:
                 moment = datetime.fromisoformat(str(segment["timestamp"]).replace("Z", "+00:00"))
             except ValueError:
                 return None
+            # On a shared channel a long phrase is named by a frame taken while
+            # it was spoken, measured from the phrase interval, not its start.
+            until = moment
+            if channel_only and segment.get("end_timestamp"):
+                try:
+                    until = datetime.fromisoformat(str(segment["end_timestamp"]).replace("Z", "+00:00"))
+                except ValueError:
+                    pass
             nearest: tuple[float, dict] | None = None
             for frame in frames:
                 if frame.get("meeting_id") != transcript.get("meeting_id") or not frame.get("speaker"):
@@ -1796,7 +1811,11 @@ class MeetingFrames:
                     captured = datetime.fromisoformat(str(frame["captured_at"]).replace("Z", "+00:00"))
                 except ValueError:
                     continue
-                distance = abs((captured - moment).total_seconds())
+                if moment <= captured <= until:
+                    distance = 0.0
+                else:
+                    distance = min(abs((captured - moment).total_seconds()),
+                                   abs((captured - until).total_seconds()))
                 if distance <= frame_window and (nearest is None or distance < nearest[0]):
                     nearest = (distance, frame)
             return nearest
