@@ -824,6 +824,8 @@ class MeetingArchive:
             if retried >= max_reports:
                 break
             meta = _json(path, {})
+            if not isinstance(meta, dict) or meta.get("report_missing"):
+                continue  # Only an explicit "create the report again" sends it.
             generated = _date(str(meta.get("generated_at") or ""))
             if not generated or (now - generated).total_seconds() > self.delivery_retry_days * 86400:
                 continue
@@ -892,47 +894,67 @@ class MeetingArchive:
         folder with neither a report nor its meeting has nothing to deliver.
         The damaged file is kept next to it, never deleted.
         """
+        def healthy(value: Any) -> bool:
+            return isinstance(value, dict) and bool(_date(str(value.get("generated_at") or "")))
+
         for path in sorted(self.reports_root.glob("*/report.json")):
-            with self.lock:
-                meta = _json(path, None)
-                if isinstance(meta, dict) and _date(str(meta.get("generated_at") or "")):
-                    continue
-                folder = path.parent
-                html_path, pdf_path = folder / "index.html", folder / "meeting-report.pdf"
-                readable = meta if isinstance(meta, dict) else {}
-                now = datetime.now().astimezone()
-                if pdf_path.is_file() and html_path.is_file():
-                    receipts = _json(folder / "delivery-receipts.json", {})
-                    receipts = receipts if isinstance(receipts, dict) else {}
-                    repaired = {
-                        **readable,
-                        "generated_at": datetime.fromtimestamp(pdf_path.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
-                        "html": f"/api/archive/report/{folder.name}/index.html",
-                        "pdf": f"/api/archive/report/{folder.name}/meeting-report.pdf",
-                        "html_path": str(html_path),
-                        "pdf_path": str(pdf_path),
-                        # Whether email or Telegram went out before the file broke is
-                        # unknown: never resend on our own, let the person decide.
-                        "mail_status": str(readable.get("mail_status") or "unknown"),
-                        "telegram_status": str(readable.get("telegram_status") or "unknown"),
-                        "drive_status": str(readable.get("drive_status") or "pending"),
-                        **{key: value for key, value in receipts.items()
-                           if key in {"mail_status", "gmail_message_id", "telegram_status", "telegram_message_id"}},
-                        "state_repaired_at": now.isoformat(timespec="seconds"),
-                    }
-                    repaired.pop("report_missing", None)
+            # Healthy files are skipped without the lock: a slow upload holds it.
+            if healthy(_json(path, None)):
+                continue
+            try:
+                self._repair_report_state(path, healthy)
+            except Exception as exc:  # One bad folder must not stop the health check.
+                print(f"report status repair failed: {type(exc).__name__}", flush=True)
+
+    def _repair_report_state(self, path: Path, healthy: Callable[[Any], bool]) -> None:
+        with self.lock:
+            meta = _json(path, None)
+            if healthy(meta) or not path.is_file():
+                return
+            folder = path.parent
+            shutil.copy2(path, folder / "report.json.broken")
+            if not isinstance(meta, dict):
+                # Meeting details read this file too; never hand them a non-object.
+                _atomic_json(path, {})
+            html_path, pdf_path = folder / "index.html", folder / "meeting-report.pdf"
+            readable = meta if isinstance(meta, dict) else {}
+            now = datetime.now().astimezone()
+            repaired: dict | None
+            if pdf_path.is_file() and html_path.is_file():
+                receipts = _json(folder / "delivery-receipts.json", {})
+                receipts = receipts if isinstance(receipts, dict) else {}
+                repaired = {
+                    **readable,
+                    "generated_at": datetime.fromtimestamp(pdf_path.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
+                    "html": f"/api/archive/report/{folder.name}/index.html",
+                    "pdf": f"/api/archive/report/{folder.name}/meeting-report.pdf",
+                    "html_path": str(html_path),
+                    "pdf_path": str(pdf_path),
+                    # Whether email or Telegram went out before the file broke is
+                    # unknown: never resend on our own, let the person decide.
+                    "mail_status": str(readable.get("mail_status") or "unknown"),
+                    "telegram_status": str(readable.get("telegram_status") or "unknown"),
+                    "drive_status": str(readable.get("drive_status") or "pending"),
+                    **{key: value for key, value in receipts.items()
+                       if key in {"mail_status", "gmail_message_id", "telegram_status", "telegram_message_id"}},
+                    "state_repaired_at": now.isoformat(timespec="seconds"),
+                }
+                repaired.pop("report_missing", None)
+            else:
+                detail = self.report_detail(folder.name)
+                if detail and any(detail.get(key) for key in ("transcript", "journal", "frames")):
+                    # Without both files nothing is sent automatically; the
+                    # person creates the report again with one button.
+                    repaired = {key: value for key, value in readable.items()
+                                if key not in {"html", "pdf", "html_path", "pdf_path"}}
+                    repaired.update({"generated_at": now.isoformat(timespec="seconds"),
+                                     "report_missing": True, "state_repaired_at": now.isoformat(timespec="seconds")})
                 else:
-                    detail = self.report_detail(folder.name)
-                    if detail and any(detail.get(key) for key in ("transcript", "journal", "frames")):
-                        repaired = {**readable, "generated_at": now.isoformat(timespec="seconds"),
-                                    "report_missing": True, "state_repaired_at": now.isoformat(timespec="seconds")}
-                    else:
-                        repaired = None
-                shutil.copy2(path, folder / "report.json.broken")
-                if repaired is None:
-                    path.unlink()
-                else:
-                    _atomic_json(path, repaired)
+                    repaired = None
+            if repaired is None:
+                path.unlink()
+            else:
+                _atomic_json(path, repaired)
 
     def _delivery_label(self, meeting_id: str) -> dict:
         if meeting_id not in self._delivery_labels:

@@ -219,8 +219,30 @@ class DeliveryHealthTests(unittest.TestCase):
                                                   "uncertain": False, "missing": True, "title": "Weekly sync",
                                                   "started_at": ""}])
         self.assertEqual(health["channels"]["gmail"]["issues"][0]["reason"], "report_missing")
-        # A missing report is never sent automatically.
-        self.assertEqual(archive.retry_pending_deliveries(), 0)
+
+    def test_missing_report_is_never_sent_automatically(self):
+        archive = self._archive()
+        folder = self.reports / "test"
+        (folder / "meeting-report.pdf").write_bytes(b"%PDF-test")  # index.html is gone
+        (folder / "report.json").write_text(json.dumps({"pdf_path": str(folder / "meeting-report.pdf"),
+                                                        "mail_status": "failed"}), encoding="utf-8")
+        detail = {"meeting_id": "test", "status": "finished", "transcript": [{"text": "hello"}]}
+        with patch.object(archive, "report_detail", return_value=detail), \
+             patch.object(archive, "_ready_for_delivery", return_value=True), \
+             patch.object(archive, "deliver") as deliver:
+            archive.check_delivery_health()
+            self.assertEqual(archive.retry_pending_deliveries(), 0)
+        deliver.assert_not_called()
+        self.assertNotIn("pdf_path", json.loads((folder / "report.json").read_text()))
+
+    def test_non_object_status_does_not_stop_the_health_check(self):
+        archive = self._archive()
+        (self.reports / "test" / "report.json").write_text("[1]", encoding="utf-8")
+        self.report.update(mail_status="failed", generated_at=datetime.now().astimezone().isoformat())
+        self.save("other")
+        health = archive.check_delivery_health()
+        self.assertEqual((self.reports / "test" / "report.json.broken").read_text(), "[1]")
+        self.assertIn("other", {issue["meeting_id"] for issue in health["channels"]["gmail"]["issues"]})
 
     def test_status_without_report_or_meeting_is_set_aside(self):
         archive = self._archive()
