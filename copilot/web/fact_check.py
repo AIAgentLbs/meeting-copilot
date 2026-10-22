@@ -40,7 +40,7 @@ def words(text) -> str:
 
 def said_in(quote: str, text: str) -> bool:
     """Speech match: punctuation ignored, but signs kept ("-10" is not "+10") and whole words only."""
-    tokens = lambda value: " " + " ".join(re.findall(r"[-+−]?\d[\d.,]*|\w+", str(value or "").casefold())) + " "
+    tokens = lambda value: " " + " ".join(re.findall(r"[-+−]?\d+(?:[.,]\d+)*|\w+", str(value or "").casefold())) + " "
     return tokens(quote) in tokens(text)
 
 

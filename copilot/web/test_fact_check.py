@@ -64,6 +64,10 @@ class ExtractionTests(unittest.TestCase):
             with self.subTest(quote=quote[:30]):
                 self.assertEqual(parse_claims(capture(quote=quote, claim=quote), said), [])
         self.assertEqual(len(parse_claims(capture(quote="Acme profit is -10 percent", claim="c"), said)), 1)
+        dated = {"meeting_id": "m1", "segments": [{"source": "system", "text": "Acme was founded in 1998. Revenue is 1,5 million."}]}
+        for quote in ("Acme was founded in 1998", "Revenue is 1,5 million"):  # sentence punctuation is not the number
+            with self.subTest(quote=quote):
+                self.assertEqual(len(parse_claims(capture(quote=quote, claim=quote), dated)), 1)
 
     def test_extraction_rules_list_known_claims(self):
         rules = fact_check.extraction_rules(["Claim A"])
