@@ -1357,6 +1357,15 @@ class TranscriptState:
             self.trigger.clear()
 
 
+ZOOM_CONTROL_LABELS = {
+    "unmute", "mute", "video", "start video", "stop video", "participants", "chat",
+    "share", "share screen", "record", "reactions", "apps", "more", "leave", "end",
+    "security", "raise hand", "включить звук", "выключить звук", "начать видео",
+    "остановить видео", "участники", "чат", "демонстрация экрана", "запись",
+    "реакции", "ещё", "еще", "выйти", "завершить",
+}
+
+
 def image_libraries_problem() -> str:
     """Visual speaker names need numpy and Pillow; without them every frame
     silently had no speaker. Say so on screen instead."""
@@ -1567,9 +1576,10 @@ class MeetingFrames:
                         if float(item.get("y", 1)) < 0.2 and float(item.get("x", 1)) < 0.4
                     ]
                     labels = [(y, text) for y, text in labels
-                              if 2 <= len(text) <= 42 and all(c.isalpha() or c in " .'-’" for c in text)]
+                              if 2 <= len(text) <= 42 and all(c.isalpha() or c in " .'-’" for c in text)
+                              and text.casefold() not in ZOOM_CONTROL_LABELS]
                     if labels:
-                        return min(labels)[1], "zoom-floating-speaker"
+                        return max(labels)[1], "zoom-floating-speaker"
                 return "", ""
             _, left, right = max(pairs)
 
@@ -1739,8 +1749,27 @@ class MeetingFrames:
         # voice. When frames show two or more different people talking, that
         # voice is the call channel, not a person: name each phrase from its
         # nearest frame instead of naming the whole channel after one person.
-        visible_speakers = {str(frame.get("speaker")) for frame in meeting_frames
-                            if frame.get("speaker") and frame.get("speaker_confidence") != "meet-active-tile"}
+        # The user's own tile is highlighted too while they talk: a name seen
+        # mostly nearer microphone speech than call audio is not a remote voice.
+        def moment(value) -> datetime | None:
+            try:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            except ValueError:
+                return None
+
+        spoken_at = [(at, segment.get("source")) for segment in segments
+                     if segment.get("source") in {"system", "microphone"}
+                     and (at := moment(segment.get("timestamp") or "")) is not None]
+        remote_score: dict[str, int] = {}
+        for frame in meeting_frames:
+            captured = moment(frame.get("captured_at") or "")
+            if (not frame.get("speaker") or captured is None or not spoken_at
+                    or frame.get("speaker_confidence") == "meet-active-tile"):
+                continue
+            nearest_source = min(spoken_at, key=lambda item: abs((item[0] - captured).total_seconds()))[1]
+            name = str(frame["speaker"])
+            remote_score[name] = remote_score.get(name, 0) + (1 if nearest_source == "system" else -1)
+        visible_speakers = {name for name, score in remote_score.items() if score > 0}
         channel_only = len(acoustic_slots) <= 1 and len(visible_speakers) >= 2
         frame_window = 15 if channel_only else 8
 
@@ -1754,6 +1783,8 @@ class MeetingFrames:
             nearest: tuple[float, dict] | None = None
             for frame in frames:
                 if frame.get("meeting_id") != transcript.get("meeting_id") or not frame.get("speaker"):
+                    continue
+                if channel_only and str(frame["speaker"]) not in visible_speakers:
                     continue
                 try:
                     captured = datetime.fromisoformat(str(frame["captured_at"]).replace("Z", "+00:00"))
@@ -1850,8 +1881,10 @@ class MeetingFrames:
                 segment["speaker"] = voice_names[voice_id]
                 segment["speaker_confidence"] = voice_confidence[voice_id]
                 continue
-            if channel_only and segment.get("speaker"):
-                continue
+            if channel_only:
+                segment.pop("voice_id", None)
+                if segment.get("speaker"):
+                    continue
             nearest = nearest_named_frame(segment) if not voice_id or channel_only else None
             if nearest and nearest[1].get("speaker_confidence") != "meet-active-tile":
                 segment["speaker"] = nearest[1]["speaker"]

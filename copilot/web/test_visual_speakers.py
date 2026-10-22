@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from server import MeetingFrames
+from speaker_edits import SpeakerEdits
 
 
 def frame(at, speaker):
@@ -15,16 +16,27 @@ def phrase(at, voice="remote-1"):
 
 
 class VisualSpeakerTests(unittest.TestCase):
-    def annotate(self, items, segments):
+    def annotate(self, items, segments, field="speaker"):
         with tempfile.TemporaryDirectory() as directory:
             frames = MeetingFrames(Path(directory) / "frames.json")
             frames.items = items
-            return [s.get("speaker") for s in frames.annotate({"meeting_id": "m", "segments": segments})["segments"]]
+            annotated = frames.annotate({"meeting_id": "m", "segments": segments})
+            # Same path as the live UI: speaker labels are grouped after annotation.
+            labelled = SpeakerEdits(Path(directory) / "archive").annotate(annotated)
+            return [s.get(field) for s in labelled["segments"] if s.get("source") == "system"]
 
     def test_single_undiarized_voice_is_named_per_phrase(self):
-        names = self.annotate([frame("00:00", "Alice"), frame("01:00", "Bob")],
-                              [phrase("00:02"), phrase("01:03"), phrase("00:05")])
-        self.assertEqual(names, ["Alice", "Bob", "Alice"])
+        items = [frame("00:00", "Alice"), frame("01:00", "Bob")]
+        segments = [phrase("00:02"), phrase("01:03"), phrase("00:05")]
+        self.assertEqual(self.annotate(items, segments), ["Alice", "Bob", "Alice"])
+        self.assertEqual(self.annotate(items, segments, "speaker_label"), ["Alice", "Bob", "Alice"])
+
+    def test_own_highlighted_tile_is_not_a_second_remote_speaker(self):
+        names = self.annotate(
+            [frame("00:00", "Bob"), frame("01:00", "Mike")],
+            [phrase("00:02"), {"source": "microphone", "timestamp": "2026-10-22T10:01:01Z", "text": "y"},
+             phrase("03:00")])
+        self.assertEqual(names, ["Bob", "Bob"])
 
     def test_diarized_voices_keep_one_name_per_voice(self):
         names = self.annotate(
@@ -46,6 +58,15 @@ class VisualSpeakerTests(unittest.TestCase):
                 {"text": "Mike Shishkin", "x": 0.066, "y": 0.113, "width": 0.18},
             ])
         self.assertEqual(result, ("Mike Shishkin", "zoom-floating-speaker"))
+
+    def test_floating_window_toolbar_caption_is_not_the_speaker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = MeetingFrames._speaker_from_frame(self.blank_frame(directory), [
+                {"text": "°. app.zoom.us", "y": 0.866, "x": 0.084},
+                {"text": "Mike Shishkin", "x": 0.066, "y": 0.113, "width": 0.18},
+                {"text": "Unmute", "x": 0.02, "y": 0.03, "width": 0.05},
+            ])
+        self.assertEqual(result[0], "Mike Shishkin")
 
     def test_full_zoom_window_toolbar_is_not_a_speaker(self):
         with tempfile.TemporaryDirectory() as directory:
