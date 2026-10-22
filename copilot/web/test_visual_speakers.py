@@ -44,6 +44,14 @@ class VisualSpeakerTests(unittest.TestCase):
              phrase("01:05"), phrase("03:00")])
         self.assertEqual(names, ["Bob", "Bob", "Bob"])
 
+    def test_own_tile_in_pause_before_remote_speech_is_not_remote(self):
+        names = self.annotate(
+            [frame("00:00", "Bob"), frame("00:10", "Mike")],
+            [phrase("00:00", until="00:04"),
+             phrase("00:05", until="00:09", source="microphone"),
+             phrase("00:11", until="00:15"), phrase("03:00")])
+        self.assertEqual(names, ["Bob", "Bob", "Bob"])
+
     def test_self_introduction_names_only_its_phrase_on_shared_channel(self):
         names = self.annotate(
             [frame("00:00", "Alice"), frame("01:00", "Bob")],

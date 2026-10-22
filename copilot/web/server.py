@@ -17,7 +17,7 @@ import threading
 import time
 import uuid
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1759,19 +1759,19 @@ class MeetingFrames:
                 return None
 
         spoken_at = []
-        for segment in segments:
+        for segment in segments if len(acoustic_slots) <= 1 else []:
             start = moment(segment.get("timestamp") or "")
-            end = moment(segment.get("end_timestamp") or "") or start
-            if segment.get("source") in {"system", "microphone"} and start is not None and end is not None:
-                spoken_at.append((start, end, segment["source"]))
+            end = moment(segment.get("end_timestamp") or "")
+            if segment.get("source") in {"system", "microphone"} and start is not None:
+                # Without an end time, a phrase covers 2 s around its start.
+                spoken_at.append((start - timedelta(seconds=0 if end else 2),
+                                  end or start + timedelta(seconds=2), segment["source"]))
         remote_score: dict[str, int] = {}
-        for frame in meeting_frames:
+        for frame in meeting_frames if spoken_at else []:
             captured = moment(frame.get("captured_at") or "")
             if not frame.get("speaker") or captured is None or frame.get("speaker_confidence") == "meet-active-tile":
                 continue
-            sources = {source for start, end, source in spoken_at
-                       if abs((start - captured).total_seconds()) <= 2
-                       or start <= captured <= end}
+            sources = {source for start, end, source in spoken_at if start <= captured <= end}
             if len(sources) == 1:
                 name = str(frame["speaker"])
                 remote_score[name] = remote_score.get(name, 0) + (1 if "system" in sources else -1)
