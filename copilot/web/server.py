@@ -413,7 +413,7 @@ class RepositoryScope:
 
     def set_selection(self, meeting_id: str, value: str) -> None:
         if not meeting_id or len(meeting_id) > 200:
-            raise ValueError("Встреча ещё не определена")
+            raise ValueError("Встреча еще не определена")
         if value not in {item["value"] for item in self.choices()}:
             raise ValueError("Выберите проект или репозиторий из списка")
         with self.selection_lock:
@@ -1346,7 +1346,7 @@ class TranscriptState:
                                      part["meeting_id"], part["meeting"], "transcript")
         except FileNotFoundError:
             with self.lock:
-                self.error = "MeetOnTrack ещё не начал live-расшифровку"
+                self.error = "MeetOnTrack еще не начал live-расшифровку"
                 self.updated_at = datetime.now().astimezone().isoformat(timespec="seconds")
         except (OSError, ValueError, TypeError, RuntimeError) as exc:
             with self.lock:
@@ -1973,6 +1973,19 @@ class MeetingFrames:
             self.stop.wait(15)
 
 
+PROTOCOL_LINE = re.compile(r"(?m)^(?:PLAN_UPDATE|SIGNAL_UPDATE|QUESTION_CAPTURE)\s*[:—-]\s*\{[^\n]*\}\s*$")
+
+
+def strip_protocol(answer: str) -> str:
+    """Drop the machine lines (claims, register and plan updates) a person must never see."""
+    return PROTOCOL_LINE.sub("", strip_claims(answer)).strip()
+
+
+def chat_message(item: dict) -> dict:
+    """What the owner's Chat shows of a stored message: protocol lines never reach the screen."""
+    return {**item, "text": strip_protocol(item["text"])} if item.get("role") == "assistant" else item
+
+
 class CodexSession:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path
@@ -2055,9 +2068,12 @@ class CodexSession:
             current_id = self.meeting_id if meeting_id is None else meeting_id
             same_meeting = bool(current_id) and current_id == self.meeting_id
             return {
+                # Chat is the owner's own conversation. Auto-analysis feeds Call overview only;
+                # older state files still hold it as kind "insight", so it is left out on read.
                 "messages": [
-                    item for item in self.messages
+                    chat_message(item) for item in self.messages
                     if current_id and item.get("meeting_id") == current_id
+                    and item.get("kind") != "insight"
                 ],
                 "busy": self.busy,
                 "error": self.last_error if same_meeting else "",
@@ -2070,7 +2086,7 @@ class CodexSession:
     def invalidate_context(self) -> None:
         with self.lock:
             if self.busy:
-                raise RuntimeError("Copilot is answering now")
+                raise RuntimeError("MeetOnTrack is answering now")
             self.thread_id = ""
             self.meeting_id = ""
             self.last_error = ""
@@ -2183,7 +2199,7 @@ ASK формулируй как одну короткую реплику, кот
         ticket = AI.resolve("live_analysis")  # one snapshot for every call of this question
         with self.lock:
             if self.busy:
-                raise RuntimeError("Copilot уже отвечает на другой вопрос")
+                raise RuntimeError("MeetOnTrack уже отвечает на другой вопрос")
             if meeting_id and self.meeting_id and meeting_id != self.meeting_id:
                 self.thread_id = ""
                 self.last_analyzed_fingerprint = ""
@@ -2195,7 +2211,7 @@ ASK формулируй как одну короткую реплику, кот
             if show_user:
                 self.messages.append({
                     "role": "user", "text": question, "kind": kind,
-                    "meeting_id": meeting_id,
+                    "meeting_id": meeting_id, "at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 })
                 self._persist_locked()
             if self.thread_id and self.thread_key != ticket.key:
@@ -2243,12 +2259,15 @@ ASK формулируй как одну короткую реплику, кот
             )
             prompt += git_metadata(self._roots)
             answer = self._run_ai(prompt)
-            shown = strip_claims(answer).strip() if kind == "insight" else answer  # claim lines feed the fact strip only
+            # Auto-analysis results reach Call overview through the journal, the plan and the
+            # fact checks; only answers to the owner join his chat. Thread context for his next
+            # question lives in the AI session itself, not in this list.
+            shown = strip_protocol(answer)
             with self.lock:
-                if shown.strip() and (kind != "insight" or shown.strip() != "НЕТ НОВОГО СИГНАЛА"):
+                if shown and kind != "insight":
                     self.messages.append({
                         "role": "assistant", "text": shown, "kind": kind,
-                        "meeting_id": meeting_id,
+                        "meeting_id": meeting_id, "at": datetime.now().astimezone().isoformat(timespec="seconds"),
                     })
                 self._persist_locked()
             return answer
@@ -3033,8 +3052,7 @@ class Handler(BaseHTTPRequestHandler):
                 JOURNAL.apply_analysis(snap, answer, chat)
                 JOURNAL.capture_questions(snap, answer)
                 FACT_CHECKS.add(snap, parse_claims(answer, snap))
-                signal_answer = re.sub(r"(?m)^(?:PLAN_UPDATE|SIGNAL_UPDATE|QUESTION_CAPTURE)\s*[:—-]\s*\{[^\n]*\}\s*$", "",
-                                       strip_claims(answer)).strip()
+                signal_answer = strip_protocol(answer)
                 JOURNAL.add_answer(signal_answer, snap["meeting_id"], snap["meeting"])
                 COPILOT.record_analysis(answer=signal_answer or "НЕТ НОВОГО СИГНАЛА", meeting_id=snap["meeting_id"])
                 self._json({"ok": True, "answer": signal_answer or "НЕТ НОВОГО СИГНАЛА"})
