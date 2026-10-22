@@ -17,7 +17,7 @@ const auth = { ...healthy, state: 'action_required',
   channels: { ...healthy.channels, gmail: channel('action_required', { action_required: 1, issues: [{ meeting_id: 'm2', reason: 'auth_required' }] }) } };
 
 (async () => {
-  let delivery = healthy, retries = [], jobPolls = 0, language = 'ru';
+  let delivery = healthy, retries = [], jobPolls = 0, language = 'ru', jobReport = { mail_status: 'sent' };
   const json = (res, value) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(value)); };
   const state = () => ({
     transcript: { meeting_id: 'idle', meeting: '', status: 'idle', segments: [], live: false },
@@ -31,8 +31,8 @@ const auth = { ...healthy, state: 'action_required',
     if (req.url.startsWith('/api/archive?') || req.url === '/api/archive') return json(res, { ok: true, meetings: [], delivery });
     if (req.url === '/api/delivery/job') {
       jobPolls += 1;
-      delivery = healthy;
-      return json(res, { ok: true, job: { state: 'complete', request_id: retries.at(-1).request_id, report: { mail_status: 'sent' } } });
+      if (jobReport.mail_status === 'sent') delivery = healthy;
+      return json(res, { ok: true, job: { state: 'complete', request_id: retries.at(-1).request_id, report: jobReport } });
     }
     if (req.url === '/api/delivery/retry') {
       let body = ''; req.on('data', data => body += data);
@@ -86,6 +86,20 @@ const auth = { ...healthy, state: 'action_required',
     assert.deepEqual({ ...retries[0], request_id: undefined }, { meeting_id: 'm1', channels: ['email'], confirm: true, request_id: undefined });
     assert.ok(jobPolls >= 1);
     assert.equal(await page.locator('#delivery-undelivered button').count(), 0);
+
+    // An uncertain outcome is never stated as a failure; a resend blocked by
+    // sign-in offers the sign-in fix instead of "check the internet".
+    jobReport = { mail_status: 'failed', mail_error: { provider: 'gws', reason: 'authorization_expired' } };
+    await reload(undelivered({ ...weekly, uncertain: true }));
+    await pillIs('Отчет по встрече «Weekly sync» от 16 октября мог не дойти');
+    await pill.click();
+    await page.locator('#delivery-undelivered').filter({ hasText: 'Возможно, он уже пришел' }).waitFor({ timeout: 3000 });
+    await page.locator('#delivery-undelivered button').click();
+    const settings = page.locator('#delivery-undelivered button', { hasText: 'Открыть настройки' });
+    await settings.waitFor({ timeout: 6000 });
+    assert.doesNotMatch(await page.locator('#delivery-undelivered').innerText(), /интернет/);
+    await settings.click();
+    await page.locator('#settings-panel').waitFor({ state: 'visible', timeout: 3000 });
 
     language = 'en';
     await reload(undelivered(weekly));

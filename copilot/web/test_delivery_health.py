@@ -133,7 +133,8 @@ class DeliveryHealthTests(unittest.TestCase):
         self.assertEqual(self.refresh(1)["channels"]["gmail"]["issues"], [])
         self.report.update(drive_status="failed", telegram_status="failed")
         self.save()
-        self.assertIn({"meeting_id": "test", "reason": "retry_expired"}, self.refresh(2)["channels"]["gmail"]["issues"])
+        # Said as "may not have arrived", never as a confirmed failure.
+        self.assertEqual(self.refresh(2)["channels"]["gmail"]["issues"], [{"meeting_id": "test", "reason": "outcome_unknown"}])
 
     def test_undelivered_report_offers_one_resend_that_requeues_delivery(self):
         from delivery_retry import DeliveryRetry
@@ -152,7 +153,8 @@ class DeliveryHealthTests(unittest.TestCase):
         archive.check_delivery_health()
         with patch.object(archive, "detail", return_value=label):
             undelivered = archive.delivery_health()["undelivered"]
-        self.assertEqual(undelivered, [{"meeting_id": "test", "channels": ["drive", "email", "telegram"], **label}])
+        self.assertEqual(undelivered, [{"meeting_id": "test", "channels": ["drive", "email", "telegram"],
+                                        "uncertain": False, **label}])
         sent = {"drive_status": "uploaded", "mail_status": "sent", "telegram_status": "sent"}
         with patch.object(archive, "report_detail", return_value={"meeting_id": "test", "status": "finished"}), \
              patch.object(archive, "_ready_for_delivery", return_value=True), \

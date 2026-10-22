@@ -865,11 +865,15 @@ class MeetingArchive:
         # ended, named so the header can offer one "send again" per report.
         retry_names = {"gmail": "email", "drive": "drive", "telegram": "telegram"}
         undelivered: dict[str, list[str]] = {}
+        uncertain: set[str] = set()
         for channel, item in health["channels"].items():
             for issue in item["issues"]:
-                if issue["reason"] == "retry_expired":
+                if issue["reason"] in {"retry_expired", "outcome_unknown"}:
                     undelivered.setdefault(issue["meeting_id"], []).append(retry_names[channel])
+                if issue["reason"] == "outcome_unknown":
+                    uncertain.add(issue["meeting_id"])
         health["undelivered"] = [{"meeting_id": meeting_id, "channels": channels,
+                                  "uncertain": meeting_id in uncertain,
                                   **self._delivery_label(meeting_id)}
                                  for meeting_id, channels in undelivered.items()]
         return health

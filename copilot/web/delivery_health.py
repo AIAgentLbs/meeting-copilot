@@ -120,8 +120,9 @@ class DeliveryHealth:
                         # way: close it. The failed channel stays visible only in
                         # that report's own delivery details.
                         continue
-                    state, reason = "action_required", "retry_expired"
-                key = f"{path.parent.name}:{channel}"
+                    # An unknown outcome may already have arrived: say so.
+                    state, reason = "action_required", "outcome_unknown" if raw == "unknown" else "retry_expired"
+                key =f"{path.parent.name}:{channel}"
                 observations[key] = {"meeting_id": path.parent.name, "channel": channel,
                                      "state": state, "reason": reason}
                 item = channels[channel]
