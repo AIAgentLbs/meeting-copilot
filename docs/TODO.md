@@ -169,6 +169,7 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-84: Windows AI check and questions fail with AI_FAILED, [WinError 5] Access is denied
   in the archive folder (0.1.11, owner check 2026-10-21); reproduce on 0.1.12 and fix.
   Fixed in main c65a93b (an elevated mkdir(0o700) left owner-only ACLs); ships in the next Windows build.
+- [ ] MEETONTRACK-91: Zoom tile names mixing Cyrillic and Latin are misread by OCR ("Катя из Kumar&Solo" -> "ат umar&Sol" on 2026-10-22) and the garbled name reaches the transcript; re-OCR the highlighted label crop at higher scale with ru+en and snap to the full label seen in other frames (capture zoom-frame-inspector, copilot/web/server.py _speaker_from_frame).
 - [ ] MEETONTRACK-89: Mac call-audio capture fades to silence during Chrome calls (39 of 53 min lost on 2026-10-21);
   watchdog fix ee2e6cf limits it; live A/B against an output-clocked aggregate on the next real call.
 - [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.
