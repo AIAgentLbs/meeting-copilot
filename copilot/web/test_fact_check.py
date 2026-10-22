@@ -306,6 +306,30 @@ class SafetyTests(unittest.TestCase):
                                read=lambda *a: b"" if body.closed else self.fail("redirect body read"))
         self.assertEqual(handler.http_error_302(request, body, 302, "Found", headers), "followed")
 
+    def test_a_source_that_trickles_headers_is_cut_off_at_the_deadline(self):
+        import socketserver
+        import threading
+
+        class Trickle(socketserver.BaseRequestHandler):
+            def handle(self):
+                try:
+                    for byte in b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" * 20:
+                        self.request.sendall(bytes([byte]))
+                        time.sleep(0.05)  # each byte well inside the socket timeout
+                except OSError:
+                    pass
+
+        server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Trickle)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        with patch.object(fact_check, "PAGE_TIMEOUT", 0.3), patch.object(fact_check, "public_url", return_value=True), \
+                patch.object(fact_check, "_public_ip", return_value=True):  # loopback stands in for a public host
+            started = time.monotonic()
+            self.assertIsNone(fact_check.fetch_text(f"http://127.0.0.1:{server.server_address[1]}/slow"))
+            self.assertLess(time.monotonic() - started, 1.5, "one deadline (0.6 s here) covers headers too")
+
     def test_page_text_is_linear_on_hostile_markup(self):
         self.assertEqual(" ".join(fact_check.page_text("<p>a<script>x</script>b &amp; c</p>").split()), "a b & c")
         for markup in ("<" * 1_000_000, "<script" * 140_000, "<a " * 300_000):
@@ -366,9 +390,16 @@ class ServerTests(unittest.TestCase):
         self.assertNotIn("CLAIM_CAPTURE", result["answer"])
         self.assertEqual([item["claim"] for item in self.store.snapshot("m1")], [CLAIM["claim"]])
         self.assertFalse(any("CLAIM_CAPTURE" in item["text"] for item in self.journal.snapshot("m1")))
-        state = self.server.fact_check_state("m1")
+        state = self.server.fact_check_state(TRANSCRIPT)
         self.assertEqual((state["web"], state["provider"], state["web_providers"]), (False, "Ollama", []))
         self.assertEqual(state["items"][0]["status"], "checking")
+
+        corrected = dict(TRANSCRIPT, segments=[dict(TRANSCRIPT["segments"][0], speaker="Boris", speaker_label="Boris",
+                                                    speaker_identity="manual", speaker_id="named-boris")])
+        speaker = self.server.fact_check_state(corrected)["items"][0]["segment"]
+        self.assertEqual((speaker["speaker_label"], speaker["speaker_identity"]), ("Boris", "manual"),
+                         "a speaker corrected after the check shows on the row")
+        self.assertEqual(self.store.snapshot("m1")[0]["segment"]["speaker"], "Mikhail", "the stored row is untouched")
 
     def test_citations_keep_their_query_and_drop_the_fragment(self):
         with patch.object(self.server, "fetch_text", side_effect=lambda url: f"page {url}") as fetch:

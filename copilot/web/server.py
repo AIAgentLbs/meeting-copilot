@@ -42,7 +42,7 @@ from meet_participants import meet_active_speaker, meet_participant_labels
 from teams_participants import teams_one_to_one_name, teams_participant_labels
 from first_run import AIReadiness
 from ai_providers import AIChoiceError, AIService
-from fact_check import FactChecks, extraction_rules, fetch_text, parse_claims, strip_claims, verify as verify_fact
+from fact_check import FactChecks, extraction_rules, fetch_text, parse_claims, strip_claims, verify as verify_fact, with_speakers
 from stt import STTService
 from local_context import LocalContext
 from private_dirs import private_dir
@@ -2243,12 +2243,13 @@ def fact_source(raw: str) -> tuple[str, str | None]:
     return url, fetch_text(url) if url else None
 
 
-def fact_check_state(meeting_id: str) -> dict:
+def fact_check_state(transcript: dict) -> dict:
     """Rows newest first, and whether the chosen AI can check on the web (else what can)."""
     choice = AI.settings.choice()
     web, providers = AI.web_search(choice)
     adapter = AI.adapters.get(choice.get("provider")) if isinstance(choice, dict) else None
-    return {"items": FACT_CHECKS.snapshot(meeting_id), "web": web,
+    items = with_speakers(FACT_CHECKS.snapshot(transcript.get("meeting_id", "")), transcript.get("segments", []))
+    return {"items": items, "web": web,
             "provider": getattr(adapter, "label", ""), "web_providers": providers}
 
 
@@ -2524,7 +2525,7 @@ class Handler(BaseHTTPRequestHandler):
                     "frame_capture": FRAMES.status_snapshot(),
                     "copilot": COPILOT.snapshot(transcript["meeting_id"]),
                     "journal": JOURNAL.snapshot(transcript["meeting_id"]),
-                    "fact_checks": fact_check_state(transcript["meeting_id"]),
+                    "fact_checks": fact_check_state(transcript),
                     "meeting_chat": MEETING_CHAT.snapshot(transcript["meeting_id"]),
                     "repositories": repository_count(),
                     "all_repositories": repository_count(MANIFEST_FILE),

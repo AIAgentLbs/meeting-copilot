@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from speaker_edits import SpeakerEdits
+from fact_check import with_speakers
 from delivery_health import DeliveryHealth, drive_links_ready
 from recording_health import RecordingLocations
 from question_quality import register_question
@@ -441,6 +442,7 @@ class MeetingArchive:
             if field in snapshot:
                 result[field] = snapshot[field]
         annotated = self.annotate_speakers({**result, "segments": segments})
+        annotated["fact_checks"] = with_speakers(annotated["fact_checks"], annotated["segments"])  # corrections reach rows
         annotated["transcript"] = annotated.pop("segments")
         return self._library_detail(annotated)
 

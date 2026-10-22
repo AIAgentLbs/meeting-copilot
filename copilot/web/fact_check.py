@@ -27,6 +27,7 @@ from urllib.parse import urlsplit
 
 from google_context import json_payload
 from private_dirs import private_dir
+from speaker_edits import segment_id
 
 CLAIM_RE = re.compile(r"(?m)^CLAIM_CAPTURE\s*[:—-]\s*(\{[^\n]*\})\s*$")
 STATUSES = ("checking", "confirmed", "unclear", "refuted")
@@ -88,6 +89,18 @@ def parse_claims(answer: str, transcript: dict) -> list[dict]:
     return claims
 
 
+def with_speakers(rows: list[dict], segments: list[dict]) -> list[dict]:
+    """Rows with the speaker the annotated transcript shows now, so a later correction reaches them.
+    A row is matched to its segment by the transcript's own id (channel + start time)."""
+    current = {segment_id(segment): segment for segment in segments or []}
+    resolved = []
+    for row in rows:
+        spoken = row.get("segment") or {}
+        now = current.get(segment_id({"source": spoken.get("source", ""), "timestamp": row.get("timestamp", "")}))
+        resolved.append({**row, "segment": {key: str(now[key]) for key in SPEAKER_KEYS if now.get(key)}} if now else row)
+    return resolved
+
+
 def strip_claims(answer: str) -> str:
     return CLAIM_RE.sub("", answer or "")
 
@@ -113,13 +126,26 @@ def public_url(url: str) -> bool:
         return False
 
 
+_FETCH = threading.local()  # this thread's fetch: its deadline and the sockets it opened
+
+
+def _public_ip(address: str) -> bool:
+    return ipaddress.ip_address(address.split("%")[0]).is_global
+
+
 def _public_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None, **_):
-    """Connect only to the public address this lookup returned: no second lookup to rebind."""
+    """Connect only to the public address this lookup returned: no second lookup to rebind.
+    A connect gets only the time left before the fetch deadline."""
     host, port = address
     infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
-    if not infos or not all(ipaddress.ip_address(info[4][0].split("%")[0]).is_global for info in infos):
+    if not infos or not all(_public_ip(info[4][0]) for info in infos):
         raise OSError("non-public address")
-    return socket.create_connection(infos[0][4][:2], timeout, source_address)
+    left = getattr(_FETCH, "deadline", time.monotonic() + PAGE_TIMEOUT) - time.monotonic()
+    if left <= 0:
+        raise OSError("fetch deadline passed")
+    sock = socket.create_connection(infos[0][4][:2], min(left, PAGE_TIMEOUT), source_address)
+    getattr(_FETCH, "sockets", []).append(sock)
+    return sock
 
 
 class _PinnedHTTP(http.client.HTTPConnection):
@@ -192,14 +218,28 @@ def fetch_text(url: str) -> str | None:
                                                    "Accept": "text/html,text/plain;q=0.9,*/*;q=0.5"})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _PinnedHTTPHandler, _PinnedHTTPSHandler,
                                          _PublicRedirects)
-    deadline, data = time.monotonic() + 2 * PAGE_TIMEOUT, b""
+    # One wall-clock deadline for connect, TLS, headers, redirects and body: when it passes, every socket
+    # this fetch opened is shut down, so a peer that trickles bytes cannot hold the one worker.
+    # ponytail: name resolution is outside it (the system resolver's own timeout applies).
+    sockets, expired, data = [], threading.Event(), b""
+    _FETCH.deadline, _FETCH.sockets = time.monotonic() + 2 * PAGE_TIMEOUT, sockets
+
+    def expire():
+        expired.set()
+        for sock in list(sockets):
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    timer = threading.Timer(2 * PAGE_TIMEOUT, expire)
+    timer.daemon = True
+    timer.start()
     try:
         with opener.open(request, timeout=PAGE_TIMEOUT) as response:
             if not 200 <= response.status < 300:
                 return None
             while len(data) < PAGE_LIMIT:
-                if time.monotonic() > deadline:
-                    return None  # a page that trickles in is not a source
                 chunk = response.read1(min(65536, PAGE_LIMIT - len(data)))
                 if not chunk:
                     break
@@ -207,6 +247,11 @@ def fetch_text(url: str) -> str | None:
             charset = response.headers.get_content_charset() or "utf-8"
     except (OSError, ValueError, urllib.error.URLError, http.client.HTTPException):
         return None
+    finally:
+        timer.cancel()
+        _FETCH.sockets, _FETCH.deadline = [], time.monotonic() + PAGE_TIMEOUT
+    if expired.is_set():
+        return None  # cut off at the deadline: a partial page is not a source
     try:
         text = data.decode(charset, "replace")
     except LookupError:
