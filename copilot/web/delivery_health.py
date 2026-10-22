@@ -94,7 +94,7 @@ class DeliveryHealth:
                 if not configured[channel]:
                     continue
                 raw = report.get(field)
-                if expired and raw in {None, "not_configured"}:
+                if expired and raw in {None, "not_configured"} and not report.get("report_missing"):
                     continue
                 state, reason = "pending", "pending"
                 if not generated:

@@ -3026,7 +3026,8 @@ class Handler(BaseHTTPRequestHandler):
                 def refresh_speaker_report():
                     try:
                         detail = ARCHIVE.detail(meeting_id)
-                        if detail and detail.get("report"):
+                        if detail and isinstance(detail.get("report"), dict) and detail["report"] \
+                                and not detail["report"].get("report_missing"):
                             ARCHIVE.generate_report(meeting_id, deliver=False)
                     except Exception:
                         print("Speaker edit saved; report refresh needs retry", flush=True)

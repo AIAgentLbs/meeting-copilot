@@ -1056,6 +1056,9 @@ class MeetingArchive:
         if not detail["transcript"] and not detail["journal"] and not detail["frames"]:
             return False
         report = detail.get("report") or {}
+        if not isinstance(report, dict) or report.get("report_missing"):
+            # A lost report is created again only when the person asks: it is sent too.
+            return False
         return bool(report.get("generated_while_recording")) or (
             report.get("source_signature") != self.source_signature(detail)
         )

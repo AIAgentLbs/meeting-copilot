@@ -235,6 +235,25 @@ class DeliveryHealthTests(unittest.TestCase):
         deliver.assert_not_called()
         self.assertNotIn("pdf_path", json.loads((folder / "report.json").read_text()))
 
+    def test_missing_report_is_not_regenerated_in_the_background(self):
+        archive = self._archive()
+        (self.reports / "test" / "report.json").write_text("[1]", encoding="utf-8")
+        detail = {"meeting_id": "test", "status": "finished", "transcript": [{"text": "hello"}],
+                  "journal": [], "frames": []}
+        with patch.object(archive, "report_detail", side_effect=lambda _id: {
+                **detail, "report": json.loads((self.reports / "test" / "report.json").read_text())}), \
+             patch.object(archive, "_ready_for_delivery", return_value=True), \
+             patch.object(archive, "_capture_active", return_value=False):
+            archive.check_delivery_health()
+            self.assertFalse(archive.needs_report("test"))
+
+    def test_missing_report_stays_visible_after_the_retry_window(self):
+        self.report = {"generated_at": self.now.isoformat(), "report_missing": True}
+        self.save()
+        self.assertEqual(self.refresh()["channels"]["gmail"]["issues"][0]["reason"], "report_missing")
+        health = self.refresh(4 * 24 * 60)
+        self.assertEqual(health["channels"]["gmail"]["issues"][0]["reason"], "report_missing")
+
     def test_non_object_status_does_not_stop_the_health_check(self):
         archive = self._archive()
         (self.reports / "test" / "report.json").write_text("[1]", encoding="utf-8")
