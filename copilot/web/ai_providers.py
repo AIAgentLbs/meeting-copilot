@@ -857,11 +857,16 @@ class AIService:
 
     def web_search(self, choice=None):
         """(searches, labels): whether the provider of `choice` (the stored one when None) can search
-        the web, and the labels of the providers that can, to tell the person what to choose."""
+        the web, and which web-capable providers discovery last found installed and signed in here.
+        Only cached discovery is read: this runs on every state poll and must not start a CLI."""
         choice = self.settings.choice() if choice is None else choice
         adapter = self.adapters.get((choice or {}).get("provider") if isinstance(choice, dict) else None)
+        now = time.monotonic()
+        with self.lock:
+            found = {name: cached for name, cached in self.cache.items() if now - cached[0] <= self.ttl}
         return (bool(getattr(adapter, "web_search", False)),
-                [item.label for item in self.adapters.values() if getattr(item, "web_search", False)])
+                [item.label for name, item in self.adapters.items() if getattr(item, "web_search", False)
+                 and name in found and found[name][2].get("state") == "available"])
 
     def run(self, purpose, prompt, ticket=None, **options):
         """Run with the ticket's snapshot (resolved now when none is given)."""

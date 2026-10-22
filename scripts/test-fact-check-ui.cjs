@@ -85,6 +85,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await strip.locator('.fact-row.refuted .fact-speaker').textContent(), 'You');
     assert.match(await strip.locator('.fact-notice').textContent(), /Web checking is unavailable with Ollama\. To turn it on, choose Codex or Claude Code/);
 
+    facts.web_providers = [];  // no web-capable AI installed and signed in: never name one
+    await page.waitForFunction(() => /choose an AI with web search in Getting started/.test(
+      document.querySelector('#fact-strip .fact-notice')?.textContent || ''));
+    assert.doesNotMatch(await strip.locator('.fact-notice').textContent(), /Codex|Claude/);
+
     facts.web = true;
     await page.waitForFunction(() => !document.querySelector('#fact-strip .fact-notice'));
     assert.deepEqual(errors, []);

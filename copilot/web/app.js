@@ -2583,6 +2583,7 @@ Object.assign(translations.ru, {
   "fact.note.no_source": "Источник не открылся или не содержит цитату, поэтому без вывода.",
   "fact.note.unreadable": "ИИ ответил не по формату, поэтому без вывода.",
   "fact.show_all": "Показать все ({count})", "fact.show_less": "Свернуть", "fact.or": "или",
+  "fact.web_none": "Проверка в интернете недоступна с {provider}. Чтобы ее включить, выберите ИИ с поиском в интернете в разделе «Начать работу». Проверка по базе знаний работает.",
   "fact.web_off": "Проверка в интернете недоступна с {provider}. Чтобы ее включить, выберите {options} в разделе «Начать работу». Проверка по базе знаний работает.",
 });
 Object.assign(translations.en, {
@@ -2593,6 +2594,7 @@ Object.assign(translations.en, {
   "fact.note.no_source": "The source did not open or lacks the quote, so no verdict.",
   "fact.note.unreadable": "The AI answered in the wrong format, so no verdict.",
   "fact.show_all": "Show all ({count})", "fact.show_less": "Show fewer", "fact.or": "or",
+  "fact.web_none": "Web checking is unavailable with {provider}. To turn it on, choose an AI with web search in Getting started. Knowledge base checks still run.",
   "fact.web_off": "Web checking is unavailable with {provider}. To turn it on, choose {options} in Getting started. Knowledge base checks still run.",
 });
 
@@ -2660,8 +2662,9 @@ function renderFactChecks(state) {
   }
   const parts = [header];
   if (state && !state.web && state.provider) {
-    parts.push(textNode("p", "fact-notice", t("fact.web_off", {
-      provider: state.provider, options: (state.web_providers || []).join(` ${t("fact.or")} `),
+    const options = state.web_providers || [];  // only providers installed and signed in here
+    parts.push(textNode("p", "fact-notice", t(options.length ? "fact.web_off" : "fact.web_none", {
+      provider: state.provider, options: options.join(` ${t("fact.or")} `),
     })));
   }
   if (!items.length) parts.push(textNode("p", "fact-empty", t("fact.empty")));

@@ -164,11 +164,16 @@ class VerifyTests(unittest.TestCase):
         self.assertIn("Do not use the internet", prompt)
         self.assertEqual((result["status"], result["web"], result["model"]), ("confirmed", False, "fixture-m"))
 
-    def test_web_unavailable_line_names_what_can(self):
+    def test_web_unavailable_line_names_only_what_is_installed_here(self):
         service = StubAI("ollama", "").service
-        self.assertEqual(service.web_search({"provider": "ollama"}), (False, ["Codex", "Claude Code"]))
+        self.assertEqual(service.web_search({"provider": "ollama"}), (False, []))  # nothing discovered yet
         self.assertEqual(service.web_search({"provider": "codex"})[0], True)
-        self.assertEqual(service.web_search({}), (False, ["Codex", "Claude Code"]))
+        found = {"codex": "available", "claude": "unavailable", "ollama": "available"}  # Claude Code not signed in
+        with patch.object(time, "monotonic", return_value=1000.0):
+            service.cache.update({name: (1000.0, "id", {"state": state}) for name, state in found.items()})
+            self.assertEqual(service.web_search({}), (False, ["Codex"]))
+        with patch.object(time, "monotonic", return_value=1000.0 + service.ttl + 1):
+            self.assertEqual(service.web_search({}), (False, []))  # stale discovery is not evidence
 
     def test_codex_and_claude_search_the_web_only_when_asked(self):
         choice = {"provider": "codex", "model": "fixture-a", "effort": "", "speed": ""}
@@ -358,7 +363,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual([item["claim"] for item in self.store.snapshot("m1")], [CLAIM["claim"]])
         self.assertFalse(any("CLAIM_CAPTURE" in item["text"] for item in self.journal.snapshot("m1")))
         state = self.server.fact_check_state("m1")
-        self.assertEqual((state["web"], state["provider"], state["web_providers"]), (False, "Ollama", ["Codex", "Claude Code"]))
+        self.assertEqual((state["web"], state["provider"], state["web_providers"]), (False, "Ollama", []))
         self.assertEqual(state["items"][0]["status"], "checking")
 
     def test_citations_keep_their_query_and_drop_the_fragment(self):
