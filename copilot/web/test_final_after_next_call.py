@@ -198,15 +198,16 @@ class FinalTranscriptAfterNextCallTests(unittest.TestCase):
     def test_a_failing_report_is_tried_again_every_30_minutes_not_every_minute(self):
         self.next_call_ends()
         clock = [5000.0]
-        with patch("archive.time.monotonic", lambda: clock[0]), \
-             patch.object(self.archive, "_print_pdf", side_effect=RuntimeError("Chrome не создал PDF")) as printer:
-            self.archive.finalize_history()
-            self.archive.finalize_history()
-            self.assertEqual(printer.call_count, 1)
+        with patch("archive.time.monotonic", lambda: clock[0]):
+            with patch.object(self.archive, "_print_pdf", side_effect=RuntimeError("Chrome не создал PDF")) as printer:
+                self.archive.finalize_history()
+                self.archive.finalize_history()
+                self.assertEqual(printer.call_count, 1)
+                clock[0] += 1801
+                self.archive.finalize_history()
+                self.assertEqual(printer.call_count, 2)
             clock[0] += 1801
-            self.archive.finalize_history()
-            self.assertEqual(printer.call_count, 2)
-        self.finalize()  # Printing works again: the report is created and sent.
+            self.finalize()  # Printing works again: the report is created and sent.
         self.assertEqual(self.sent, ["FIRST-CALL"] if self.sent_automatically else [])
 
 
