@@ -12,7 +12,6 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime
 from html.parser import HTMLParser
-import difflib
 import http.client
 import ipaddress
 import json
@@ -32,13 +31,17 @@ from private_dirs import private_dir
 CLAIM_RE = re.compile(r"(?m)^CLAIM_CAPTURE\s*[:—-]\s*(\{[^\n]*\})\s*$")
 STATUSES = ("checking", "confirmed", "unclear", "refuted")
 SPEAKER_KEYS = ("source", "speaker", "speaker_label", "speaker_id", "speaker_identity", "voice_id")
-# Words that flip a claim (\w+ splits "doesn't" into "doesn", "t"); they keep contradictions apart.
-NEGATIONS = frozenset("not no never none nobody nothing without t не нет ни никогда ничего никто без".split())
 PAGE_LIMIT, PAGE_TIMEOUT, MAX_WEB_SOURCES = 1_000_000, 8, 3
 
 
 def words(text) -> str:
     return " ".join(re.findall(r"\w+", str(text or "").casefold()))
+
+
+def said_in(quote: str, text: str) -> bool:
+    """Speech match: punctuation ignored, but signs kept ("-10" is not "+10") and whole words only."""
+    tokens = lambda value: " " + " ".join(re.findall(r"[-+−]?\d[\d.,]*|\w+", str(value or "").casefold())) + " "
+    return tokens(quote) in tokens(text)
 
 
 def found_in(quote: str, text: str) -> bool:
@@ -67,16 +70,15 @@ def parse_claims(answer: str, transcript: dict) -> list[dict]:
     for raw in CLAIM_RE.findall(answer or "")[:3]:
         try:
             item = json.loads(raw)
-            quote = str(item.get("quote") or "").strip()
-            needle = words(quote)
-            if len(needle) < 8:
+            quote = " ".join(str(item.get("quote") or "").split())
+            if not (8 <= len(words(quote)) and len(quote) <= 300):  # a long quote is never cut to fit
                 continue
-            segment = next((segment for segment in reversed(segments) if needle in words(segment.get("text"))), None)
+            segment = next((segment for segment in reversed(segments) if said_in(quote, segment.get("text"))), None)
             if segment is None:
                 continue  # the model paraphrased or invented it: nothing was said to check
             claims.append({
                 "claim": (" ".join(str(item.get("claim") or "").split()) or " ".join(quote.split()))[:300],
-                "quote": " ".join(quote.split())[:300],
+                "quote": quote,
                 "query": " ".join(str(item.get("query") or "").split())[:80],
                 "segment": {key: str(segment.get(key) or "") for key in SPEAKER_KEYS if segment.get(key)},
                 "timestamp": str(segment.get("timestamp") or ""),
@@ -236,7 +238,7 @@ def settle(answer: str, knowledge: list[dict], fetch, web: bool) -> dict:
     except ValueError:
         return {"status": "unclear", "note": "unreadable"}
     verdict = data.get("verdict") if data.get("verdict") in ("confirmed", "refuted") else "unclear"
-    fact = " ".join(str(data.get("fact") or "").split())[:400]
+    fact = " ".join(data["fact"].split())[:400] if isinstance(data.get("fact"), str) else ""
     if verdict == "unclear":
         return {"status": "unclear", "note": "not_found"}
     if verdict == "refuted" and not fact:
@@ -246,7 +248,9 @@ def settle(answer: str, knowledge: list[dict], fetch, web: bool) -> dict:
     for source in data.get("sources") if isinstance(data.get("sources"), list) else []:
         if not isinstance(source, dict):
             continue
-        quote = " ".join(str(source.get("quote") or "").split())[:300]
+        quote = " ".join(source["quote"].split()) if isinstance(source.get("quote"), str) else ""
+        if len(quote) > 300:
+            continue  # checked as a whole or not at all: never a truncated quote
         if source.get("kb"):
             item = excerpts.get(str(source["kb"]))
             if item and found_in(quote, item["text"]):
@@ -274,7 +278,6 @@ def verify(row: dict, *, ai, knowledge, fetch) -> dict:
 class FactChecks:
     """Claims and verdicts of every meeting, stored like the journal ({"version":1,"items":[...]})."""
     PER_MINUTE = 2  # checks started per minute; one at a time, after the live analysis
-    SIMILAR = 0.82
 
     def __init__(self, path: Path, verify_row=None, idle=lambda: True, clock=time.monotonic) -> None:
         self.path, self.verify_row, self.idle, self.clock = path, verify_row, idle, clock
@@ -301,32 +304,18 @@ class FactChecks:
     def claims(self, meeting_id: str) -> list[str]:
         return [item["claim"] for item in reversed(self.snapshot(meeting_id))]
 
-    @staticmethod
-    def anchors(text: str) -> list[str]:
-        """Numbers and names (capitalised words after the first): a different one makes a different claim."""
-        return re.findall(r"\d+", text) + re.findall(r"(?<=\s)[^\W\d_a-zа-яё]\w*", text)
-
-    @classmethod
-    def same(cls, one: str, other: str) -> bool:
-        """Near-identical claims: the same numbers, the same negations and nearly the same words.
-
-        Another year, name or an added "not"/"никогда" is a new claim, so a contradiction is checked too."""
-        a, b = words(one).split(), words(other).split()
-        if cls.anchors(one) != cls.anchors(other) or \
-                [w for w in a if w in NEGATIONS] != [w for w in b if w in NEGATIONS]:
-            return False
-        return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= cls.SIMILAR
-
     def add(self, transcript: dict, claims: list[dict]) -> int:
         meeting_id = str(transcript.get("meeting_id") or "")
         added = 0
         with self.lock:
-            known = [str(item.get("claim") or "") for item in self.items if item.get("meeting_id") == meeting_id]
+            # Same words, case and punctuation aside. Anything looser merged other names and contradictions;
+            # the analysis is told the known claims, so it rarely repeats one in other words.
+            known = {words(item.get("claim")) for item in self.items if item.get("meeting_id") == meeting_id}
             for claim in claims if meeting_id else []:
-                key = str(claim["claim"])  # raw: same() needs the capitals of names
-                if not words(key) or any(self.same(key, other) for other in known):
+                key = words(claim["claim"])
+                if not key or key in known:
                     continue
-                known.append(key)
+                known.add(key)
                 row = {"id": str(uuid.uuid4()), "category": "FACT_CHECK", "source": "fact_check",
                        "meeting_id": meeting_id, "meeting": str(transcript.get("meeting") or ""),
                        "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -370,7 +359,10 @@ class FactChecks:
             result = self.verify_row(row)
         except Exception as error:  # an AI or source failure: shown as unclear with a plain reason
             result = {"status": "unclear", "note": "error", "error": str(error)[:500]}
-        self.finish(row["id"], result)
+        try:
+            self.finish(row["id"], result)
+        except OSError:  # a failed write keeps the verdict in memory; the next write saves it
+            pass
         return True
 
     def loop(self, stop: threading.Event) -> None:

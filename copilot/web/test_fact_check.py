@@ -58,6 +58,13 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(strip_claims(answer).count("CLAIM_CAPTURE"), 0)  # malformed lines are dropped too
         self.assertNotIn(HIGGSFIELD, strip_claims(answer))
 
+    def test_a_quote_must_be_said_as_quoted(self):
+        said = {"meeting_id": "m1", "segments": [{"source": "system", "text": "Acme profit is -10 percent, and unprofitable products."}]}
+        for quote in ("Acme profit is +10 percent", "and profitable products", "Acme profit is -10 percent " + "x" * 300):
+            with self.subTest(quote=quote[:30]):
+                self.assertEqual(parse_claims(capture(quote=quote, claim=quote), said), [])
+        self.assertEqual(len(parse_claims(capture(quote="Acme profit is -10 percent", claim="c"), said)), 1)
+
     def test_extraction_rules_list_known_claims(self):
         rules = fact_check.extraction_rules(["Claim A"])
         self.assertIn("CLAIM_CAPTURE", rules)
@@ -79,6 +86,15 @@ class SettleTests(unittest.TestCase):
         self.assertEqual((live["status"], live["sources"][0]["url"]), ("confirmed", "https://dead.example/a"))
         empty = json.dumps({"verdict": "confirmed", "sources": [{"url": "https://source.example/", "quote": ""}]})
         self.assertEqual(settle(empty, [], pages({"https://source.example/": ""}), True)["status"], "unclear")
+
+    def test_a_long_quote_is_never_cut_and_a_fact_must_be_text(self):
+        excerpt = [{"id": "kb1", "title": "n", "location": "l", "text": "alpha " * 50}]
+        long = json.dumps({"verdict": "confirmed", "sources": [{"kb": "kb1", "quote": "alpha " * 50 + "fabricated"}]})
+        self.assertEqual(settle(long, excerpt, pages({}), False)["status"], "unclear")
+        for fact in ([""], True, {"a": 1}):
+            answer = json.dumps({"verdict": "refuted", "fact": fact, "sources": [{"kb": "kb1", "quote": "alpha alpha alpha"}]})
+            with self.subTest(fact=fact):
+                self.assertEqual(settle(answer, excerpt, pages({}), False)["status"], "unclear")
 
     def test_a_quote_matches_only_as_written(self):
         for quote, page in (("The margin is +10 percent.", "The margin is -10 percent."),
@@ -204,6 +220,10 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(store.add(TRANSCRIPT, opposite), 2)  # a contradiction is checked too
             founded = [{**CLAIM, "claim": f"Компания {name} основана в 1998 году"} for name in ("Google", "Tencent")]
             self.assertEqual(store.add(TRANSCRIPT, founded), 2)  # another name is another claim
+            others = [{**CLAIM, "claim": claim} for claim in ("Google develops its own video generation models",
+                                                               "Acme is the largest producer of smartphones worldwide",
+                                                               "Acme is the smallest producer of smartphones worldwide")]
+            self.assertEqual(store.add(TRANSCRIPT, others), 3)
 
     def test_checks_are_capped_per_minute_and_wait_for_the_analysis(self):
         now, idle = [0.0], [True]
@@ -228,6 +248,15 @@ class StoreTests(unittest.TestCase):
             row = FactChecks(path).snapshot("m1")[0]
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertEqual((row["status"], row["error"]), ("unclear", "AI_NETWORK: offline"))
+
+    def test_a_failed_write_does_not_stop_the_worker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FactChecks(Path(directory) / "fact-checks.json", lambda row: {"status": "unclear", "note": "not_found"})
+            store.add(TRANSCRIPT, [CLAIM, {**CLAIM, "claim": "Another claim entirely"}])
+            with patch.object(store, "_persist_locked", side_effect=OSError("disk full")):
+                self.assertTrue(store.check_one())
+            self.assertTrue(store.check_one())
+            self.assertEqual([row["status"] for row in FactChecks(store.path).snapshot("m1")], ["unclear", "unclear"])
 
     def test_an_unreadable_store_is_set_aside_and_the_same_path_is_used(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -351,6 +380,16 @@ class ServerTests(unittest.TestCase):
             found = self.server.fact_knowledge(CLAIM)
         self.assertEqual([item["text"] for item in found], ["Higgsfield notes"])
 
+    def test_google_is_not_searched_for_another_account(self):
+        google = self.server.GOOGLE_CONTEXT
+        with patch.object(google, "enabled_sources", return_value=["gmail"]), \
+                patch.object(google, "status", return_value={"auth": "connected", "account": "b@example.com"}), \
+                patch.object(google, "_preferences", return_value={"account": "a@example.com"}), \
+                patch.object(google, "_search_source") as search, \
+                patch.object(self.server.LOCAL_CONTEXT, "search", return_value={"items": []}):
+            self.assertEqual(self.server.fact_knowledge(CLAIM), [])
+        search.assert_not_called()
+
     def test_folder_excerpts_are_dropped_when_a_folder_is_disconnected_mid_search(self):
         folders = iter(["before", "after"])
         with patch.object(self.server.GOOGLE_CONTEXT, "enabled_sources", return_value=[]), \
@@ -392,6 +431,8 @@ class ArchiveTests(unittest.TestCase):
         self.assertIn('href="https://news.example/a"', page)
         self.assertIn("Вы", page)
         self.assertNotIn("Pending claim", page)
+        manual = [{**rows[0], "segment": {"source": "microphone", "speaker_identity": "manual", "speaker_label": "Boris"}}]
+        self.assertIn("Boris", archive._report_html({**detail, "fact_checks": manual}, []))
 
 
 if __name__ == "__main__":

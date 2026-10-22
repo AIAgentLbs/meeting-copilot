@@ -2614,7 +2614,8 @@ function factRow(item) {
   body.className = "fact-body";
   const line = document.createElement("p");
   const segment = item.segment || {};
-  line.append(textNode("span", "fact-speaker", segment.source === "microphone" ? t("message.you") : speakerLabel(segment)),
+  const assigned = segment.speaker_identity === "manual" || segment.speaker_id === "unassigned";
+  line.append(textNode("span", "fact-speaker", segment.source === "microphone" && !assigned ? t("message.you") : speakerLabel(segment)),
     document.createTextNode(item.claim || ""));
   body.append(line);
   if (status === "refuted" && item.fact) body.append(textNode("p", "fact-actual", t("fact.actual", { fact: item.fact })));

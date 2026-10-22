@@ -1648,7 +1648,8 @@ class MeetingArchive:
             if item.get("status") not in labels:
                 continue
             segment = item.get("segment") or {}
-            speaker = "Вы" if segment.get("source") == "microphone" else (
+            assigned = segment.get("speaker_identity") == "manual" or segment.get("speaker_id") == "unassigned"
+            speaker = "Вы" if segment.get("source") == "microphone" and not assigned else (
                 segment.get("speaker_label") or segment.get("speaker") or "Собеседник")
             links = []
             for source in item.get("sources", []) if item.get("status") != "unclear" else []:

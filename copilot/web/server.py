@@ -2220,6 +2220,10 @@ def fact_knowledge(row: dict) -> list[dict]:
              for hit in LOCAL_CONTEXT.search(query)["items"][:5]]
     with GOOGLE_CONTEXT._lock:
         sources, generation, local = GOOGLE_CONTEXT.enabled_sources(), GOOGLE_CONTEXT._generation, len(found)
+    if sources:  # the same account check as the live analysis: never another account's mail or files
+        status, expected = GOOGLE_CONTEXT.status(), GOOGLE_CONTEXT._preferences().get("account", "")
+        if status.get("auth") != "connected" or (expected and expected != status.get("account")):
+            sources = []
     for source in sources:
         try:  # _search_source, not search(): the live analysis keeps its own cached Google results
             hits = GOOGLE_CONTEXT._search_source(source, query).get("items", [])[:3]

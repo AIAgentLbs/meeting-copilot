@@ -178,6 +178,8 @@ hashes, Pages removed, and the Windows installer relocated to
   live analysis, verdicts need a source the app itself opened, else yellow; web search only via ai.choice.
   Follow-up (Codex P2, 2026-10-22): a speaker corrected in the speaker editor is not re-applied to fact-check
   rows (strip and report keep the label copied at extraction); resolve the row's segment through speaker edits.
+  Follow-up (Codex P2): a cited host that sends its status line and headers one byte at a time keeps the single
+  verifier busy past the 16 s read deadline (each recv stays under the 8 s socket timeout); bound the whole open.
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.
