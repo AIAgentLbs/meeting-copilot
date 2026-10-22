@@ -330,6 +330,45 @@ class SafetyTests(unittest.TestCase):
             self.assertIsNone(fact_check.fetch_text(f"http://127.0.0.1:{server.server_address[1]}/slow"))
             self.assertLess(time.monotonic() - started, 1.5, "one deadline (0.6 s here) covers headers too")
 
+    def test_an_https_source_that_trickles_is_cut_off_at_the_deadline(self):
+        import shutil
+        import socketserver
+        import ssl
+        import subprocess
+        import threading
+        if not shutil.which("openssl"):
+            self.skipTest("openssl is needed to make a throwaway certificate")
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        cert, key = Path(directory.name) / "cert.pem", Path(directory.name) / "key.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=127.0.0.1",
+                        "-days", "1", "-keyout", str(key), "-out", str(cert)], check=True, capture_output=True)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+
+        class Trickle(socketserver.BaseRequestHandler):
+            def handle(self):
+                try:
+                    with context.wrap_socket(self.request, server_side=True) as tls:
+                        # Headers too: only shutting the connection down can end a blocked TLS header read.
+                        for byte in b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n" * 10 + b"\r\n" + b"x" * 400:
+                            tls.sendall(bytes([byte]))
+                            time.sleep(0.05)  # each byte well inside the socket timeout
+                except OSError:
+                    pass
+
+        server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Trickle)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        with patch.object(fact_check, "PAGE_TIMEOUT", 0.3), patch.object(fact_check, "public_url", return_value=True), \
+                patch.object(fact_check, "_public_ip", return_value=True), \
+                patch.object(ssl, "_create_default_https_context", ssl._create_unverified_context):  # throwaway cert
+            started = time.monotonic()
+            self.assertIsNone(fact_check.fetch_text(f"https://127.0.0.1:{server.server_address[1]}/slow"))
+            self.assertLess(time.monotonic() - started, 1.5, "the deadline also ends a TLS read")
+
     def test_page_text_is_linear_on_hostile_markup(self):
         self.assertEqual(" ".join(fact_check.page_text("<p>a<script>x</script>b &amp; c</p>").split()), "a b & c")
         for markup in ("<" * 1_000_000, "<script" * 140_000, "<a " * 300_000):

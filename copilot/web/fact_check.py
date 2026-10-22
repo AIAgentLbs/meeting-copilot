@@ -144,7 +144,9 @@ def _public_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_a
     if left <= 0:
         raise OSError("fetch deadline passed")
     sock = socket.create_connection(infos[0][4][:2], min(left, PAGE_TIMEOUT), source_address)
-    getattr(_FETCH, "sockets", []).append(sock)
+    # A duplicate of the connection: TLS takes over `sock` itself, but shutting down the duplicate
+    # still ends the shared connection, so the deadline interrupts HTTPS reads too.
+    getattr(_FETCH, "sockets", []).append(sock.dup())
     return sock
 
 
@@ -239,7 +241,7 @@ def fetch_text(url: str) -> str | None:
         with opener.open(request, timeout=PAGE_TIMEOUT) as response:
             if not 200 <= response.status < 300:
                 return None
-            while len(data) < PAGE_LIMIT:
+            while len(data) < PAGE_LIMIT and not expired.is_set():
                 chunk = response.read1(min(65536, PAGE_LIMIT - len(data)))
                 if not chunk:
                     break
@@ -249,6 +251,8 @@ def fetch_text(url: str) -> str | None:
         return None
     finally:
         timer.cancel()
+        for sock in sockets:
+            sock.close()  # only the duplicates; urllib closes the connections themselves
         _FETCH.sockets, _FETCH.deadline = [], time.monotonic() + PAGE_TIMEOUT
     if expired.is_set():
         return None  # cut off at the deadline: a partial page is not a source
