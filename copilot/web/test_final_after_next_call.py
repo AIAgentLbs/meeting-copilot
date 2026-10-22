@@ -119,6 +119,16 @@ class FinalTranscriptAfterNextCallTests(unittest.TestCase):
         self.assertEqual(summary["audio_gap"], detail["audio_gap"])
         self.assertNotEqual(summary["library_status"], "needs_attention")
 
+    def test_audio_gap_only_counts_the_part_inside_this_meeting(self):
+        detail = {"started_at": iso(self.start), "ended_at": iso(self.end), "capture_warnings": [
+            {"started_at": iso(self.start - timedelta(seconds=60)), "ended_at": iso(self.start + timedelta(seconds=30))},
+            {"started_at": iso(self.end + timedelta(seconds=60)), "ended_at": iso(self.end + timedelta(seconds=90))}]}
+        self.assertEqual(MeetingArchive._audio_gap(detail), {
+            "started_at": self.start.isoformat(), "count": 1,
+            "ended_at": (self.start + timedelta(seconds=30)).isoformat(), "seconds": 30})
+        detail["capture_warnings"] = detail["capture_warnings"][1:]  # Only after this meeting ended.
+        self.assertIsNone(MeetingArchive._audio_gap(detail))
+
     def test_final_speech_inside_the_dropout_clears_the_warning(self):
         lines = json.loads((self.first / "transcript.json").read_text())["segments"]
         lines.append({"speaker": "them", "start_ms": 3600000, "end_ms": 3604000, "text": "Still talking"})

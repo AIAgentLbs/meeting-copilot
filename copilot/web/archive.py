@@ -587,16 +587,22 @@ class MeetingArchive:
     @staticmethod
     def _audio_gap(detail: dict) -> dict | None:
         """What part of a finished call lost the other side's audio, for a plain sentence."""
-        gaps = [(start, _date(item.get("ended_at")) or _date(detail.get("ended_at")))
-                for item in detail.get("capture_warnings") or []
-                if (start := _date(item.get("started_at")))]
+        begin, finish = _date(detail.get("started_at")), _date(detail.get("ended_at"))
+        gaps = []  # A split call shares its recording's warnings: keep this part's own.
+        for item in detail.get("capture_warnings") or []:
+            start, end = _date(item.get("started_at")), _date(item.get("ended_at"))
+            if not start or (finish and start >= finish) or (begin and end and end <= begin):
+                continue
+            returned = bool(end and (not finish or end < finish))
+            start, end = max(start, begin) if begin else start, end if returned else finish
+            gaps.append((start, end, returned))
         if not gaps:
             return None
-        last = detail["capture_warnings"][-1]
+        start, end, returned = gaps[-1]
         return {"started_at": gaps[0][0].isoformat(), "count": len(gaps),
-                # Empty when the audio never came back before the recording ended.
-                "ended_at": str(last.get("ended_at") or ""),
-                "seconds": sum(max(0, int((end - start).total_seconds())) for start, end in gaps if end)}
+                # Empty when the audio never came back before this meeting ended.
+                "ended_at": end.isoformat() if returned else "",
+                "seconds": sum(max(0, int((end - start).total_seconds())) for start, end, _ in gaps if end)}
 
     def rename_meeting(self, meeting_id: str, title: str) -> dict:
         title = str(title).strip()
