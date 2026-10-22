@@ -10,23 +10,29 @@ URL_RE = re.compile(
     r"(?:/[^\s<>'\"\])}]*)?"
 )
 # The call itself (join, meeting and web-client pages) is never a meeting resource.
+# Hosts that serve only calls are dropped whole; product sites only on meeting routes.
 CALL_LINK_HOSTS = (
-    "zoom.us", "zoom.com", "zoomgov.com",
+    "zoom.us", "zoomgov.com",
     "meet.google.com",
     "teams.microsoft.com", "teams.live.com",
     "telemost.yandex.ru", "telemost.yandex.com", "telemost.360.yandex.ru",
-    "webex.com", "whereby.com", "meet.jit.si", "join.skype.com",
-    "gotomeeting.com", "meet.goto.com", "bluejeans.com", "chime.aws",
-    "ktalk.ru", "jazz.sber.ru", "salutejazz.ru",
+    "whereby.com", "meet.jit.si", "join.skype.com",
+    "gotomeeting.com", "meet.goto.com", "bluejeans.com", "chime.aws", "jazz.sber.ru",
+)
+CALL_ROUTE_RE = re.compile(
+    r"(?i)^(?:(?:[\w-]+\.)?zoom\.com/(?:j|wc|s|my)/"
+    r"|[\w-]+\.webex\.com/(?:meet/|join/|wbxmjs/|[^/]+/j\.php)"
+    r"|[\w-]+\.ktalk\.ru/)"
 )
 LINK_CATEGORIES = {"URL", "SERVICE", "PRODUCT"}
 # Characters screen OCR swaps for one another (forms -> torms, FAIp -> FAlp).
-OCR_CONFUSABLE = ("ft", "il1|", "o0", "s5", "b8", "gq9p", "z2", "uv")
+OCR_CONFUSABLE = ("ft", "il1|", "o0", "s5", "b8", "gq9", "z2", "uv")
 
 
-def call_host(host: str) -> bool:
+def call_link(host: str, path: str = "") -> bool:
     host = host.lower().removeprefix("www.")
-    return any(host == domain or host.endswith("." + domain) for domain in CALL_LINK_HOSTS)
+    return (any(host == domain or host.endswith("." + domain) for domain in CALL_LINK_HOSTS)
+            or bool(CALL_ROUTE_RE.match(host + path)))
 
 
 def _parts(raw: str) -> tuple[str, str] | None:
@@ -53,31 +59,39 @@ def _ocr_variant(a: str, b: str) -> bool:
 def collapse_links(items: list[dict]) -> list[dict]:
     """Chronological items in, same order out, without call links and repeated links.
 
-    A repeated link (same host, path equal or one OCR misread apart) keeps its
-    earliest card, unless a later card adds a label (SERVICE over a bare URL).
-    Other items pass through untouched.
+    A repeated link (same host and path, or one OCR misread apart when either
+    side was read from the screen) keeps its earliest card, unless a later
+    single-link card adds a label (SERVICE over a bare URL). A card with several
+    links stays while any of them is new. Other items pass through untouched.
     """
     kept: list[dict] = []
-    groups: list[tuple[str, list[str], int]] = []  # host, paths seen, index in kept
+    groups: list[tuple[str, list[tuple[str, bool]], int]] = []  # host, (path, from OCR), index in kept
     for item in items:
         if item.get("category") not in LINK_CATEGORIES:
             kept.append(item)
             continue
         links = [parts for raw in URL_RE.findall(str(item.get("text", ""))) if (parts := _parts(raw))]
-        own = [parts for parts in links if not call_host(parts[0])]
+        own = list(dict.fromkeys(parts for parts in links if not call_link(*parts)))
         if links and not own:
             continue
         if not own:
             kept.append(item)  # A named mention without a URL.
             continue
-        host, path = own[0]
+        ocr = item.get("source") == "screen"
         # ponytail: linear scan over the meeting's links; index by host if journals grow large.
-        group = next((g for g in groups if g[0] == host and any(_ocr_variant(path, seen) for seen in g[1])), None)
-        if group is None:
-            groups.append((host, [path], len(kept)))
-            kept.append(item)
+        matches = [next((g for g in groups if g[0] == host and any(
+            path == seen or ((ocr or seen_ocr) and _ocr_variant(path, seen)) for seen, seen_ocr in g[1]
+        )), None) for host, path in own]
+        for group, (host, path) in zip(matches, own):
+            if group:
+                group[1].append((path, ocr))
+        if all(matches):
+            first = matches[0]
+            if len(own) == 1 and kept[first[2]].get("category") == "URL" and item.get("category") != "URL":
+                kept[first[2]] = item
             continue
-        group[1].append(path)
-        if kept[group[2]].get("category") == "URL" and item.get("category") != "URL":
-            kept[group[2]] = item
+        for group, (host, path) in zip(matches, own):
+            if not group:
+                groups.append((host, [(path, ocr)], len(kept)))
+        kept.append(item)
     return kept

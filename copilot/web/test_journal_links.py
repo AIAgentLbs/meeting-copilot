@@ -33,7 +33,8 @@ class CollapseLinksTests(unittest.TestCase):
                  "https://teams.microsoft.com/l/meetup-join/19%3a", "https://teams.live.com/meet/9341",
                  "https://telemost.yandex.ru/j/5512", "https://telemost.360.yandex.ru/j/5512",
                  "https://acme.webex.com/meet/bob", "https://meet.jit.si/standup", "https://whereby.com/acme",
-                 "https://join.skype.com/abcDEF"]
+                 "https://join.skype.com/abcDEF", "https://acme.webex.com/acme/j.php?MTID=m1",
+                 "https://us05web.zoom.com/j/8812", "https://acme.ktalk.ru/room1"]
         stored = [item("URL", url, n) for n, url in enumerate(calls)]
         stored.append(item("SERVICE", "Google Meet — https://meet.google.com/abc-defg-hij", 30))
         self.assertEqual(collapse_links(stored), [])
@@ -48,6 +49,27 @@ class CollapseLinksTests(unittest.TestCase):
                   item("SERVICE", f"Google Docs — {FORM}", 8),
                   item("SERVICE", "Google Docs — https://docs.google.com/forms/d/e/1FAIpQLSxyz", 9)]
         self.assertEqual(collapse_links(stored), stored)
+
+    def test_fuzzy_match_needs_screen_ocr_and_ocr_confusion(self):
+        copilot = [dict(item("URL", "https://docs.google.com/document/d/abcl/edit", 1), source="copilot"),
+                   dict(item("URL", "https://docs.google.com/document/d/abcI/edit", 2), source="copilot")]
+        self.assertEqual(len(collapse_links(copilot)), 2)
+        screen = [item("URL", "https://docs.google.com/document/d/abcG/edit", 1),
+                  item("URL", "https://docs.google.com/document/d/abcP/edit", 2)]
+        self.assertEqual(len(collapse_links(screen)), 2)
+
+    def test_multi_link_card_stays_while_any_link_is_new(self):
+        first = item("SERVICE", "Miro — https://miro.com/app/board/ABC", 1)
+        mixed = item("SERVICE", "Miro и документ: https://miro.com/app/board/ABC https://docs.google.com/document/d/x/edit", 2)
+        repeat = item("SERVICE", "Снова: https://miro.com/app/board/ABC https://docs.google.com/document/d/x/edit", 3)
+        self.assertEqual(collapse_links([first, mixed, repeat]), [first, mixed])
+
+    def test_product_sites_of_call_vendors_are_not_call_links(self):
+        for url in ("https://www.webex.com/pricing/index.html", "https://help.webex.com/en-us/article/x",
+                    "https://www.zoom.com/en/products", "https://ktalk.ru/pricing"):
+            with self.subTest(url=url):
+                self.assertEqual(server.extract_urls(url), [url])
+                self.assertEqual(len(collapse_links([item("URL", url)])), 1)
 
 
 class JournalLinkCaptureTests(unittest.TestCase):

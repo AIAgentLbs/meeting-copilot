@@ -37,7 +37,7 @@ from delivery_retry import DeliveryRetry
 from release_updates import ReleaseUpdates, installed_release
 from summary_rewrite import SummaryRewrites
 from question_quality import register_question, useful_question
-from journal_links import URL_RE, LINK_CATEGORIES, call_host, collapse_links
+from journal_links import URL_RE, LINK_CATEGORIES, call_link, collapse_links
 from recording_health import default_guard
 from meet_participants import meet_active_speaker, meet_participant_labels
 from teams_participants import teams_one_to_one_name, teams_participant_labels
@@ -536,7 +536,7 @@ def safe_url(raw: str) -> str:
         not host
         or "." not in host
         or host in {"localhost", "127.0.0.1"}
-        or call_host(host)
+        or call_link(host, parsed.path)
     ):
         return ""
     scheme = parsed.scheme.lower() if parsed.scheme.lower() in {"http", "https"} else "https"
