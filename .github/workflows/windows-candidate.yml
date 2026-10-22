@@ -26,4 +26,4 @@ jobs:
       - name: Exact packaged installation and regressions
         shell: pwsh
         run: |
-          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meeting-copilot-windows-v0.1.16-x64.zip -ExpectedSha256 d209149d6edad557ea10c03b5d2c81535e12897702a07821ccfcf86704f80942 -Installer ./scripts/windows/install.ps1
+          ./scripts/check_windows_candidate.ps1 -PackagePath ./candidate/meeting-copilot-windows-v0.1.16-x64.zip -ExpectedSha256 f4c6470d0b2ef1812897a4bb8c6645726c6829f4e5a553b8d5a17a0a897a44fe -Installer ./scripts/windows/install.ps1
