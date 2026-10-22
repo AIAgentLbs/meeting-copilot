@@ -923,7 +923,7 @@ class MeetingArchive:
                     repaired.pop("report_missing", None)
                 else:
                     detail = self.report_detail(folder.name)
-                    if detail and (detail["transcript"] or detail["journal"] or detail["frames"]):
+                    if detail and any(detail.get(key) for key in ("transcript", "journal", "frames")):
                         repaired = {**readable, "generated_at": now.isoformat(timespec="seconds"),
                                     "report_missing": True, "state_repaired_at": now.isoformat(timespec="seconds")}
                     else:
