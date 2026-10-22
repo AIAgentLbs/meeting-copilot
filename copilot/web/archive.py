@@ -322,13 +322,41 @@ class MeetingArchive:
 
     def create_due_report(self, meeting_id: str) -> bool:
         """Create a report the meeting still needs; send it only inside the delivery window."""
-        if self._report_failed_recently(meeting_id) or not self.needs_report(meeting_id):
+        identity = self.report_identity(meeting_id)
+        failure = self.reports_root / identity / REPORT_FAILURE
+        if self._report_failed_recently(identity):
             return False
+        if not self.needs_report(meeting_id):
+            if failure.exists() and self._report_current(identity):
+                failure.unlink(missing_ok=True)  # The report on disk is current: nothing failed is missing.
+                return False
+            if not failure.exists() or not self._report_retry_ready(meeting_id):
+                return False
         ended = _date(str((self.report_detail(meeting_id) or {}).get("ended_at") or ""))
         recent = bool(ended and (datetime.now().astimezone() - ended).total_seconds()
                       <= self.delivery_retry_days * 86400)
         self.generate_report(meeting_id, on_request=not recent)
         return True
+
+    def report_identity(self, meeting_id: str) -> str:
+        """The folder a meeting's report lives in: the last chunk of a continuous call."""
+        with self.lock:
+            detail = self.report_detail(meeting_id)
+        return _safe(str((detail or {}).get("meeting_id") or meeting_id))
+
+    def _report_current(self, identity: str) -> bool:
+        report = _json(self.reports_root / identity / "report.json", {})
+        detail = self.report_detail(identity)
+        return bool(isinstance(report, dict) and report.get("html") and report.get("pdf") and detail
+                    and Path(str(report.get("pdf_path") or "")).is_file()
+                    and report.get("source_signature") == self.source_signature(detail))
+
+    def _report_retry_ready(self, meeting_id: str) -> bool:
+        """A failed report is retried on its own only once the call is over, like any report."""
+        snapshot = _json(self.archive_root / _safe(meeting_id) / "meeting.json", {})
+        closed = bool(snapshot.get("explicit_boundary") and snapshot.get("logical_interval", {}).get("end"))
+        detail = self.report_detail(meeting_id)
+        return bool(detail and (closed or not self._capture_active()) and self._ready_for_delivery(detail))
 
     def _report_failed_recently(self, meeting_id: str) -> bool:
         """Automatic attempts after a failure wait 30 minutes; the person's button never waits."""
@@ -354,6 +382,11 @@ class MeetingArchive:
         if self._capture_active():
             return  # Reports wait for the current call to end.
         now = datetime.now().astimezone()
+        known = {path for path, _ in imported}
+        for marker in sorted(self.reports_root.glob(f"*/{REPORT_FAILURE}")):
+            path = self.archive_root / marker.parent.name / "meeting.json"
+            if path.is_file() and path not in known:
+                imported.append((path, None))
         for path, ended in imported:
             meeting_id = path.parent.name
             try:
@@ -899,17 +932,21 @@ class MeetingArchive:
             return self._report_gates.setdefault(_safe(str(meeting_id)), threading.Lock())
 
     def generate_report(self, meeting_id: str, *, deliver: bool = True, on_request: bool = False) -> dict:
-        """Create (and send) a report; Chrome and the senders never hold the archive lock."""
-        with self.report_gate(meeting_id):
+        """Create (and send) a report; Chrome printing never holds the archive lock.
+
+        One job per report folder: chunks of one call share the last chunk's folder.
+        """
+        identity = self.report_identity(meeting_id)
+        with self.report_gate(identity):
             try:
                 meta = self._generate_report(meeting_id, deliver=deliver, on_request=on_request)
             except ValueError:
                 raise
             except Exception as exc:
-                self._record_report_failure(meeting_id, exc)
+                self._record_report_failure(identity, exc)
                 raise
-            for identity in {_safe(str(meeting_id)), _safe(str(meta.get("meeting_id") or meeting_id))}:
-                (self.reports_root / identity / REPORT_FAILURE).unlink(missing_ok=True)
+            for folder in {identity, _safe(str(meta.get("meeting_id") or identity))}:
+                (self.reports_root / folder / REPORT_FAILURE).unlink(missing_ok=True)
             meta.pop("meeting_id", None)
             return meta
 
@@ -966,30 +1003,31 @@ class MeetingArchive:
                                                             len(rendered_frames), source_signature,
                                                             deliver=deliver, on_request=on_request)
                 ready = self._ready_for_delivery(detail)
-            delivery = (
-                {"drive_status": "pending",  # A finished call no longer waits for its end.
-                 **{key: "pending" if value == "waiting_for_end" and meta.get("delivery_on_request") else value
-                    for key in ("mail_status", "telegram_status")
-                    if (value := str(previous_report.get(key) or "not_configured"))}}
-                if not deliver or meta.get("delivery_on_request") else
-                self.deliver(detail, meta, previous=previous_delivery)
-                if ready
-                else {
-                    "drive_status": (
-                        "uploaded" if previous_report.get("drive_status") == "uploaded"
-                        else "waiting_for_end"
-                    ),
-                    "mail_status": (
-                        "sent" if previous_report.get("mail_status") == "sent"
-                        else "waiting_for_end"
-                    ),
-                    "telegram_status": (
-                        "sent" if previous_report.get("telegram_status") == "sent"
-                        else "waiting_for_end"
-                    ),
-                }
-            )
-            with self.lock:
+                # ponytail: sending holds the archive lock (settings and the Google
+                # profile must not change mid-send); a slow Drive upload still blocks it.
+                delivery = (
+                    {"drive_status": "pending",  # A finished call no longer waits for its end.
+                     **{key: "pending" if value == "waiting_for_end" and meta.get("delivery_on_request") else value
+                        for key in ("mail_status", "telegram_status")
+                        if (value := str(previous_report.get(key) or "not_configured"))}}
+                    if not deliver or meta.get("delivery_on_request") else
+                    self.deliver(detail, meta, previous=previous_delivery)
+                    if ready
+                    else {
+                        "drive_status": (
+                            "uploaded" if previous_report.get("drive_status") == "uploaded"
+                            else "waiting_for_end"
+                        ),
+                        "mail_status": (
+                            "sent" if previous_report.get("mail_status") == "sent"
+                            else "waiting_for_end"
+                        ),
+                        "telegram_status": (
+                            "sent" if previous_report.get("telegram_status") == "sent"
+                            else "waiting_for_end"
+                        ),
+                    }
+                )
                 meta.update(delivery)
                 checked_at = datetime.now().astimezone()
                 meta["delivery_checked_at"] = checked_at.isoformat(timespec="seconds")

@@ -180,9 +180,11 @@ hashes, Pages removed, and the Windows installer relocated to
   tracked is skipped as historical, so no Send again is offered (`archive.py` `repair_report_states`, exempt `state_repaired_at`);
   a resend still sending after the 5-minute poll shows "Could not send" (`app.js` `resendReport`, show "may not have arrived").
 - [ ] MEETONTRACK-98: Report PDFs of long meetings failed on 0.1.16: Chrome got a fixed 20 s to print (`archive.py` `_print_pdf`)
-  and `finalize_history` retried every minute. Fixed on fix/meetontrack-pdf-print-timeout: wait for Chrome to exit; print and send
-  outside the archive lock (one job per meeting, re-print if the meeting changed); a failed report shows in the library and the
-  delivery pill with "Create the report again" and retries itself every 30 minutes; Chrome profiles removed after exit and on start.
+  and `finalize_history` retried every minute. Fixed on fix/meetontrack-pdf-print-timeout: wait for Chrome to exit (180 s cap);
+  print outside the archive lock (one job per report folder, chunks of one call share it; re-print if the meeting changed); a
+  failed report shows in the library and the delivery pill with "Create the report again" and retries itself every 30 minutes;
+  Chrome profiles removed after exit and on start. Left (P2): sending (mail, Telegram, Drive upload) still holds the archive
+  lock on purpose so settings and the Google profile cannot change mid-send; a slow Drive upload still stalls the library.
 - [ ] MEETONTRACK-94: A meeting followed right away by another call kept its 44 live segments instead of the recorder's
   406-segment final transcript, got no report and showed only "Recording needs attention" (2026-10-22, 0.1.14):
   the final transcript was read only while that meeting owned the single live file (`archive.py` `finalize_history`).

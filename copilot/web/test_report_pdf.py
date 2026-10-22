@@ -149,6 +149,63 @@ class PrintOutsideTheLockTests(unittest.TestCase):
         report = json.loads((self.case.root / "reports/FIRST-CALL/report.json").read_text())
         self.assertEqual(report["source_signature"], self.archive.source_signature(self.archive.report_detail("FIRST-CALL")))
 
+    def backdate(self, marker: Path) -> None:
+        from datetime import datetime, timedelta, timezone
+        failure = json.loads(marker.read_text())
+        marker.write_text(json.dumps({**failure, "failed_at": (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat()}))
+
+    def fail_once(self, meeting_id: str) -> None:
+        with patch.object(self.archive, "_print_pdf", side_effect=archive.ReportPdfError("Chrome не создал PDF")):
+            with self.assertRaises(archive.ReportPdfError):
+                self.archive.generate_report(meeting_id)
+
+    def test_chunks_of_one_call_share_one_report_job_and_one_failure(self):
+        from datetime import timedelta
+        from test_final_after_next_call import iso
+        case = self.case
+        early = case.start - timedelta(minutes=30)
+        chunk = case.recording("2026.10.22-1530 Google Chrome Helper (Ap", early, case.start - timedelta(seconds=30))
+        self.archive.sync_transcript({**case.live, "meeting": "Synthetic sync"})  # Same title: one call.
+        self.archive.sync_transcript({**case.live, "meeting": "Synthetic sync", "meeting_id": "EARLY-CHUNK",
+                                      "started_at": iso(early), "updated_at": iso(case.start - timedelta(seconds=30)),
+                                      "capture_warnings": [], "recording_dir": str(chunk), "segments": [
+                                          {"source": "system", "timestamp": iso(early + timedelta(seconds=1)), "text": "Chunk"}]})
+        self.assertEqual(self.archive.report_identity("EARLY-CHUNK"), "FIRST-CALL")
+        first = threading.Thread(target=self.archive.generate_report, args=("EARLY-CHUNK",))
+        first.start()
+        self.assertTrue(self.printing.wait(5))
+        second = self.start()
+        second.join(0.5)
+        self.assertEqual(self.prints, 1, "Two prints into one report folder at once")
+        self.release.set()
+        first.join(10)
+        second.join(10)
+        self.assertEqual(self.prints, 2)
+        self.fail_once("EARLY-CHUNK")
+        self.assertTrue((case.root / "reports/FIRST-CALL/report-failure.json").exists())
+        self.assertFalse((case.root / "reports/EARLY-CHUNK/report-failure.json").exists())
+
+    def test_a_failed_refresh_of_a_current_report_clears_itself_after_30_minutes(self):
+        self.release.set()
+        self.archive.finalize_history()  # Imports the final transcript and creates the report.
+        self.assertEqual(self.prints, 1)
+        marker = self.case.root / "reports/FIRST-CALL/report-failure.json"
+        self.fail_once("FIRST-CALL")  # The person's button, while the saved report is still current.
+        self.backdate(marker)
+        prints = self.prints
+        self.archive.finalize_history()
+        self.assertFalse(marker.exists(), "The report on disk is current: the failure must not stay forever")
+        self.assertEqual(self.prints, prints)
+
+    def test_an_expired_failure_without_any_report_is_tried_again(self):
+        marker = self.case.root / "reports/FIRST-CALL/report-failure.json"
+        self.fail_once("FIRST-CALL")
+        self.backdate(marker)
+        self.release.set()
+        self.archive.finalize_history()
+        self.assertFalse(marker.exists())
+        self.assertTrue((self.case.root / "reports/FIRST-CALL/report.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
