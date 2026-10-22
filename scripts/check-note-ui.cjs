@@ -49,29 +49,22 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
     assert.equal(await company.getAttribute('href'), 'https://aiagentlbs.com/');
     assert.equal(await company.getAttribute('target'), '_blank');
     assert.match(await company.getAttribute('rel'), /noopener/);
-    const hint = page.locator('#note-help');
-    // The call time arrives with the first state poll, not with the page itself.
-    await page.waitForFunction(() => document.querySelector('#note-help').textContent.includes('02:44'));
-    assert.equal(await hint.isVisible(), true, 'note explanation must be permanently visible');
-    assert.match(await hint.textContent(), /Мои заметки/);
-    assert.match(await hint.textContent(), /02:44/);
-    assert.match(await hint.textContent(), /начала/);
+    // Owner 2026-10-22: no explanatory text around the composer, no visible label above it.
+    assert.equal(await page.locator('#note-help, label[for="question"], #copilot-heading').count(), 0);
+    assert.equal(await page.locator('#question').getAttribute('aria-label'), 'Вопрос или заметка к текущему созвону');
     assert.equal(await page.locator('#note-button').textContent(), 'Сохранить заметку');
     await page.locator('#question').fill('Follow up on the pilot');
     await page.locator('#note-button').click();
     await page.waitForFunction(() => document.querySelector('#question').value === '');
     assert.deepEqual(saved, [{ text: 'Follow up on the pilot' }]);
-    assert.equal(await hint.isVisible(), true, 'saving feedback must not replace the explanation');
     await page.locator('#settings-open').click(); await page.locator('#interface-language').selectOption('en'); await page.locator('#settings-close').click();
     assert.equal(await page.locator('#note-button').textContent(), 'Save note');
-    assert.match(await hint.textContent(), /My notes/);
-    assert.match(await hint.textContent(), /02:44/);
     await page.setViewportSize({ width: 390, height: 844 });
-    assert.equal(await hint.isVisible(), true);
+    assert.equal(await page.locator('#note-button').isVisible(), true);
     await page.locator('#settings-open').click(); await page.locator('#interface-language').selectOption('ru'); await page.locator('#settings-close').click();
     await page.screenshot({ path: '/tmp/meeting-copilot-note-mobile.png', fullPage: true });
     assert.deepEqual(errors, []);
-    console.log('Note UI: visible RU/EN explanation, timestamp, real save handler, mobile: OK');
+    console.log('Note UI: no helper text, labelled input, real save handler, mobile: OK');
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

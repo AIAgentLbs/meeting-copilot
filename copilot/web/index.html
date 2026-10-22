@@ -25,6 +25,7 @@
         <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
         <button class="quiet-button" id="updates-notice" type="button" aria-controls="settings-panel" hidden></button>
         <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
+        <button class="quiet-button" id="transcript-show" type="button" data-i18n="transcript.show" hidden>Показать расшифровку</button>
         <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
         <button class="quiet-button" id="getting-started-open" type="button" aria-expanded="false" aria-controls="getting-started">Начать работу</button>
         <button class="quiet-button" id="refresh-button" type="button" data-i18n="common.refresh">Обновить</button>
@@ -213,14 +214,7 @@
         </div>
       </section>
 
-      <section class="copilot-pane" aria-labelledby="copilot-heading">
-        <div class="pane-header copilot-header">
-          <div>
-            <h2 id="copilot-heading" data-i18n="copilot.heading">Чат с контекстом</h2>
-          </div>
-          <button class="quiet-button" id="transcript-show" type="button" data-i18n="transcript.show" hidden>Показать расшифровку</button>
-        </div>
-
+      <section class="copilot-pane" aria-label="Карта звонка и помощник" data-i18n-aria-label="copilot.heading">
         <section class="delivery-notice" id="delivery-notice" hidden>
           <span id="delivery-notice-text" role="status" aria-live="polite" aria-atomic="true"></span>
           <button class="quiet-button" id="delivery-notice-details" type="button" data-i18n="delivery.details">Подробнее</button>
@@ -270,21 +264,21 @@
 
         <div class="composer-wrap" id="composer-wrap">
           <form class="composer" id="chat-form">
-            <label for="question" data-i18n="composer.label">Вопрос или заметка к текущему созвону</label>
             <div class="composer-input">
               <textarea
                 id="question"
+                aria-label="Вопрос или заметка к текущему созвону"
+                data-i18n-aria-label="composer.label"
                 rows="2"
                 maxlength="8000"
                 placeholder="Спросите Copilot или запишите мысль по ходу разговора."
                 data-i18n-placeholder="composer.placeholder"
               ></textarea>
               <div class="composer-buttons">
-                <button class="note-button" id="note-button" type="button" aria-describedby="note-help" data-i18n="note.button">Сохранить заметку</button>
+                <button class="note-button" id="note-button" type="button" data-i18n="note.button">Сохранить заметку</button>
                 <button class="send-button" id="send-button" type="submit" data-i18n="composer.ask">Спросить</button>
               </div>
             </div>
-            <div class="note-help" id="note-help">Сохранит введённый текст в «Мои заметки» с отметкой времени звонка. Ответ от ИИ не запрашивается.</div>
             <div class="composer-help" id="composer-help" data-i18n="composer.help">Enter спрашивает · ⌘Enter сохраняет заметку · Shift+Enter переносит строку</div>
           </form>
         </div>

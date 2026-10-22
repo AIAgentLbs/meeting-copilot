@@ -195,7 +195,6 @@ const translations = {
     "repos.help": "Список берётся из локального каталога — клонирования и сетевых Git-команд нет.",
     "repos.save": "Сохранить набор",
     "note.button": "Сохранить заметку",
-    "note.help": "Сохранит введённый текст в «Мои заметки» с отметкой времени звонка. {time} — время от начала встречи. Ответ от ИИ не запрашивается.",
     "age.none": "нет реплик",
     "age.now": "только что",
     "age.seconds": "{value} сек назад",
@@ -419,7 +418,6 @@ const translations = {
     "repos.help": "The list comes from the local catalog—no clone, pull, or fetch is performed.",
     "repos.save": "Save selection",
     "note.button": "Save note",
-    "note.help": "Saves the entered text to My notes with a meeting timestamp. {time} is the time since the meeting started. Does not request an AI answer.",
     "age.none": "no utterances",
     "age.now": "just now",
     "age.seconds": "{value}s ago",
@@ -623,7 +621,6 @@ function applyLanguage() {
   const googleAccount = document.querySelector("#google-account");
   if (googleAccount?.dataset.auth) googleAccount.textContent = googleAccount.dataset.auth === "connected"
     ? t("google.account", {account: googleAccount.dataset.account || "gws"}) : t("google.auth");
-  document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(activeTranscript) });
 }
 
 let transcriptSignature = "";
@@ -1420,7 +1417,6 @@ function renderTranscript(transcript) {
     elements.translationJump.title = transcript.translation_error ? plainError(transcript.translation_error) : "";
   }
   elements.note.textContent = t("note.button", { time: timecodeLabel(transcript) });
-  document.querySelector("#note-help").textContent = t("note.help", { time: timecodeLabel(transcript) });
   elements.meetingTitle.textContent = transcript.display_meeting || transcript.meeting || "Встреча";
   elements.liveStatus.classList.toggle("live", Boolean(transcript.live));
   elements.liveStatus.classList.toggle("error", Boolean(transcript.error || transcript.status === "error"));
