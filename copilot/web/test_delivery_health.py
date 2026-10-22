@@ -114,6 +114,27 @@ class DeliveryHealthTests(unittest.TestCase):
         self.assertEqual(health["notifications"], [])
         self.assertEqual(self.refresh(3 * 24 * 60 + 2)["issue_count"], 0)
 
+    def test_drive_without_links_does_not_count_as_delivered(self):
+        self.report.update(mail_status="failed", telegram_status="failed",
+                           drive_pdf_url="https://drive.google.com.evil.test/file/d/pdf/view")
+        self.save()
+        self.refresh()
+        health = self.refresh(3 * 24 * 60 + 1)
+        self.assertEqual(health["channels"]["gmail"]["issues"], [{"meeting_id": "test", "reason": "retry_expired"}])
+
+    def test_failures_no_retry_can_fix_stay_actionable(self):
+        self.report.update(mail_status="failed", mail_error={"provider": "gws", "reason": "authorization_expired"})
+        self.save()
+        self.assertEqual(self.refresh()["channels"]["gmail"]["issues"], [{"meeting_id": "test", "reason": "auth_required"}])
+        # An unknown outcome is never retried: closed when delivered elsewhere,
+        # otherwise offered for an explicit resend right away.
+        self.report.update(mail_status="unknown", mail_error={})
+        self.save()
+        self.assertEqual(self.refresh(1)["channels"]["gmail"]["issues"], [])
+        self.report.update(drive_status="failed", telegram_status="failed")
+        self.save()
+        self.assertIn({"meeting_id": "test", "reason": "retry_expired"}, self.refresh(2)["channels"]["gmail"]["issues"])
+
     def test_undelivered_report_offers_one_resend_that_requeues_delivery(self):
         from delivery_retry import DeliveryRetry
         config = self.root / "config"

@@ -47,6 +47,9 @@ class DeliveryHealth:
     """Keep notices across reload/restart without exposing report contents."""
 
     channels = {"drive": "drive_status", "gmail": "mail_status", "telegram": "telegram_status"}
+    # Email failures that no automatic retry can fix: the person must sign in again.
+    mail_auth_reasons = {"authorization_expired", "authorization_required", "authorization_missing",
+                         "permission_missing", "smtp_auth_failed"}
 
     def __init__(self, reports_root: Path, state_file: Path, retry_days: int = 3):
         self.reports_root = reports_root
@@ -83,7 +86,9 @@ class DeliveryHealth:
                 continue
             considered += 1
             # Any channel that delivered means the person has this report.
+            links_missing = bool(settings.get("drive_folder_id")) and not drive_links_ready(report)
             delivered = any(report.get(field) == ("uploaded" if channel == "drive" else "sent")
+                            and not (channel == "drive" and links_missing)
                             for channel, field in self.channels.items())
             for channel, field in self.channels.items():
                 if not configured[channel]:
@@ -96,17 +101,20 @@ class DeliveryHealth:
                     state, reason = "failed", "metadata_invalid"
                 elif raw == ("uploaded" if channel == "drive" else "sent"):
                     state, reason = "sent", "sent"
-                    if channel == "drive" and settings.get("drive_folder_id") and not drive_links_ready(report):
+                    if channel == "drive" and links_missing:
                         state, reason = "failed", "links_missing"
                 elif raw == "waiting_for_end":
                     state, reason = "waiting", "waiting_for_end"
-                elif raw == "auth_required":
+                elif raw == "auth_required" or (channel == "gmail" and raw == "failed" and (
+                        report.get("mail_error") or {}).get("reason") in self.mail_auth_reasons):
                     state, reason = "action_required", "auth_required"
                 elif raw not in {None, "not_configured", "pending"}:
                     state, reason = "failed", "delivery_failed"
                 elif now - generated > timedelta(minutes=15):
                     state, reason = "failed", "retry_overdue"
-                if expired and state not in {"sent", "waiting"}:
+                # "unknown" is never retried automatically (it may duplicate a
+                # send), so it ends the same way as an expired retry window.
+                if (expired or raw == "unknown") and state not in {"sent", "waiting"}:
                     if delivered:
                         # Retries ended but the report reached the person another
                         # way: close it. The failed channel stays visible only in

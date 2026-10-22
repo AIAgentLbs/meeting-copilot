@@ -960,7 +960,8 @@ function openDeliverySettings() {
 
 // One button per undelivered report: re-sends every channel that failed for it.
 async function resendReport(item) {
-  if (deliveryResend[item.meeting_id] === "sending") return;
+  // The server runs one delivery job at a time; so do the buttons.
+  if (Object.values(deliveryResend).includes("sending")) return;
   deliveryResend[item.meeting_id] = "sending";
   deliverySignature = "";
   renderDeliveryHealth(deliveryHealth);
@@ -1015,7 +1016,7 @@ function renderDeliveryHealth(health = {}) {
     row.append(textNode("p", "", undeliveredLabel(item)));
     const button = textNode("button", "primary-button", t(state === "sending" ? "delivery.resending" : "delivery.resend"));
     button.type = "button";
-    button.disabled = state === "sending";
+    button.disabled = Object.values(deliveryResend).includes("sending");
     button.addEventListener("click", () => void resendReport(item));
     row.append(button);
     if (state === "failed") row.append(textNode("p", "delivery-reason", t("delivery.resend_failed")));
