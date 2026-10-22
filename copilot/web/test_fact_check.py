@@ -5,6 +5,8 @@ below is a fixture.
 """
 import json
 import tempfile
+import time
+import urllib.request
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -59,7 +61,7 @@ class ExtractionTests(unittest.TestCase):
     def test_extraction_rules_list_known_claims(self):
         rules = fact_check.extraction_rules(["Claim A"])
         self.assertIn("CLAIM_CAPTURE", rules)
-        self.assertIn("- Claim A", rules)
+        self.assertIn('["Claim A"]', rules)  # earlier claims are quoted as data, one JSON line
         self.assertNotIn("—", rules)
         self.assertNotIn("ё", rules)
 
@@ -68,12 +70,22 @@ class SettleTests(unittest.TestCase):
     KB = [{"id": "kb1", "title": "notes.md", "location": "/docs/notes.md:3",
            "text": "Higgsfield trains its own video generation models."}]
 
-    def test_green_needs_a_live_url(self):
-        answer = json.dumps({"verdict": "confirmed", "sources": [{"url": "https://dead.example/a", "quote": "own models"}]})
+    def test_green_needs_a_live_url_holding_the_quote(self):
+        quote = "trains its own video models"
+        answer = json.dumps({"verdict": "confirmed", "sources": [{"url": "https://dead.example/a", "quote": quote}]})
         self.assertEqual(settle(answer, [], pages({}), True), {"status": "unclear", "note": "no_source"})
-        live = settle(answer, [], pages({"https://dead.example/a": "anything"}), True)
-        self.assertEqual(live["status"], "confirmed")
-        self.assertEqual(live["sources"][0]["url"], "https://dead.example/a")
+        self.assertEqual(settle(answer, [], pages({"https://dead.example/a": "anything"}), True)["status"], "unclear")
+        live = settle(answer, [], pages({"https://dead.example/a": f"Higgsfield {quote}."}), True)
+        self.assertEqual((live["status"], live["sources"][0]["url"]), ("confirmed", "https://dead.example/a"))
+        empty = json.dumps({"verdict": "confirmed", "sources": [{"url": "https://source.example/", "quote": ""}]})
+        self.assertEqual(settle(empty, [], pages({"https://source.example/": ""}), True)["status"], "unclear")
+
+    def test_a_quote_matches_only_as_written(self):
+        for quote, page in (("The margin is +10 percent.", "The margin is -10 percent."),
+                            ("company is profitable", "the company is unprofitable")):
+            answer = json.dumps({"verdict": "refuted", "fact": "x", "sources": [{"url": "https://a.example/", "quote": quote}]})
+            with self.subTest(quote=quote):
+                self.assertEqual(settle(answer, [], pages({"https://a.example/": page}), True)["status"], "unclear")
 
     def test_missing_sources_or_bad_json_is_yellow(self):
         for answer in (json.dumps({"verdict": "confirmed"}), json.dumps({"verdict": "refuted", "fact": "x", "sources": []}),
@@ -235,6 +247,34 @@ class SafetyTests(unittest.TestCase):
                 self.assertFalse(fact_check.public_url(url))
                 self.assertIsNone(fact_check.fetch_text(url))
         self.assertTrue(fact_check.public_url("https://93.184.216.34/page"))  # a literal public address, no lookup
+
+    def test_the_connection_uses_the_checked_address_so_dns_cannot_rebind(self):
+        answers = iter([[(2, 1, 6, "", ("93.184.216.34", 80))], [(2, 1, 6, "", ("127.0.0.1", 80))]])
+        with patch.object(fact_check.socket, "getaddrinfo", side_effect=lambda *a, **k: next(answers)), \
+                patch.object(fact_check.socket, "create_connection") as connect:
+            self.assertIsNone(fact_check.fetch_text("http://rebind.example/page"))
+        connect.assert_not_called()
+
+    def test_a_redirect_body_is_never_read(self):
+        from types import SimpleNamespace
+        from email.message import Message
+        handler = fact_check._PublicRedirects()
+        handler.parent = SimpleNamespace(open=lambda request, timeout=None: "followed")
+        request = urllib.request.Request("https://93.184.216.34/a")
+        request.timeout = 1
+        headers = Message()
+        headers["Location"] = "https://93.184.216.34/b"
+        body = SimpleNamespace(closed=False, close=lambda: setattr(body, "closed", True),
+                               read=lambda *a: b"" if body.closed else self.fail("redirect body read"))
+        self.assertEqual(handler.http_error_302(request, body, 302, "Found", headers), "followed")
+
+    def test_page_text_is_linear_on_hostile_markup(self):
+        self.assertEqual(" ".join(fact_check.page_text("<p>a<script>x</script>b &amp; c</p>").split()), "a b & c")
+        for markup in ("<" * 1_000_000, "<script" * 140_000, "<a " * 300_000):
+            started = time.monotonic()
+            fact_check.page_text(markup)
+            with self.subTest(markup=markup[:8]):
+                self.assertLess(time.monotonic() - started, 3)
 
 
 class ServerTests(unittest.TestCase):
