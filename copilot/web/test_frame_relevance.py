@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,14 @@ class FrameRelevanceTests(unittest.TestCase):
         self.assertEqual(frame_relevance(None, {"image_digest": "same"}, {}, {"image_digest": "same"}, None), (False, 'duplicate'))
 
     def test_discard_removes_file_and_never_indexes(self):
+        self.discard_capture()
+
+    def test_missing_image_libraries_are_shown_not_silent(self):
+        with patch.dict(sys.modules, {'numpy': None}):
+            frames = self.discard_capture()
+        self.assertIn('Переустановите MeetOnTrack', frames.status_snapshot()['last_error'])
+
+    def discard_capture(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             helper = root / 'helper'
@@ -49,6 +58,7 @@ class FrameRelevanceTests(unittest.TestCase):
             self.assertEqual(frames.items, [])
             self.assertEqual(list((root / 'screenshots').iterdir()), [])
             self.assertFalse(frames.index_path.exists())
+        return frames
 
 
 if __name__ == '__main__':

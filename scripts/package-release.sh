@@ -12,6 +12,12 @@ trap 'rm -rf "$stage"' EXIT
 cp -R "$APP" "$stage/Meeting Copilot Capture.app"
 mkdir -p "$stage/payload"
 cp -R "$PYTHON_RUNTIME" "$stage/payload/python"
+# Visual speaker names need numpy and Pillow; without them every frame silently
+# had no speaker. Install them into the bundled runtime, which install.sh copies
+# on both a fresh install and an update.
+uv pip install --python "$stage/payload/python/bin/python3" --break-system-packages \
+  --require-hashes --only-binary :all: -r "$ROOT/scripts/image-requirements.txt"
+"$stage/payload/python/bin/python3" -I -c 'import numpy, PIL.Image'
 cp -R "$ROOT/copilot/web" "$stage/payload/web"
 python3 "$ROOT/scripts/vendor-delivery.py" "$stage/payload/web/_vendor"
 cp -R "$ROOT/copilot/bin" "$stage/payload/bin"

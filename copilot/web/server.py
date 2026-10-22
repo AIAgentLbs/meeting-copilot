@@ -1357,6 +1357,18 @@ class TranscriptState:
             self.trigger.clear()
 
 
+def image_libraries_problem() -> str:
+    """Visual speaker names need numpy and Pillow; without them every frame
+    silently had no speaker. Say so on screen instead."""
+    try:
+        import numpy  # noqa: F401
+        from PIL import Image  # noqa: F401
+    except ImportError:
+        return ("Имена говорящих по окну звонка недоступны: не хватает компонентов "
+                "обработки изображений. Переустановите MeetOnTrack.")
+    return ""
+
+
 class MeetingFrames:
     """Private Zoom-window frames plus conservative visual speaker attribution."""
 
@@ -1544,6 +1556,20 @@ class MeetingFrames:
                         strength = float(column_strength[left] + column_strength[right])
                         pairs.append((strength, left, right))
             if not pairs:
+                # Chrome's floating Zoom window shows only the active speaker,
+                # labelled bottom-left (Vision y grows upwards).
+                # The full window shows the long app.zoom.us/wc/... URL instead.
+                if any(str(item.get("text", "")).endswith("app.zoom.us") and float(item.get("y", 0)) > 0.75
+                       for item in observations):
+                    labels = [
+                        (float(item.get("y", 0)), str(item.get("text", "")).strip(" :;,.%🔇🎙"))
+                        for item in observations
+                        if float(item.get("y", 1)) < 0.2 and float(item.get("x", 1)) < 0.4
+                    ]
+                    labels = [(y, text) for y, text in labels
+                              if 2 <= len(text) <= 42 and all(c.isalpha() or c in " .'-’" for c in text)]
+                    if labels:
+                        return min(labels)[1], "zoom-floating-speaker"
                 return "", ""
             _, left, right = max(pairs)
 
@@ -1566,7 +1592,7 @@ class MeetingFrames:
                     candidates.append((y, text))
             if not candidates:
                 return "", ""
-            return max(candidates)[1], "visual-active-speaker"
+            return max(candidates)[1].strip(" :;,"), "visual-active-speaker"
         except Exception:
             return "", ""
 
@@ -1629,6 +1655,7 @@ class MeetingFrames:
             )
             observations = json.loads(inspected.stdout) if inspected.returncode == 0 else []
             speaker, confidence = self._speaker_from_frame(path, observations)
+            image_problem = image_libraries_problem()
             visual_lines = sanitised_visual_lines(observations)
             visual_text = "\n".join(visual_lines)
             is_meet = "meet.google.com" in visual_text.casefold() or str(window.get("title", "")).casefold().startswith("meet -")
@@ -1672,13 +1699,13 @@ class MeetingFrames:
             if not keep:
                 with self.lock:
                     self.last_discard_reason = reason
-                    self.last_error = ""
+                    self.last_error = image_problem
                 return {"discarded": True, "reason": reason, "captured_at": captured_at}
             item["relevance"] = reason
             with self.lock:
                 self.items.append(item)
                 self.last_success_at = captured_at
-                self.last_error = ""
+                self.last_error = image_problem
                 self._persist()
                 retained = True
             return item
@@ -1708,6 +1735,15 @@ class MeetingFrames:
                     segment["speaker"] = teams_name
                     segment["speaker_confidence"] = "teams-one-on-one"
 
+        # A speech model without diarization labels all call audio as one
+        # voice. When frames show two or more different people talking, that
+        # voice is the call channel, not a person: name each phrase from its
+        # nearest frame instead of naming the whole channel after one person.
+        visible_speakers = {str(frame.get("speaker")) for frame in meeting_frames
+                            if frame.get("speaker") and frame.get("speaker_confidence") != "meet-active-tile"}
+        channel_only = len(acoustic_slots) <= 1 and len(visible_speakers) >= 2
+        frame_window = 15 if channel_only else 8
+
         def nearest_named_frame(segment: dict) -> tuple[float, dict] | None:
             if segment.get("source") != "system" or not segment.get("timestamp"):
                 return None
@@ -1724,7 +1760,7 @@ class MeetingFrames:
                 except ValueError:
                     continue
                 distance = abs((captured - moment).total_seconds())
-                if distance <= 8 and (nearest is None or distance < nearest[0]):
+                if distance <= frame_window and (nearest is None or distance < nearest[0]):
                     nearest = (distance, frame)
             return nearest
 
@@ -1746,9 +1782,12 @@ class MeetingFrames:
             if voice_id not in voice_names:
                 voice_names[voice_id] = name
                 voice_confidence[voice_id] = "spoken-self-introduction"
+        if channel_only:
+            voice_names.clear()
+            voice_confidence.clear()
 
         votes: dict[str, dict[str, float]] = {}
-        for segment in segments:
+        for segment in segments if not channel_only else []:
             voice_id = str(segment.get("voice_id") or "")
             nearest = nearest_named_frame(segment) if voice_id and voice_id not in voice_names else None
             if nearest and nearest[1].get("speaker_confidence") != "meet-active-tile":
@@ -1811,7 +1850,9 @@ class MeetingFrames:
                 segment["speaker"] = voice_names[voice_id]
                 segment["speaker_confidence"] = voice_confidence[voice_id]
                 continue
-            nearest = nearest_named_frame(segment) if not voice_id else None
+            if channel_only and segment.get("speaker"):
+                continue
+            nearest = nearest_named_frame(segment) if not voice_id or channel_only else None
             if nearest and nearest[1].get("speaker_confidence") != "meet-active-tile":
                 segment["speaker"] = nearest[1]["speaker"]
                 segment["speaker_confidence"] = nearest[1]["speaker_confidence"]
