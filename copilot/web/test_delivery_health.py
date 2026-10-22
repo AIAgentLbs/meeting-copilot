@@ -84,7 +84,7 @@ class DeliveryHealthTests(unittest.TestCase):
         self.assertEqual(self.refresh(3)["notifications"], recovered["notifications"])
 
     def test_expired_failure_is_not_false_recovery_and_remains_visible(self):
-        self.report["mail_status"] = "failed"
+        self.report.update(mail_status="failed", drive_status="failed", telegram_status="failed")
         self.save()
         self.refresh()
         health = self.refresh(3 * 24 * 60)
@@ -101,8 +101,73 @@ class DeliveryHealthTests(unittest.TestCase):
         (self.reports / "test" / "report.json").unlink()
         self.assertFalse(any(e["kind"] == "recovered" for e in self.refresh()["notifications"]))
 
-    def test_old_report_can_recover_after_retry_window_ends(self):
+    def test_expired_failure_closes_when_another_channel_delivered(self):
+        # Real case: Drive uploaded and Telegram sent, email failed for 3 days.
         self.report["mail_status"] = "failed"
+        self.save()
+        self.assertEqual(self.refresh()["channels"]["gmail"]["state"], "failed")
+        health = self.refresh(3 * 24 * 60 + 1)
+        self.assertEqual(health["issue_count"], 0)
+        self.assertEqual(health["channels"]["gmail"]["issues"], [])
+        self.assertNotEqual(health["state"], "action_required")
+        # The earlier failure notice is closed too, without a false recovery.
+        self.assertEqual(health["notifications"], [])
+        self.assertEqual(self.refresh(3 * 24 * 60 + 2)["issue_count"], 0)
+
+    def test_drive_without_links_does_not_count_as_delivered(self):
+        self.report.update(mail_status="failed", telegram_status="failed",
+                           drive_pdf_url="https://drive.google.com.evil.test/file/d/pdf/view")
+        self.save()
+        self.refresh()
+        health = self.refresh(3 * 24 * 60 + 1)
+        self.assertEqual(health["channels"]["gmail"]["issues"], [{"meeting_id": "test", "reason": "retry_expired"}])
+
+    def test_failures_no_retry_can_fix_stay_actionable(self):
+        self.report.update(mail_status="failed", mail_error={"provider": "gws", "reason": "authorization_expired"})
+        self.save()
+        self.assertEqual(self.refresh()["channels"]["gmail"]["issues"], [{"meeting_id": "test", "reason": "auth_required"}])
+        # An unknown outcome is never retried: closed when delivered elsewhere,
+        # otherwise offered for an explicit resend right away.
+        self.report.update(mail_status="unknown", mail_error={})
+        self.save()
+        self.assertEqual(self.refresh(1)["channels"]["gmail"]["issues"], [])
+        self.report.update(drive_status="failed", telegram_status="failed")
+        self.save()
+        # Said as "may not have arrived", never as a confirmed failure.
+        self.assertEqual(self.refresh(2)["channels"]["gmail"]["issues"], [{"meeting_id": "test", "reason": "outcome_unknown"}])
+
+    def test_undelivered_report_offers_one_resend_that_requeues_delivery(self):
+        from delivery_retry import DeliveryRetry
+        config = self.root / "config"
+        config.mkdir(exist_ok=True)
+        (config / "delivery.json").write_text(json.dumps(self.settings), encoding="utf-8")
+        archive = MeetingArchive(self.root / "recordings", self.root / "archive", self.reports, config)
+        self.report.update(mail_status="failed", drive_status="failed", telegram_status="auth_required",
+                           generated_at=(datetime.now().astimezone() - timedelta(days=4)).isoformat())
+        self.save()
+        (self.reports / "test" / "meeting-report.pdf").write_bytes(b"%PDF-test")
+        label = {"title": "Weekly sync", "started_at": "2026-10-16T10:00:00+00:00"}
+        archive.delivery_monitor.state_file.parent.mkdir(exist_ok=True)
+        archive.delivery_monitor.state_file.write_text(json.dumps(
+            {"issues": {"test:gmail": {"meeting_id": "test", "channel": "gmail"}}}), encoding="utf-8")
+        archive.check_delivery_health()
+        with patch.object(archive, "detail", return_value=label):
+            undelivered = archive.delivery_health()["undelivered"]
+        self.assertEqual(undelivered, [{"meeting_id": "test", "channels": ["drive", "email", "telegram"],
+                                        "uncertain": False, **label}])
+        sent = {"drive_status": "uploaded", "mail_status": "sent", "telegram_status": "sent"}
+        with patch.object(archive, "report_detail", return_value={"meeting_id": "test", "status": "finished"}), \
+             patch.object(archive, "_ready_for_delivery", return_value=True), \
+             patch.object(archive, "deliver", return_value=sent) as deliver:
+            DeliveryRetry(archive)._run("test", "request-0123456789", set(undelivered[0]["channels"]), True)
+        self.assertEqual(deliver.call_args.kwargs["channels"], {"drive", "email", "telegram"})
+        self.assertEqual(json.loads((self.reports / "test" / "report.json").read_text())["mail_status"], "sent")
+        health = archive.delivery_health()
+        self.assertEqual(health["undelivered"], [])
+        self.assertEqual(health["notifications"][-1]["kind"], "recovered")
+
+    def test_old_report_can_recover_after_retry_window_ends(self):
+        self.report.update(mail_status="failed", drive_status="failed", telegram_status="failed")
         self.save()
         self.refresh()
         self.refresh(3 * 24 * 60)
