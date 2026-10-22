@@ -179,6 +179,13 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-93: 0.1.15 review leftovers (P2): a repaired report whose PDF is older than the 3-day window and was never
   tracked is skipped as historical, so no Send again is offered (`archive.py` `repair_report_states`, exempt `state_repaired_at`);
   a resend still sending after the 5-minute poll shows "Could not send" (`app.js` `resendReport`, show "may not have arrived").
+- [ ] MEETONTRACK-94: A meeting followed right away by another call kept its 44 live segments instead of the recorder's
+  406-segment final transcript, got no report and showed only "Recording needs attention" (2026-10-22, 0.1.14):
+  the final transcript was read only while that meeting owned the single live file (`archive.py` `finalize_history`).
+  Leftovers (P2): every report is still sent from live text about 2 minutes after the call and the final transcript only
+  refreshes it without resending, so a merged report can mix one chunk's final text with another's live text; decide
+  whether sending waits (bounded) for `transcript.json` (`archive.py` `_ready_for_delivery`). Split (explicit-boundary)
+  meetings and meetings with hand-corrected speakers keep their live text (`import_final_transcript`).
 - [ ] MEETONTRACK-89: Mac call-audio capture fades to silence during Chrome calls (39 of 53 min lost on 2026-10-21);
   watchdog fix ee2e6cf limits it; live A/B against an output-clocked aggregate on the next real call.
 - [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.

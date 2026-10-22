@@ -30,6 +30,7 @@ from recording_health import RecordingLocations
 from question_quality import register_question
 from delivery_settings import DeliverySettings, enabled as delivery_enabled
 from private_dirs import private_dir
+from canonical_transcript import canonical_segments
 
 
 def _json(path: Path, fallback: Any) -> Any:
@@ -60,6 +61,17 @@ def _atomic_json(path: Path, payload: Any) -> None:
 
 def _safe(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-.") or "meeting"
+
+
+def _mtime(path: Path) -> int | None:
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
+def _lines(segments: list[dict]) -> list[tuple]:
+    return [(item.get("source"), item.get("timestamp"), item.get("text")) for item in segments]
 
 
 def _fmt_seconds(seconds: int | float | None) -> str:
@@ -102,6 +114,7 @@ class MeetingArchive:
         recording_locations: RecordingLocations | None = None,
         frames_provider: Callable[[], list[dict]] | None = None,
         event_router: Callable[[dict], dict] | None = None,
+        transcript_annotator: Callable[[dict], dict] | None = None,
     ) -> None:
         self.recordings_root = recordings_root
         self.recording_locations = recording_locations
@@ -119,6 +132,10 @@ class MeetingArchive:
         )
         # ponytail: names cached for the process lifetime; a rename shows after restart.
         self._delivery_labels: dict[str, dict] = {}
+        # Visual speaker names for a meeting that is no longer the live one.
+        self.transcript_annotator = transcript_annotator or (lambda snapshot: snapshot)
+        # meeting_id -> (meeting.json, report.json) versions already found up to date.
+        self._history_checked: dict[str, tuple] = {}
         private_dir(self.archive_root, recover=True)
         private_dir(self.reports_root, recover=True)
 
@@ -188,7 +205,19 @@ class MeetingArchive:
                     clean["recording_trigger"] = meta.get("trigger", "")
             if not clean.get("recording_trigger") and previous.get("recording_trigger"):
                 clean["recording_trigger"] = previous["recording_trigger"]
-            if not clean.get("explicit_boundary") and len(previous.get("segments", [])) > len(clean["segments"]):
+            if transcript.get("final_transcript"):
+                if previous.get("speaker_revision"):
+                    return  # Speakers were corrected by hand meanwhile: keep that text.
+                clean["final_transcript"] = str(transcript["final_transcript"])
+            elif previous.get("final_transcript") and not clean.get("explicit_boundary"):
+                # The recorder's final transcript wins: a later live export may
+                # add names or translations to the same lines, never replace them.
+                clean["final_transcript"] = previous["final_transcript"]
+                clean["capture_warnings"] = list(previous.get("capture_warnings") or [])
+                if _lines(clean["segments"]) != _lines(previous.get("segments", [])):
+                    clean["segments"] = previous.get("segments", [])
+                    clean["latest_at"] = str(previous.get("latest_at") or "")
+            elif not clean.get("explicit_boundary") and len(previous.get("segments", [])) > len(clean["segments"]):
                 clean["segments"] = previous["segments"]
             corrected = self.annotate_speakers(clean)
             clean["segments"] = corrected["segments"]
@@ -224,6 +253,101 @@ class MeetingArchive:
                         "updated_at": ended, "segments": [segment for snap in snapshots for segment in snap.get("segments", [])]}
             for part in boundaries.project(physical):
                 self.sync_transcript(part)
+
+    def import_final_transcript(self, snapshot: dict) -> bool:
+        """Replace a finished meeting's live text with the recorder's final transcript.
+
+        The live file belongs to whichever call is current, so a call followed
+        right away by another never read its own final transcript there.
+        """
+        directory = str(snapshot.get("recording_dir") or "")
+        if (snapshot.get("status") != "finished" or not directory or snapshot.get("explicit_boundary")
+                or snapshot.get("speaker_revision")):
+            # ponytail: a split meeting or hand-corrected speakers keep their live
+            # text; importing those needs boundary projection and edit carry-over.
+            return False
+        try:
+            stat = (Path(directory) / "transcript.json").stat()
+        except OSError:
+            return False
+        version = f"{stat.st_size}:{stat.st_mtime_ns}"
+        if snapshot.get("final_transcript") == version:
+            return False
+        final = canonical_segments(snapshot)
+        if not final:
+            return False
+        live = list(snapshot.get("segments") or [])
+        if _lines(final) == _lines(live):
+            final = live  # Already imported by the live file: keep its names.
+        finish = _date(snapshot.get("ended_at") or snapshot.get("updated_at"))
+        warnings = [narrowed for warning in snapshot.get("capture_warnings") or []
+                    if (narrowed := self._narrow_warning(warning, final, finish))]
+        self.sync_transcript(self.transcript_annotator({
+            **snapshot, "segments": final, "capture_warnings": warnings,
+            "latest_at": final[-1]["timestamp"], "final_transcript": version}))
+        return True
+
+    @staticmethod
+    def _narrow_warning(warning: dict, segments: list[dict], finish) -> dict | None:
+        """Start a reported dropout after the other side's last words the final transcript has in it.
+
+        The warning comes from the live audio meter; words recognized from the
+        saved recording prove that part was kept. What is left under the
+        meter's own 45-second threshold is no dropout at all.
+        """
+        start, end = _date(warning.get("started_at")), _date(warning.get("ended_at"))
+        if warning.get("reason") != "system-audio-lost" or not start:
+            return warning
+        heard = [_date(segment.get("end_timestamp")) or at for segment in segments
+                 if segment.get("source") == "system" and (at := _date(segment.get("timestamp")))
+                 and at > start and (not end or at < end)]
+        if not heard:
+            return warning
+        start = max(heard)
+        limit = end or finish
+        if limit and (limit - start).total_seconds() < 45:
+            return None
+        return {**warning, "started_at": start.isoformat()}
+
+    def create_due_report(self, meeting_id: str) -> bool:
+        """Create a report the meeting still needs; send it only inside the delivery window."""
+        if not self.needs_report(meeting_id):
+            return False
+        ended = _date(str((self.report_detail(meeting_id) or {}).get("ended_at") or ""))
+        recent = bool(ended and (datetime.now().astimezone() - ended).total_seconds()
+                      <= self.delivery_retry_days * 86400)
+        self.generate_report(meeting_id, on_request=not recent)
+        return True
+
+    @_shared_indexes
+    def finalize_history(self) -> None:
+        """Bring finished meetings up to date after they stopped being the current call."""
+        imported = []
+        # Every final transcript first: a merged report must never be sent
+        # while a later chunk of the same call still holds live text.
+        for path in sorted(self.archive_root.glob("*/meeting.json")):
+            try:
+                snapshot = _json(path, {})
+                if not isinstance(snapshot, dict) or snapshot.get("status") != "finished":
+                    continue
+                if self.import_final_transcript(snapshot) or snapshot.get("final_transcript"):
+                    imported.append((path, _date(snapshot.get("updated_at"))))
+            except Exception as exc:  # One broken meeting must not stop the others.
+                print(f"meeting history import failed: {type(exc).__name__}", flush=True)
+        if self._capture_active():
+            return  # Reports wait for the current call to end.
+        now = datetime.now().astimezone()
+        for path, ended in imported:
+            meeting_id = path.parent.name
+            try:
+                version = (path.stat().st_mtime_ns, _mtime(self.reports_root / meeting_id / "report.json"))
+                if self._history_checked.get(meeting_id) == version:
+                    continue
+                # Remember "nothing to do" only once the 2-minute settling time is long over.
+                if not self.create_due_report(meeting_id) and ended and (now - ended).total_seconds() > 600:
+                    self._history_checked[meeting_id] = version
+            except Exception as exc:
+                print(f"meeting history report failed: {type(exc).__name__}", flush=True)
 
     def _recordings(self) -> list[dict]:
         operation = getattr(self._index_state, "values", None)
@@ -462,7 +586,8 @@ class MeetingArchive:
         transcript = detail.get("transcript", [])
         report = detail.get("report") or {}
         active = detail.get("status") in {"recording", "loading", "overloaded"}
-        detail["library_status"] = ("recording" if active else "needs_attention" if detail.get("capture_warnings")
+        detail["audio_gap"] = None if active else self._audio_gap(detail)
+        detail["library_status"] = ("recording" if active
                                     else "report_ready" if report.get("html") and report.get("pdf")
                                     else "analysis_ready" if points else "transcript_ready" if transcript
                                     else "no_speech")
@@ -473,6 +598,26 @@ class MeetingArchive:
         if isinstance(rewrite, dict) and rewrite.get("source_signature") == self.source_signature(detail):
             detail["overview"].update({key: rewrite[key] for key in ("points", "questions", "model", "generated_at") if key in rewrite})
         return detail
+
+    @staticmethod
+    def _audio_gap(detail: dict) -> dict | None:
+        """What part of a finished call lost the other side's audio, for a plain sentence."""
+        begin, finish = _date(detail.get("started_at")), _date(detail.get("ended_at"))
+        gaps = []  # A split call shares its recording's warnings: keep this part's own.
+        for item in detail.get("capture_warnings") or []:
+            start, end = _date(item.get("started_at")), _date(item.get("ended_at"))
+            if not start or (finish and start >= finish) or (begin and end and end <= begin):
+                continue
+            returned = bool(end and (not finish or end < finish))
+            start, end = max(start, begin) if begin else start, end if returned else finish
+            gaps.append((start, end, returned))
+        if not gaps:
+            return None
+        start, end, returned = gaps[-1]
+        return {"started_at": gaps[0][0].isoformat(), "count": len(gaps),
+                # Empty when the audio never came back before this meeting ended.
+                "ended_at": end.isoformat() if returned else "",
+                "seconds": sum(max(0, int((end - start).total_seconds())) for start, end, _ in gaps if end)}
 
     def rename_meeting(self, meeting_id: str, title: str) -> dict:
         title = str(title).strip()
@@ -703,6 +848,7 @@ class MeetingArchive:
             "meeting_id": detail["meeting_id"],
             "title": detail["title"],
             "library_status": detail.get("library_status", "transcript_ready"),
+            "audio_gap": detail.get("audio_gap"),
             "preview": (detail.get("overview", {}).get("points") or [""])[0],
             "status": detail["status"],
             "started_at": detail["started_at"],
@@ -727,7 +873,7 @@ class MeetingArchive:
         indexes = {round(index * (len(existing) - 1) / (limit - 1)) for index in range(limit)}
         return [existing[index] for index in sorted(indexes)]
 
-    def generate_report(self, meeting_id: str, *, deliver: bool = True) -> dict:
+    def generate_report(self, meeting_id: str, *, deliver: bool = True, on_request: bool = False) -> dict:
         with self.lock:
             detail = self.report_detail(meeting_id)
             if detail is None:
@@ -784,12 +930,17 @@ class MeetingArchive:
                 "source_signature": source_signature,
                 "generated_while_recording": not self._ready_for_delivery(detail),
             }
+            # Past the delivery window nothing is sent on its own, also after a
+            # later refresh that sends nothing; the person's button sends it.
+            if on_request or (not deliver and previous_report.get("delivery_on_request")):
+                meta["delivery_on_request"] = True
             _atomic_json(report_dir / "report.json", meta)
             delivery = (
-                {"drive_status": "pending",
-                 "mail_status": str(previous_report.get("mail_status") or "not_configured"),
-                 "telegram_status": str(previous_report.get("telegram_status") or "not_configured")}
-                if not deliver else
+                {"drive_status": "pending",  # A finished call no longer waits for its end.
+                 **{key: "pending" if value == "waiting_for_end" and meta.get("delivery_on_request") else value
+                    for key in ("mail_status", "telegram_status")
+                    if (value := str(previous_report.get(key) or "not_configured"))}}
+                if not deliver or meta.get("delivery_on_request") else
                 self.deliver(detail, meta, previous=previous_delivery)
                 if self._ready_for_delivery(detail)
                 else {
@@ -836,8 +987,8 @@ class MeetingArchive:
             if retried >= max_reports:
                 break
             meta = _json(path, {})
-            if not isinstance(meta, dict) or meta.get("report_missing"):
-                continue  # Only an explicit "create the report again" sends it.
+            if not isinstance(meta, dict) or meta.get("report_missing") or meta.get("delivery_on_request"):
+                continue  # Only the person's button sends it.
             generated = _date(str(meta.get("generated_at") or ""))
             if not generated or (now - generated).total_seconds() > self.delivery_retry_days * 86400:
                 continue
