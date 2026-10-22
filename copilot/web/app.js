@@ -7,6 +7,8 @@ const elements = {
   newMeetingError: document.querySelector("#new-meeting-error"),
   newMeetingStatus: document.querySelector("#new-meeting-status"),
   swapPanels: document.querySelector("#swap-panels"),
+  transcriptHide: document.querySelector("#transcript-hide"),
+  transcriptShow: document.querySelector("#transcript-show"),
   meetingTitle: document.querySelector("#meeting-title"),
   liveStatus: document.querySelector("#live-status"),
   captureStatus: document.querySelector("#capture-status"),
@@ -54,7 +56,6 @@ const elements = {
   chat: document.querySelector("#chat"),
   chatLatest: document.querySelector("#chat-latest"),
   welcome: document.querySelector("#welcome"),
-  copilotMeta: document.querySelector("#copilot-meta"),
   form: document.querySelector("#chat-form"),
   question: document.querySelector("#question"),
   send: document.querySelector("#send-button"),
@@ -75,7 +76,6 @@ const elements = {
   meetingChatList: document.querySelector("#meeting-chat-list"),
   meetingChatCount: document.querySelector("#meeting-chat-count"),
   composerWrap: document.querySelector("#composer-wrap"),
-  analysisStatus: document.querySelector("#analysis-status"),
   repoDialog: document.querySelector("#repo-dialog"),
   projectDialog: document.querySelector("#project-dialog"),
   projectClose: document.querySelector("#project-close"),
@@ -108,6 +108,9 @@ const translations = {
     "transcript.loading": "Получаю последние реплики",
     "transcript.tab": "Стенограмма",
     "transcript.copy": "Копировать диалог",
+    "transcript.hide": "Скрыть",
+    "transcript.hide_label": "Скрыть расшифровку",
+    "transcript.show": "Показать расшифровку",
     "transcript.copied": "Диалог скопирован",
     "transcript.copy_empty": "Нет реплик для копирования",
     "transcript.copy_failed": "Не удалось скопировать",
@@ -144,7 +147,6 @@ const translations = {
     "frames.ok": "Последний кадр: {time}.",
     "frames.error": "Ошибка съёмки: {error}",
     "copilot.heading": "Карта звонка и помощник",
-    "copilot.meta": "ИИ читает стенограмму и локальные Git-репозитории",
     "view.chat": "Чат",
     "plan.tab": "Подготовка",
     "plan.links": "Материалы",
@@ -221,11 +223,6 @@ const translations = {
     "message.latest": "К последнему ответу",
     "speaker.voice": "Собеседник {value}",
     "speaker.voice_hint": "Голос различён локально по аудио; имя появится, когда Zoom покажет активного участника",
-    "copilot.active": "Контекст ИИ активен, репозитории доступны только для чтения",
-    "copilot.disconnected": "ИИ подключится после первого вопроса",
-    "analysis.no_signal": "Проверено{when}: новых значимых сигналов нет",
-    "analysis.signal": "Проверено{when}: новые сигналы добавлены в Журнал",
-    "analysis.error": "Автоанализ не выполнен{when}: {error}",
     "provider.other": "Другой Git remote",
     "repos.selected": "Выбраны · {count}",
     "repos.empty": "Ничего не найдено в локальном каталоге",
@@ -335,6 +332,9 @@ const translations = {
     "transcript.loading": "Loading the latest utterances",
     "transcript.tab": "Transcript",
     "transcript.copy": "Copy dialogue",
+    "transcript.hide": "Hide",
+    "transcript.hide_label": "Hide transcript",
+    "transcript.show": "Show transcript",
     "transcript.copied": "Dialogue copied",
     "transcript.copy_empty": "No utterances to copy",
     "transcript.copy_failed": "Could not copy",
@@ -371,7 +371,6 @@ const translations = {
     "frames.ok": "Last frame: {time}.",
     "frames.error": "Capture error: {error}",
     "copilot.heading": "Call map & assistant",
-    "copilot.meta": "AI reads the transcript and local Git repositories",
     "view.chat": "Chat",
     "plan.tab": "Preparation",
     "plan.links": "Materials",
@@ -448,11 +447,6 @@ const translations = {
     "message.latest": "Jump to latest",
     "speaker.voice": "Participant {value}",
     "speaker.voice_hint": "The voice was separated locally from audio; a name appears when Zoom shows the active participant",
-    "copilot.active": "AI context is active; repositories are read-only",
-    "copilot.disconnected": "AI will connect after the first question",
-    "analysis.no_signal": "Checked{when}: no new significant signals",
-    "analysis.signal": "Checked{when}: new signals added to the Journal",
-    "analysis.error": "Auto-analysis failed{when}: {error}",
     "provider.other": "Other Git remote",
     "repos.selected": "Selected · {count}",
     "repos.empty": "Nothing found in the local catalog",
@@ -537,10 +531,13 @@ const translations = {
   },
 };
 
-const savedUiLanguage = localStorage.getItem("meeting-copilot-language");
-let hasExplicitUiLanguage = ["en", "ru"].includes(savedUiLanguage);
-let uiLanguage = hasExplicitUiLanguage ? savedUiLanguage : "ru";
-let inheritedUiLanguage = false;
+// config.json (via /api/preferences) is the one store; localStorage only paints the first frame.
+const cachedUiLanguage = localStorage.getItem("meeting-copilot-language");
+let uiLanguage = ["en", "ru"].includes(cachedUiLanguage) ? cachedUiLanguage : "ru";
+let preferenceEpoch = 0;
+let preferenceSaves = 0;
+let preferenceQueue = Promise.resolve();
+let transcriptHidden = false;
 let panelsSwapped = localStorage.getItem("meeting-copilot-panels-swapped") === "true";
 function applyPanelOrder() {
   const workspace = document.querySelector(".workspace");
@@ -621,10 +618,8 @@ function applyLanguage() {
   document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => {
     node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel));
   });
-  document.querySelectorAll("[data-language]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.language === uiLanguage);
-    button.setAttribute("aria-pressed", String(button.dataset.language === uiLanguage));
-  });
+  const languageSelect = document.querySelector("#interface-language");
+  if (languageSelect) languageSelect.value = uiLanguage;
   const googleAccount = document.querySelector("#google-account");
   if (googleAccount?.dataset.auth) googleAccount.textContent = googleAccount.dataset.auth === "connected"
     ? t("google.account", {account: googleAccount.dataset.account || "gws"}) : t("google.auth");
@@ -711,7 +706,6 @@ const boardExpanded = new Set();
 Object.assign(translations.ru, {
   "meeting.new": "Начать новую встречу", "meeting.cancel": "Отмена",
   "meeting.new_question": "Начать новую встречу?", "meeting.new_confirm": "Да, начать новую встречу",
-  "meeting.new_help": "Сохранит текущую встречу отдельно и начнёт новую. Запись звука не прервётся.",
   "meeting.new_explanation": "Текущая встреча останется в истории. Новая стенограмма и карта будут собираться с момента подтверждения. Звук продолжит записываться в исходный файл.",
   "meeting.new_title": "Название новой встречи (необязательно)",
   "meeting.saving": "Сохраняю разделение…",
@@ -727,7 +721,6 @@ Object.assign(translations.ru, {
 Object.assign(translations.en, {
   "meeting.new": "Start new meeting", "meeting.cancel": "Cancel",
   "meeting.new_question": "Start a new meeting?", "meeting.new_confirm": "Yes, start new meeting",
-  "meeting.new_help": "Save this meeting separately and start a new one. Audio recording will continue.",
   "meeting.new_explanation": "This meeting will remain in history. The new transcript and map will start when you confirm. Audio will continue in the original recording file.",
   "meeting.new_title": "New meeting title (optional)",
   "meeting.saving": "Saving meeting boundary…",
@@ -1585,26 +1578,8 @@ function renderMessages(copilot) {
   }
   elements.chat.dataset.initialized = "true";
   updateChatLatestButton();
-  elements.copilotMeta.textContent = copilot.error
-    ? plainError(copilot.error)
-    : copilot.connected
-      ? t("copilot.active")
-      : t("copilot.disconnected");
-
-  const analysis = copilot.analysis || {};
-  const when = analysis.at ? ` · ${localTime(analysis.at)}` : "";
-  if (analysis.state === "no_signal") {
-    elements.analysisStatus.textContent = t("analysis.no_signal", { when });
-  } else if (analysis.state === "signal") {
-    elements.analysisStatus.textContent = t("analysis.signal", { when });
-  } else if (analysis.state === "error") {
-    elements.analysisStatus.textContent = t("analysis.error", {
-      when,
-      error: plainError(analysis.message),
-    });
-  } else {
-    elements.analysisStatus.textContent = "";
-  }
+  // AI and auto-analysis failures surface in the red blocker banner (getting-started.js);
+  // the normal state needs no status line on the main screen.
 }
 
 function repositoryProvider(repo) {
@@ -2710,21 +2685,13 @@ async function state() {
   if (stateRequestInFlight) return;
   stateRequestInFlight = true;
   try {
+    const epoch = preferenceEpoch;
     const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw apiError({}, response);
     const data = await response.json();
     stateFailures = 0;
-    const defaultLanguage = data.preferences?.interface_language;
-    if (!hasExplicitUiLanguage && !inheritedUiLanguage && ["en", "ru"].includes(defaultLanguage)) {
-      uiLanguage = defaultLanguage;
-      inheritedUiLanguage = true;
-      transcriptSignature = "";
-      frameSignature = "";
-      renderedMessages = "";
-      journalSignature = "";
-      meetingChatSignature = "";
-      applyLanguage();
-    }
+    // A change made here while this request ran wins over the older snapshot.
+    if (epoch === preferenceEpoch && !preferenceSaves) applyPreferences(data.preferences || {});
     const project = data.project || {};
     window.renderReleaseUpdates(data.updates || {});
     window.renderGettingStartedStatus?.(data);
@@ -3031,30 +2998,80 @@ window.addEventListener("resize", setArchiveMode);
 elements.repoSearch.addEventListener("input", renderRepositoryCatalog);
 elements.repoSave.addEventListener("click", () => void saveRepositorySelection());
 
-document.querySelectorAll("[data-language]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const language = button.dataset.language === "en" ? "en" : "ru";
-    hasExplicitUiLanguage = true;
-    localStorage.setItem("meeting-copilot-language", language);
-    if (language === uiLanguage) return;
-    uiLanguage = language;
-    applyLanguage();
-    transcriptSignature = "";
-    frameSignature = "";
-    renderedMessages = "";
-    journalSignature = "";
-    meetingChatSignature = "";
-    setArchiveMode();
-    if (!elements.archiveDialog.hidden) void refreshArchive();
-    if (elements.projectDialog.open) {
-      renderProjectOptions();
-      const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;
-      elements.projectHelp.textContent = t("project.choose_help", {
-        count: repositoryCountLabel(count),
-      });
+function switchUiLanguage(language) {
+  localStorage.setItem("meeting-copilot-language", language);
+  if (language === uiLanguage) return;
+  uiLanguage = language;
+  applyLanguage();
+  transcriptSignature = "";
+  frameSignature = "";
+  renderedMessages = "";
+  journalSignature = "";
+  meetingChatSignature = "";
+  setArchiveMode();
+  if (!elements.archiveDialog.hidden) void refreshArchive();
+  if (elements.projectDialog.open) {
+    renderProjectOptions();
+    const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;
+    elements.projectHelp.textContent = t("project.choose_help", {
+      count: repositoryCountLabel(count),
+    });
+  }
+}
+
+function applyTranscriptHidden(hidden) {
+  transcriptHidden = hidden;
+  document.querySelector(".workspace").classList.toggle("transcript-hidden", hidden);
+  elements.transcriptShow.hidden = !hidden;
+}
+
+// Interface preferences live in the shared config.json; the saved value is authoritative.
+function applyPreferences(preferences) {
+  // No en/ru saved (absent or the native "auto"): keep this browser's language, as before.
+  const language = preferences.interface_language;
+  if (["en", "ru"].includes(language)) switchUiLanguage(language);
+  if (typeof preferences.transcript_hidden === "boolean" && preferences.transcript_hidden !== transcriptHidden) {
+    applyTranscriptHidden(preferences.transcript_hidden);
+  }
+}
+
+// Saves run one at a time in click order, so an older request never lands after a newer one.
+// The epoch moves at the start and the end of each save: a state snapshot that overlapped
+// any save is ignored, the next poll brings the saved value.
+function savePreference(change, status) {
+  preferenceEpoch++;
+  preferenceSaves++;
+  status.textContent = "";
+  preferenceQueue = preferenceQueue.then(async () => {
+    try {
+      await post("/api/preferences", change);
+    } catch (error) {
+      status.textContent = plainError(error);
+    } finally {
+      preferenceSaves--;
+      preferenceEpoch++;
     }
-    void state();
   });
+  return preferenceQueue;
+}
+
+document.querySelector("#interface-language").addEventListener("change", (event) => {
+  const language = event.target.value === "en" ? "en" : "ru";
+  switchUiLanguage(language);
+  void savePreference({ interface_language: language }, document.querySelector("#interface-language-status"));
+  void state();
+});
+
+// Hiding only folds the panel away: recording and live transcription keep running.
+elements.transcriptHide.addEventListener("click", () => {
+  applyTranscriptHidden(true);
+  elements.transcriptShow.focus();
+  void savePreference({ transcript_hidden: true }, elements.newMeetingStatus);
+});
+elements.transcriptShow.addEventListener("click", () => {
+  applyTranscriptHidden(false);
+  elements.transcriptHide.focus();
+  void savePreference({ transcript_hidden: false }, elements.newMeetingStatus);
 });
 
 Object.assign(translations.ru, {

@@ -21,23 +21,18 @@
         <span class="status" id="capture-status" hidden><i></i><span></span></span>
         <span class="status" id="live-status"><i></i><span data-i18n="status.checking">Проверка</span></span>
         <button class="repo-button" id="archive-button" type="button" data-i18n="nav.meetings" aria-expanded="false" aria-controls="archive-dialog">Встречи</button>
-        <button class="quiet-button" id="new-meeting-button" type="button" data-i18n="meeting.new" aria-haspopup="dialog" aria-describedby="new-meeting-help" disabled>Начать новую встречу</button>
+        <button class="quiet-button" id="new-meeting-button" type="button" data-i18n="meeting.new" aria-haspopup="dialog" disabled>Начать новую встречу</button>
         <button class="delivery-alert" id="delivery-alert" type="button" aria-haspopup="dialog" hidden></button>
         <button class="quiet-button" id="updates-notice" type="button" aria-controls="settings-panel" hidden></button>
         <button class="repo-button" id="repo-button" type="button" data-i18n="nav.repositories" aria-haspopup="dialog">Контекст встречи</button>
         <button class="quiet-button" id="settings-open" type="button" data-i18n="settings.open" aria-expanded="false" aria-controls="settings-panel">Настройки</button>
         <button class="quiet-button" id="getting-started-open" type="button" aria-expanded="false" aria-controls="getting-started">Начать работу</button>
-        <div class="language-switch" role="group" aria-label="Interface language" data-i18n-aria-label="language.label">
-          <button data-language="ru" type="button">RU</button>
-          <button data-language="en" type="button">EN</button>
-        </div>
         <button class="quiet-button" id="refresh-button" type="button" data-i18n="common.refresh">Обновить</button>
         <button class="quiet-button" id="swap-panels" type="button" data-i18n="nav.swap_panels" aria-pressed="false">Поменять панели</button>
       </div>
     </header>
 
     <div class="meeting-boundary-bar">
-      <span id="new-meeting-help" data-i18n="meeting.new_help">Сохранит текущую встречу отдельно и начнёт новую. Запись звука не прервётся.</span>
       <span id="new-meeting-status" role="status" aria-live="polite"></span>
     </div>
     <dialog id="new-meeting-dialog" class="meeting-boundary-dialog" aria-labelledby="new-meeting-heading" aria-describedby="new-meeting-explanation">
@@ -58,6 +53,14 @@
         <button class="quiet-button" id="settings-close" type="button" data-i18n="common.close">Закрыть</button>
       </div>
       <div id="settings-content">
+        <section id="language-settings" aria-labelledby="language-settings-heading">
+          <h3 id="language-settings-heading"><label for="interface-language" data-i18n="language.label">Язык интерфейса</label></h3>
+          <select id="interface-language">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+          <p id="interface-language-status" role="status"></p>
+        </section>
         <section id="delivery-settings" class="delivery-settings" aria-labelledby="delivery-settings-heading">
           <h3 id="delivery-settings-heading" data-delivery-text="heading">Хранение и доставка отчетов</h3>
           <p data-delivery-text="local">Записи и отчеты сохраняются на компьютере. Облачные сервисы подключать необязательно.</p>
@@ -184,6 +187,7 @@
             <button class="quiet-button translation-jump" id="translation-jump" type="button" hidden></button>
             <button class="quiet-button copy-dialog-button" id="copy-dialog" type="button" data-i18n="transcript.copy">Копировать диалог</button>
             <button class="quiet-button" id="speaker-edit" type="button" data-i18n="speakers.open">Имена</button>
+            <button class="quiet-button" id="transcript-hide" type="button" data-i18n="transcript.hide" aria-label="Скрыть расшифровку" data-i18n-aria-label="transcript.hide_label">Скрыть</button>
             <div class="view-tabs transcript-tabs" role="group" aria-label="Вид левой панели" data-i18n-aria-label="aria.transcript_view">
               <button class="active" data-transcript-view="transcript" type="button"><span data-i18n="transcript.tab">Стенограмма</span></button>
               <button data-transcript-view="frames" type="button"><span data-i18n="frames.tab">Кадры</span> <span id="frame-count">0</span></button>
@@ -213,8 +217,8 @@
         <div class="pane-header copilot-header">
           <div>
             <h2 id="copilot-heading" data-i18n="copilot.heading">Чат с контекстом</h2>
-            <p id="copilot-meta" data-i18n="copilot.meta">ИИ читает стенограмму и локальные Git-репозитории</p>
           </div>
+          <button class="quiet-button" id="transcript-show" type="button" data-i18n="transcript.show" hidden>Показать расшифровку</button>
         </div>
 
         <section class="delivery-notice" id="delivery-notice" hidden>
@@ -264,7 +268,6 @@
         </div>
 
         <div class="composer-wrap" id="composer-wrap">
-          <div class="analysis-status" id="analysis-status"></div>
           <form class="composer" id="chat-form">
             <label for="question" data-i18n="composer.label">Вопрос или заметка к текущему созвону</label>
             <div class="composer-input">

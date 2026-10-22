@@ -74,7 +74,7 @@ const assert = require('assert/strict');
     await page.locator('#archive-detail .archive-audio-range').filter({hasText:'5:00'}).waitFor();
     assert.equal(await page.locator('#archive-detail .boundary-provenance').count(),1,'History must disclose crossing speech');
     await page.locator('#archive-close').click();
-    await page.locator('[data-language="en"]').click();
+    await page.locator('#settings-open').click(); await page.locator('#interface-language').selectOption('en'); await page.locator('#settings-close').click();
     await button.click();
     assert.equal(await page.locator('#new-meeting-heading').textContent(),'Start a new meeting?');
     assert.equal(await page.locator('#new-meeting-confirm').textContent(),'Yes, start new meeting');

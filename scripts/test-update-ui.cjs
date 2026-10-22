@@ -49,7 +49,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('#updates-notes').waitFor({state: 'visible'});
     assert((await page.locator('#updates-notes').textContent()).includes('<script>'));
     assert.equal(await page.evaluate(() => window.UNSAFE), undefined);
-    await page.locator('[data-language="en"]').click();
+    await page.locator('#interface-language').selectOption('en');
     await page.locator('#updates-check').getByText('Check for updates', {exact: true}).waitFor();
     assert((await page.locator('#updates-safe-install').textContent()).includes('Finish your call'));
     await page.screenshot({path: '/tmp/meetontrack-updates-desktop.png', fullPage: true});
