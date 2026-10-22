@@ -654,7 +654,10 @@ Object.assign(translations.en, {
   "nav.meetings": "Meetings", "archive.title": "Meetings",
   "library.search": "Search titles, participants and content", "library.return": "Return to current call",
   "library.hide": "Hide library", "library.no_results": "No meetings match this search.",
-  "library.recording": "Recording", "library.needs_attention": "Recording needs attention",
+  "library.recording": "Recording",
+  "library.gap_until_end": "The other side's audio stopped at {start} and did not return before the recording ended ({duration}): their last words may be missing.",
+  "library.gap_once": "The other side's audio was lost from {start} to {end}: their words in that stretch may be missing.",
+  "library.gap_many": "The other side's audio was lost {count} times, {duration} in total, first at {start}: their words in those stretches may be missing.",
   "library.report_ready": "Report ready", "library.analysis_ready": "Analysis ready",
   "library.transcript_ready": "Transcript ready", "library.no_speech": "No recognized speech",
   "library.overview": "At a glance", "library.questions": "Open questions", "library.no_overview": "No verified summary yet. Read the transcript or generate a report.",
@@ -671,7 +674,10 @@ Object.assign(translations.ru, {
   "nav.meetings": "Встречи", "archive.title": "Встречи",
   "library.search": "Поиск по названию, участникам и содержимому", "library.return": "Вернуться к текущему звонку",
   "library.hide": "Скрыть историю", "library.no_results": "По этому запросу встречи не найдены.",
-  "library.recording": "Записывается", "library.needs_attention": "Проверьте качество записи",
+  "library.recording": "Записывается",
+  "library.gap_until_end": "Звук собеседников пропал в {start} и не вернулся до конца записи ({duration}): их последние реплики могут отсутствовать.",
+  "library.gap_once": "Звук собеседников пропадал с {start} до {end}: их реплики в этом отрезке могут отсутствовать.",
+  "library.gap_many": "Пропусков звука собеседников: {count}, всего {duration}, первый в {start}. Их реплики в эти отрезки могут отсутствовать.",
   "library.report_ready": "Отчет готов", "library.analysis_ready": "Анализ готов",
   "library.transcript_ready": "Стенограмма готова", "library.no_speech": "Нет распознанной речи",
   "library.overview": "Главное", "library.questions": "Открытые вопросы", "library.no_overview": "Проверенного краткого итога пока нет. Откройте стенограмму или сформируйте отчет.",
@@ -819,6 +825,7 @@ Object.assign(translations.ru, {
   "delivery.state.not_configured": "Не подключен", "delivery.state.idle": "Нет отчетов за последние 3 дня",
   "delivery.state.sent": "Готово · {count}", "delivery.state.pending": "Ожидает отправки · {count}",
   "delivery.state.waiting": "После завершения звонка · {count}",
+  "delivery.state.on_request": "Отправка кнопкой ниже: встреча старше 3 дней",
   "delivery.state.failed": "Не доставлено · {count}", "delivery.state.action_required": "Нужно действие · {count}",
   "delivery.reason.auth_required": "Вход в аккаунт больше не действует. Откройте настройки и подключите аккаунт снова.",
   "delivery.reason.links_missing": "Не получены корректные ссылки Drive. Приложение повторит загрузку.",
@@ -864,6 +871,7 @@ Object.assign(translations.en, {
   "delivery.state.not_configured": "Not connected", "delivery.state.idle": "No reports in the last 3 days",
   "delivery.state.sent": "Ready · {count}", "delivery.state.pending": "Awaiting delivery · {count}",
   "delivery.state.waiting": "After the call ends · {count}",
+  "delivery.state.on_request": "Send with a button below: the meeting is older than 3 days",
   "delivery.state.failed": "Not delivered · {count}", "delivery.state.action_required": "Action needed · {count}",
   "delivery.reason.auth_required": "The account sign-in has expired. Open settings and connect the account again.",
   "delivery.reason.links_missing": "Valid Drive links are missing. The app will retry the upload.",
@@ -2279,6 +2287,16 @@ function archiveDay(value) {
   return { key, label };
 }
 
+// One plain sentence: which part of a finished call lost the other side's audio.
+function audioGapText(meeting) {
+  const gap = meeting.audio_gap;
+  if (!gap) return "";
+  const time = value => new Intl.DateTimeFormat(uiLanguage === "ru" ? "ru-RU" : "en-GB", {timeStyle: "medium"}).format(new Date(value));
+  const values = {start: time(gap.started_at), count: gap.count, duration: archiveDuration(gap.seconds)};
+  if (gap.count > 1) return t("library.gap_many", values);
+  return gap.ended_at ? t("library.gap_once", {...values, end: time(gap.ended_at)}) : t("library.gap_until_end", values);
+}
+
 function archiveDuration(seconds) {
   const total = Math.max(0, Number(seconds) || 0);
   const hours = Math.floor(total / 3600);
@@ -2370,6 +2388,7 @@ function renderArchiveList() {
       textNode("strong", "archive-item-title", meeting.title),
       textNode("span", "archive-item-date", archiveDate(meeting.started_at)),
       textNode("span", `archive-library-status ${meeting.library_status || ""}`, t(`library.${meeting.library_status || "transcript_ready"}`)),
+      textNode("span", "archive-audio-gap", audioGapText(meeting)),
       textNode("span", "archive-item-preview", meeting.preview || ""),
       textNode("span", "archive-item-counts", [
         archiveDuration(meeting.duration_seconds), `${meeting.transcript_count} ${t("archive.utterances")}`,
@@ -2448,6 +2467,7 @@ function renderArchiveDetail(meeting) {
   const overview = document.createElement("section");
   overview.className = "archive-overview";
   overview.append(textNode("h3", "", t("library.overview")));
+  if (meeting.audio_gap) overview.append(textNode("p", "archive-quality-note archive-audio-gap", audioGapText(meeting)));
   if (meeting.overview?.insufficient) overview.append(textNode("p", "archive-quality-note", t("library.short")));
   const points = meeting.overview?.points || [];
   const questions = meeting.overview?.questions || [];
@@ -2577,6 +2597,7 @@ function renderArchiveDetail(meeting) {
   for (const [channel, field] of [["drive", "drive_status"], ["gmail", "mail_status"], ["telegram", "telegram_status"]]) {
     const raw = meeting.report?.[field] || "not_configured";
     const state = raw === "uploaded" || raw === "sent" ? "sent"
+      : meeting.report?.delivery_on_request ? "on_request"
       : raw === "auth_required" ? "action_required" : raw === "waiting_for_end" ? "waiting"
         : raw === "pending" ? "pending" : raw === "not_configured" ? "not_configured" : "failed";
     statuses.push(`${deliveryChannelNames[channel]}: ${t(`delivery.state.${state}`, { count: 1 })}`);

@@ -1999,7 +1999,8 @@ textarea::placeholder {
 .archive-sidebar .archive-list { border: 0; }
 .archive-item.active { box-shadow: none; background: var(--accent-soft); border-color: var(--accent); }
 .archive-library-status { font-size: 12px; color: var(--accent-strong); }
-.archive-library-status.needs_attention { color: var(--danger); }
+.archive-audio-gap { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.archive-audio-gap:empty { display: none; }
 .archive-library-status.no_speech, .archive-item-preview { font-size: 12px; line-height: 1.5; color: var(--muted); }
 .archive-overview { padding-block: 20px; border-block: 1px solid var(--line); margin-block: 20px; max-width: 75ch; }
 .archive-overview h3 { margin: 0 0 12px; font-size: 16px; }

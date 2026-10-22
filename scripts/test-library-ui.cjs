@@ -9,19 +9,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const root = path.resolve(__dirname, '../copilot/web');
   const errors = [], writes = [];
   const meetings = [{meeting_id: 'past', title: 'Integration pilot', started_at: '2026-10-16T10:00:00Z', duration_seconds: 1200,
-    transcript_count: 40, journal_count: 2, frame_count: 0, library_status: 'analysis_ready', preview: 'Discussed the rollout.'},
+    transcript_count: 40, journal_count: 2, frame_count: 0, library_status: 'analysis_ready', preview: 'Discussed the rollout.',
+    // MEETONTRACK-94: the other side's audio stopped 70 s before the end of the call.
+    audio_gap: {started_at: '2026-10-16T10:18:50+00:00', ended_at: '', count: 1, seconds: 70}},
     {meeting_id: 'empty', title: 'Audio check', started_at: '2026-10-15T10:00:00Z', duration_seconds: 300,
       transcript_count: 0, journal_count: 0, frame_count: 0, library_status: 'no_speech'}];
   const detail = { ...meetings[0], status: 'finished', overview: {points: ['Discussed the rollout.'], questions: ['Who approves the pilot?']},
     transcript: [{speaker: 'Alice', timestamp: '2026-10-16T10:01:00Z', text: 'Discussed the rollout.'}],
-    journal: [], frames: [], meeting_chat: [], report: {}, recording_dir: '/synthetic/recordings/past', audio_file: '/synthetic/recordings/past/audio.wav'};
+    journal: [], frames: [], meeting_chat: [], report: {delivery_on_request: true}, recording_dir: '/synthetic/recordings/past', audio_file: '/synthetic/recordings/past/audio.wav'};
   let rewriteState = 'idle';
   const payload = {preferences: {interface_language: 'en'},
     transcript: {meeting_id: 'current', meeting: 'Current call', status: 'finished', live: false, segments: [], speakers: []},
     recording_health: {capture: {audio_recording: false}},
     copilot: {messages: [], busy: false, analysis: {state: 'idle'}}, journal: [], frames: [], meeting_chat: [], project: {}};
   try {
-    const page = await browser.newPage({viewport: {width: 1440, height: 1000}});
+    const page = await browser.newPage({viewport: {width: 1440, height: 1000}, timezoneId: 'Europe/Berlin'});
     page.on('pageerror', error => errors.push(String(error)));
     await page.route('http://library-ui.test/**', async route => {
       const request = route.request(), url = new URL(request.url());
@@ -56,6 +58,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.locator('.workspace').isVisible(), false);
     await page.getByText('Who approves the pilot?', {exact: true}).waitFor();
     assert((await page.locator('#archive-list').textContent()).includes('No recognized speech'));
+    const gap = "The other side's audio stopped at 12:18:50 and did not return before the recording ended (1:10): their last words may be missing.";
+    assert.equal(await page.locator('.archive-item .archive-audio-gap').first().textContent(), gap);
+    assert.equal(await page.locator('#archive-detail .archive-audio-gap').textContent(), gap);
+    assert(!(await page.locator('#archive-list').textContent()).includes('needs attention'));
+    assert((await page.locator('#archive-detail .archive-delivery').textContent()).includes('Send with a button below: the meeting is older than 3 days'));
     await page.locator('#archive-search').fill('Integration');
     await page.waitForFunction(() => document.querySelectorAll('.archive-item').length === 1);
     await page.locator('#archive-search').fill('');
