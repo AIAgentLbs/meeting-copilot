@@ -6,7 +6,7 @@ APP="$CAPTURE/.build/MeetingCopilotCapture.app"
 DONOR="${MEETING_COPILOT_RUNTIME_DONOR:-/Applications/Meeting Copilot Capture.app}"
 BUILD_ROOT="${MEETING_COPILOT_BUILD_ROOT:-$CAPTURE/.build}"
 BIN="$BUILD_ROOT/arm64-apple-macosx/release/meetingcopilot"
-VERSION="${MEETING_COPILOT_VERSION:-0.1.15}"
+VERSION="${MEETING_COPILOT_VERSION:-0.1.16}"
 BUILD="${MEETING_COPILOT_BUILD:-$(git -C "$ROOT" rev-list --count HEAD)}"
 SPARKLE="$(find "$BUILD_ROOT/artifacts/sparkle" -type d -name Sparkle.framework -path '*macos-arm64_x86_64*' | head -1)"
 [[ -x "$BIN" ]] || { echo "Run swift build -c release first" >&2; exit 1; }
