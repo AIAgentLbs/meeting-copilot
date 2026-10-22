@@ -28,6 +28,12 @@ speech models. AI answers are optional and use an AI tool you already have.
   "Ask MeetOnTrack or capture a thought during the conversation." ("Спросите
   MeetOnTrack или запишите мысль по ходу разговора." in Russian).
 - The PDF report is branded MeetOnTrack.
+- Reports of long meetings with many screenshots no longer fail at the PDF
+  step. If a report still cannot be created, the meeting library says so and
+  the meeting has a "Create the report again" button ("Создать отчет заново"
+  in Russian); the app also tries again by itself after 30 minutes. The
+  delivery indicator shows such a report too. The meeting library stays
+  responsive while a report is being made.
 - A call followed right away by another now gets its final transcript and its
   report. Before, the finished call kept only its live text and could be left
   without a report.
@@ -63,10 +69,10 @@ The installer verifies the package checksum. No automatic installer is enabled.
 
 ## Build identity
 
-Application source: `55764ba7e05335f07b839ac2c5d61e6a91c743e2`.
+Application source: `df38488a0a1a22ad2fba0f8c2d8ae05e27ac5555`.
 Native source: `50e7448c880538ab96b57e093b4f7214a7a51de0`
 ([recorder run 39649348946](https://github.com/AIAgentLbs/meetontrack-recorder/actions/runs/39649348946)).
-ZIP SHA-256: `d209149d6edad557ea10c03b5d2c81535e12897702a07821ccfcf86704f80942`.
+ZIP SHA-256: `f4c6470d0b2ef1812897a4bb8c6645726c6829f4e5a553b8d5a17a0a897a44fe`.
 The integrated package version is 0.1.16; its independently versioned native
 component retains 0.6.6. The web update checker compares integrated versions.
 
