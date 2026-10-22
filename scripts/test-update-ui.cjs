@@ -7,7 +7,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 (async () => {
   const browser = await chromium.launch({headless: true});
   const root = path.resolve(__dirname, '../copilot/web');
-  const errors = [];
+  const errors = [], savedPreferences = [];
+  let preferences = {interface_language: 'ru'};
   let updates = {version: '0.1.9', platform: 'macos', channel: 'technical-beta', enabled: true,
     checked_at: 1000, checking: false, notify: true, latest: {version: '0.1.10',
       url: 'https://github.com/AIAgentLbs/meetontrack/releases/tag/v0.1.10',
@@ -25,8 +26,13 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           return route.fulfill({json: {ok: true, updates}});
         }
         if (url.pathname === '/api/updates/check') return route.fulfill({json: {ok: true, updates}});
+        if (url.pathname === '/api/preferences') {
+          savedPreferences.push(route.request().postDataJSON());
+          preferences = {interface_language: savedPreferences.at(-1).interface_language};
+          return route.fulfill({json: {ok: true, preferences}});
+        }
         return route.fulfill({json: url.pathname === '/api/state' ? {
-          updates, transcript: {meeting_id: 'test', meeting: 'Test call', status: 'finished', live: false,
+          updates, preferences, transcript: {meeting_id: 'test', meeting: 'Test call', status: 'finished', live: false,
             segments: [], speakers: []}, copilot: {messages: [], busy: false, analysis: {state: 'idle'}},
           journal: [], frames: [], meeting_chat: [], project: {}} : {ok: true}});
       }
@@ -40,6 +46,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.title(), 'MeetOnTrack by aiagentlbs.com');
     assert.equal(await page.locator('.brand').textContent(), 'MeetOnTrack');
     assert.equal(await page.locator('.brand-company').getAttribute('href'), 'https://aiagentlbs.com/');
+    assert.equal(await page.locator('header select, header [data-language], header .language-switch').count(), 0,
+      'the interface language lives in Settings only, not in the header');
+    assert.equal(await page.locator('#new-meeting-help, #copilot-meta, #analysis-status').count(), 0,
+      'main screen carries no new-meeting help, AI-context subtitle or analysis status line');
     assert.equal(await page.evaluate(() => {
       const brand = document.querySelector('.brand-lockup').getBoundingClientRect();
       const controls = document.querySelector('.status-strip').getBoundingClientRect();
@@ -49,7 +59,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('#updates-notes').waitFor({state: 'visible'});
     assert((await page.locator('#updates-notes').textContent()).includes('<script>'));
     assert.equal(await page.evaluate(() => window.UNSAFE), undefined);
-    await page.locator('[data-language="en"]').click();
+    const language = page.locator('#settings-panel #interface-language');
+    assert.equal(await language.inputValue(), 'ru');
+    assert.equal(await page.getByRole('combobox', {name: 'Язык интерфейса', exact: true}).count(), 1, 'the Settings control has a visible label');
+    await language.selectOption('en');
+    await page.waitForFunction(() => document.documentElement.lang === 'en');
+    assert.deepEqual(savedPreferences, [{interface_language: 'en'}], 'Settings saves the choice through /api/preferences');
     await page.locator('#updates-check').getByText('Check for updates', {exact: true}).waitFor();
     assert((await page.locator('#updates-safe-install').textContent()).includes('Finish your call'));
     await page.screenshot({path: '/tmp/meetontrack-updates-desktop.png', fullPage: true});
@@ -59,10 +74,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.locator('#updates-release').isVisible(), true);
     await page.locator('#updates-enabled').uncheck();
     await page.waitForFunction(() => !document.getElementById('updates-enabled').checked);
+    // The saved choice comes back from config.json even without this browser's local copy.
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => document.documentElement.lang === 'en');
+    assert.equal(await page.locator('#interface-language').inputValue(), 'en');
     await page.setViewportSize({width: 390, height: 844});
     await page.screenshot({path: '/tmp/meetontrack-updates-mobile.png', fullPage: true});
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     assert.deepEqual(errors, []);
-    console.log('PASS: brand, platform notice, settings, notes XSS safety, language switch, dismiss, opt-out, responsive layout');
+    console.log('PASS: brand, platform notice, settings, notes XSS safety, language in Settings saved and restored, dismiss, opt-out, responsive layout');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

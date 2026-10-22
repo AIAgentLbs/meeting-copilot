@@ -28,6 +28,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
       copilot: { messages: [], busy: false, analysis: { state: 'idle' } }, journal: [], frames: [], meeting_chat: [], project: {},
     };
     await page.route('**/api/**', async route => {
+      if (new URL(route.request().url()).pathname === '/api/preferences') return route.fulfill({ json: { ok: true } });
       if (new URL(route.request().url()).pathname === '/api/note') {
         saved.push(route.request().postDataJSON());
         return route.fulfill({ json: { ok: true, note: { timecode: '00:02:44' } } });
@@ -57,14 +58,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || '/Users/m/.cache/c
     await page.waitForFunction(() => document.querySelector('#question').value === '');
     assert.deepEqual(saved, [{ text: 'Follow up on the pilot' }]);
     assert.equal(await hint.isVisible(), true, 'saving feedback must not replace the explanation');
-    await page.locator('[data-language="en"]').click();
+    await page.locator('#settings-open').click(); await page.locator('#interface-language').selectOption('en'); await page.locator('#settings-close').click();
     assert.match(await analysisHelp.textContent(), /questions, risks and decisions/);
     assert.equal(await page.locator('#note-button').textContent(), 'Save note');
     assert.match(await hint.textContent(), /My notes/);
     assert.match(await hint.textContent(), /02:44/);
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await hint.isVisible(), true);
-    await page.locator('[data-language="ru"]').click();
+    await page.locator('#settings-open').click(); await page.locator('#interface-language').selectOption('ru'); await page.locator('#settings-close').click();
     await page.screenshot({ path: '/tmp/meeting-copilot-note-mobile.png', fullPage: true });
     assert.deepEqual(errors, []);
     console.log('Note UI: visible RU/EN explanation, timestamp, real save handler, mobile: OK');
