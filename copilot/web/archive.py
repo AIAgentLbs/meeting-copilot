@@ -28,6 +28,7 @@ from fact_check import with_speakers
 from delivery_health import DeliveryHealth, drive_links_ready
 from recording_health import RecordingLocations
 from question_quality import register_question
+from journal_links import collapse_links
 from delivery_settings import DeliverySettings, enabled as delivery_enabled
 from private_dirs import private_dir
 from canonical_transcript import canonical_segments
@@ -556,7 +557,7 @@ class MeetingArchive:
             "audio_file": self._audio_file(recording),
             "transcript": segments,
             "capture_warnings": list(snapshot.get("capture_warnings") or []),
-            "journal": sorted(journal, key=lambda i: str(i.get("created_at") or "")),
+            "journal": collapse_links(sorted(journal, key=lambda i: str(i.get("created_at") or ""))),
             "frames": sorted(frames, key=lambda i: str(i.get("captured_at") or "")),
             "meeting_chat": sorted(chat, key=lambda i: str(i.get("captured_at") or "")),
             "fact_checks": sorted((i for i in self.fact_checks if str(i.get("meeting_id")) == meeting_id),
@@ -747,10 +748,10 @@ class MeetingArchive:
             [entry for item in chain for entry in item.get("transcript", [])],
             "timestamp",
         )
-        canonical["journal"] = self._dedupe_items(
+        canonical["journal"] = collapse_links(self._dedupe_items(
             [entry for item in chain for entry in item.get("journal", [])],
             "created_at",
-        )
+        ))
         canonical["frames"] = self._dedupe_items(
             [entry for item in chain for entry in item.get("frames", [])],
             "captured_at",
