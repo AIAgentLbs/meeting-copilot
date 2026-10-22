@@ -2053,3 +2053,30 @@ textarea::placeholder {
 .context-folders input { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; padding: 10px; }
 .context-folders button { min-height: 44px; }
 .startup-example { padding: 12px 0; }
+.analysis-status:empty { display: none; }
+
+/* Fact-check strip: its own row, so it never shifts the chat or the composer. */
+.copilot-pane, .copilot-pane:has(.delivery-notice:not([hidden])) { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+.copilot-pane > .pane-header { grid-row: 1; }
+.copilot-pane > .delivery-notice { grid-row: 2; }
+.copilot-pane > .fact-strip { grid-row: 3; }
+.copilot-pane > .copilot-content { grid-row: 4; }
+.copilot-pane > .composer-wrap { grid-row: 5; }
+.fact-strip { padding: 8px 20px 10px; border-bottom: 1px solid var(--line); background: var(--surface); max-height: 38vh; overflow-y: auto; }
+.fact-strip[hidden] { display: none; }
+.fact-strip-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fact-strip-header h3 { margin: 0; font-size: 13px; }
+.fact-strip-header button { font-size: 12px; }
+.fact-notice, .fact-empty { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.fact-list { list-style: none; margin: 4px 0 0; padding: 0; }
+.fact-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.fact-row:first-child { border-top: 0; }
+.fact-icon { width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; background: var(--line-strong); }
+.fact-row.confirmed .fact-icon { background: #3f8a55; }
+.fact-row.unclear .fact-icon { background: #c98a1c; }
+.fact-row.refuted .fact-icon { background: #c43d33; }
+.fact-body p { margin: 0; font-size: 13px; line-height: 1.4; }
+.fact-body .fact-speaker { font-weight: 600; margin-right: 6px; }
+.fact-body .fact-actual { margin-top: 2px; color: var(--danger); }
+.fact-body small { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; }
+.fact-body a { color: var(--accent-strong); }

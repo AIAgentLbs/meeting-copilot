@@ -36,7 +36,8 @@ from first_run import ai_failure, pick_codex
 from private_dirs import private_dir
 
 # The AI tasks. summary and speaker_names run in the Swift recorder; Python lists and checks them.
-PURPOSES = ("live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names")
+PURPOSES = ("live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names",
+            "fact_check")
 NEEDS_IMAGE = {"frame_relevance"}
 CHOICE_KEYS = ("provider", "model", "effort", "speed")
 STANDARD = "standard"  # an explicit "no speed tier" when a model offers tiers
@@ -266,7 +267,7 @@ def _toml(text):
 
 
 class CodexAdapter:
-    name, label, reads_files = "codex", "Codex", True
+    name, label, reads_files, web_search = "codex", "Codex", True, True
 
     def __init__(self, binary=None):
         self.binary = binary or CODEX
@@ -335,7 +336,8 @@ class CodexAdapter:
         mode = windows.get("sandbox") if isinstance(windows, dict) else None
         return ["-c", f"windows.sandbox={_toml(mode)}"] if isinstance(mode, str) and mode else []
 
-    def call(self, choice, prompt, *, executable, env, timeout, roots=(), image=None, resume="", keep_session=False):
+    def call(self, choice, prompt, *, executable, env, timeout, roots=(), image=None, resume="", keep_session=False,
+             web=False):
         workdir, executable = _workdir(), os.path.realpath(executable)
         # Read-only everywhere it is allowed to look; Codex must also read its own package
         # (its sandbox helper re-executes the binary by its resolved path). Writes and
@@ -350,7 +352,9 @@ class CodexAdapter:
         argv += self._windows_sandbox(env)
         argv += ["exec", "resume"] if resume else ["exec"]
         argv += ["--ignore-user-config", "--skip-git-repo-check"]
-        argv += [] if roots else CODEX_ISOLATION  # every turn, first or resumed
+        isolation = [part.replace('"disabled"', '"live"') if web and part.startswith("web_search=") else part
+                     for part in CODEX_ISOLATION]  # web search only for a call that asks for it
+        argv += [] if roots else isolation  # every turn, first or resumed
         if resume:
             argv += ["--json", resume, "-"]
         else:
@@ -372,7 +376,7 @@ class CodexAdapter:
 
 
 class ClaudeAdapter:
-    name, label, reads_files = "claude", "Claude Code", True
+    name, label, reads_files, web_search = "claude", "Claude Code", True, True
     # --restricted confines file tools to the working directories (cwd and --add-dir).
     ISOLATED = ["--restricted", "--setting-sources", "", "--strict-mcp-config"]
     FAST_OPT_IN = {None, "", "sdk_opt_in_required"}  # opt-in is what --settings fastMode does
@@ -432,13 +436,15 @@ class ClaudeAdapter:
             return _available(self, models, account.get("subscriptionType") or auth.get("subscriptionType"), binary)
         return _discovery(self, body)
 
-    def call(self, choice, prompt, *, executable, env, timeout, roots=(), image=None, resume="", keep_session=False):
+    def call(self, choice, prompt, *, executable, env, timeout, roots=(), image=None, resume="", keep_session=False,
+             web=False):
         argv = [executable, "-p", "--output-format", "stream-json", "--verbose", *self.ISOLATED,
                 "--model", choice["model"]]
         argv += ["--effort", choice["effort"]] if choice["effort"] else []
         argv += ["--settings", json.dumps({"fastMode": True})] if choice["speed"] == "fastMode" else []
         argv += [f"--add-dir={root}" for root in roots]
         tools = "Read,Grep,Glob" if roots else "Read" if image else ""
+        tools = ",".join(filter(None, [tools, "WebSearch,WebFetch" if web else ""]))
         argv += ["--tools", tools] + (["--allowedTools", tools] if tools else [])
         argv += ["--resume", resume] if resume else [] if keep_session else ["--no-session-persistence"]
         with _image_dir(image) as directory:
@@ -462,7 +468,7 @@ class ClaudeAdapter:
 class AntigravityAdapter:
     """Discovery only: agy reports permission_mode always-proceed even with --mode plan --sandbox,
     so a read-only, no-tools call cannot be enforced. Re-enable when agy can enforce it."""
-    name, label, reads_files = "antigravity", "Antigravity", False
+    name, label, reads_files, web_search = "antigravity", "Antigravity", False, False
     BLOCKED = "cannot enforce read-only/no-tools: permission_mode always-proceed"
     SUFFIX = re.compile(r"^(.*) \(([^()]+)\)$")
 
@@ -502,7 +508,7 @@ class AntigravityAdapter:
 
 
 class OllamaAdapter:
-    name, label, reads_files = "ollama", "Ollama", False
+    name, label, reads_files, web_search = "ollama", "Ollama", False, False
     SESSIONS, HISTORY = 8, 40  # conversations kept in memory, turn messages kept per conversation (plus its rules)
     REPLY_TOKENS = 4096  # context kept free for the answer (same as Swift LLMBackend.ollamaReplyTokens)
 
@@ -589,7 +595,10 @@ class OllamaAdapter:
             models.append(_model(name, name, efforts, (), "Ollama does not report speed tiers", image=image))
         return _available(self, models, "local")
 
-    def call(self, choice, prompt, *, executable="", env=None, timeout, roots=(), image=None, resume="", keep_session=False):
+    def call(self, choice, prompt, *, executable="", env=None, timeout, roots=(), image=None, resume="", keep_session=False,
+             web=False):
+        if web:
+            raise AIChoiceError("unavailable", "Ollama cannot search the web.")
         if roots:
             raise AIChoiceError("unavailable", "Ollama cannot read the selected repositories. Choose Codex or "
                                                "Claude Code for live analysis, or disconnect the repositories.")
@@ -845,6 +854,19 @@ class AIService:
             raise ValueError(reason)
         self.settings.set_choice(choice)
         return self.status()
+
+    def web_search(self, choice=None):
+        """(searches, labels): whether the provider of `choice` (the stored one when None) can search
+        the web, and which web-capable providers discovery last found installed and signed in here.
+        Only cached discovery is read: this runs on every state poll and must not start a CLI."""
+        choice = self.settings.choice() if choice is None else choice
+        adapter = self.adapters.get((choice or {}).get("provider") if isinstance(choice, dict) else None)
+        now = time.monotonic()
+        with self.lock:
+            found = {name: cached for name, cached in self.cache.items() if now - cached[0] <= self.ttl}
+        return (bool(getattr(adapter, "web_search", False)),
+                [item.label for name, item in self.adapters.items() if getattr(item, "web_search", False)
+                 and name in found and found[name][2].get("state") == "available"])
 
     def run(self, purpose, prompt, ticket=None, **options):
         """Run with the ticket's snapshot (resolved now when none is given)."""

@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, urlsplit, urlunsplit, parse_qs
+from urllib.parse import urldefrag, urlparse, urlsplit, urlunsplit, parse_qs
 
 from archive import MeetingArchive
 from canonical_transcript import canonical_segments
@@ -42,6 +42,7 @@ from meet_participants import meet_active_speaker, meet_participant_labels
 from teams_participants import teams_one_to_one_name, teams_participant_labels
 from first_run import AIReadiness
 from ai_providers import AIChoiceError, AIService
+from fact_check import FactChecks, extraction_rules, fetch_text, parse_claims, strip_claims, verify as verify_fact, with_speakers
 from stt import STTService
 from local_context import LocalContext
 from private_dirs import private_dir
@@ -65,6 +66,7 @@ GOOGLE_CONTEXT = GoogleContext(HOME / ".config/meeting-copilot/google-context.js
 PREPARATIONS_FILE = HOME / ".config/meeting-copilot/preparations.json"
 CALL_PLAN_STATE_FILE = HOME / ".config/meeting-copilot/call-plans-state.json"
 FRAMES_FILE = HOME / ".config/meeting-copilot/frames.json"
+FACT_CHECKS_FILE = HOME / ".config/meeting-copilot/fact-checks.json"
 RECORDINGS_ROOT = HOME / ".local/share/meeting-copilot/recordings"
 RECOVERED_TRANSCRIPTS_ROOT = HOME / ".local/share/meeting-copilot/recovered-transcripts"
 ARCHIVE_ROOT = HOME / ".local/share/meeting-copilot/archive"
@@ -2241,10 +2243,11 @@ ASK формулируй как одну короткую реплику, кот
             )
             prompt += git_metadata(self._roots)
             answer = self._run_ai(prompt)
+            shown = strip_claims(answer).strip() if kind == "insight" else answer  # claim lines feed the fact strip only
             with self.lock:
-                if kind != "insight" or answer.strip() != "НЕТ НОВОГО СИГНАЛА":
+                if shown.strip() and (kind != "insight" or shown.strip() != "НЕТ НОВОГО СИГНАЛА"):
                     self.messages.append({
-                        "role": "assistant", "text": answer, "kind": kind,
+                        "role": "assistant", "text": shown, "kind": kind,
                         "meeting_id": meeting_id,
                     })
                 self._persist_locked()
@@ -2311,6 +2314,51 @@ ARCHIVE = MeetingArchive(
 DELIVERY_RETRY = DeliveryRetry(ARCHIVE)
 GOOGLE_CONTEXT.delivery_settings = ARCHIVE.delivery_settings
 SUMMARY_REWRITES = SummaryRewrites(ARCHIVE, lambda prompt: AI.run("summary_rewrite", prompt, timeout=180))
+
+
+def fact_knowledge(row: dict) -> list[dict]:
+    """Connected knowledge base excerpts for one claim: context folders, then enabled Google sources."""
+    query = row.get("query") or row.get("claim") or ""
+    folders = LOCAL_CONTEXT.generation()
+    found = [{"title": Path(hit["path"]).name, "location": f"{hit['path']}:{hit['line']}", "text": hit["text"]}
+             for hit in LOCAL_CONTEXT.search(query)["items"][:5]]
+    with GOOGLE_CONTEXT._lock:
+        sources, generation, local = GOOGLE_CONTEXT.enabled_sources(), GOOGLE_CONTEXT._generation, len(found)
+    if sources:  # the same account check as the live analysis: never another account's mail or files
+        status, expected = GOOGLE_CONTEXT.status(), GOOGLE_CONTEXT._preferences().get("account", "")
+        if status.get("auth") != "connected" or (expected and expected != status.get("account")):
+            sources = []
+    for source in sources:
+        try:  # _search_source, not search(): the live analysis keeps its own cached Google results
+            hits = GOOGLE_CONTEXT._search_source(source, query).get("items", [])[:3]
+        except (OSError, RuntimeError, ValueError):
+            continue  # an unreachable source only means less evidence, never a verdict
+        with GOOGLE_CONTEXT._lock:
+            if generation != GOOGLE_CONTEXT._generation:  # access changed mid-search: send none of it to the AI
+                return found[:local] if folders == LOCAL_CONTEXT.generation() else []
+        found += [{"title": hit["title"], "location": hit["url"], "text": hit["excerpt"]}
+                  for hit in hits if hit.get("excerpt")]
+    return found if folders == LOCAL_CONTEXT.generation() else found[local:]  # a folder disconnected meanwhile
+
+
+def fact_source(raw: str) -> tuple[str, str | None]:
+    """The cited URL as given (query kept, fragment dropped) when safe_url accepts its host."""
+    url = urldefrag(raw.strip()).url if safe_url(raw) else ""
+    return url, fetch_text(url) if url else None
+
+
+def fact_check_state(transcript: dict) -> dict:
+    """Rows newest first, and whether the chosen AI can check on the web (else what can)."""
+    choice = AI.settings.choice()
+    web, providers = AI.web_search(choice)
+    adapter = AI.adapters.get(choice.get("provider")) if isinstance(choice, dict) else None
+    items = with_speakers(FACT_CHECKS.snapshot(transcript.get("meeting_id", "")), transcript.get("segments", []))
+    return {"items": items, "web": web,
+            "provider": getattr(adapter, "label", ""), "web_providers": providers}
+
+
+FACT_CHECKS = FactChecks(FACT_CHECKS_FILE, lambda row: verify_fact(row, ai=AI, knowledge=fact_knowledge, fetch=fact_source),
+                         idle=lambda: not COPILOT.busy)
 
 
 class AnnotationCache:
@@ -2581,6 +2629,7 @@ class Handler(BaseHTTPRequestHandler):
                     "frame_capture": FRAMES.status_snapshot(),
                     "copilot": COPILOT.snapshot(transcript["meeting_id"]),
                     "journal": JOURNAL.snapshot(transcript["meeting_id"]),
+                    "fact_checks": fact_check_state(transcript),
                     "meeting_chat": MEETING_CHAT.snapshot(transcript["meeting_id"]),
                     "repositories": repository_count(),
                     "all_repositories": repository_count(MANIFEST_FILE),
@@ -2948,6 +2997,7 @@ class Handler(BaseHTTPRequestHandler):
                         '{"id":"...","status":"resolved"|"clarify","evidence":"дословная цитата ответа из текущей стенограммы или чата"}. '
                         "Закрывай только при явном ответе или снятии риска/возражения, не по догадке."
                     )
+                question += extraction_rules(FACT_CHECKS.claims(snap["meeting_id"]))
                 plan = PLANS.snapshot(snap)
                 if plan:
                     checklist = "\n".join(
@@ -2978,7 +3028,9 @@ class Handler(BaseHTTPRequestHandler):
                 PLANS.apply_analysis(snap, answer)
                 JOURNAL.apply_analysis(snap, answer, chat)
                 JOURNAL.capture_questions(snap, answer)
-                signal_answer = re.sub(r"(?m)^(?:PLAN_UPDATE|SIGNAL_UPDATE|QUESTION_CAPTURE)\s*[:—-]\s*\{[^\n]*\}\s*$", "", answer).strip()
+                FACT_CHECKS.add(snap, parse_claims(answer, snap))
+                signal_answer = re.sub(r"(?m)^(?:PLAN_UPDATE|SIGNAL_UPDATE|QUESTION_CAPTURE)\s*[:—-]\s*\{[^\n]*\}\s*$", "",
+                                       strip_claims(answer)).strip()
                 JOURNAL.add_answer(signal_answer, snap["meeting_id"], snap["meeting"])
                 COPILOT.record_analysis(answer=signal_answer or "НЕТ НОВОГО СИГНАЛА", meeting_id=snap["meeting_id"])
                 self._json({"ok": True, "answer": signal_answer or "НЕТ НОВОГО СИГНАЛА"})
@@ -3291,6 +3343,7 @@ def main() -> None:
     health_worker = threading.Thread(target=delivery_health_loop, name="meeting-delivery-health", daemon=True)
     health_worker.start()
     threading.Thread(target=UPDATES.loop, args=(TRANSCRIPT.stop,), name="release-monitor", daemon=True).start()
+    threading.Thread(target=FACT_CHECKS.loop, args=(TRANSCRIPT.stop,), name="fact-checks", daemon=True).start()
     server = ThreadingHTTPServer((HOST, args.port), Handler)
     url = f"http://{HOST}:{args.port}"
     print(f"MeetOnTrack: {url}", flush=True)

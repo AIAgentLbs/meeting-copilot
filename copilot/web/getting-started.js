@@ -76,7 +76,8 @@
     frame_relevance: ["Screenshot relevance", "Отбор снимков экрана"],
     summary_rewrite: ["Summary rewrite", "Переписывание итога"],
     summary: ["Meeting summary", "Итог встречи"],
-    speaker_names: ["Speaker names", "Имена спикеров"]
+    speaker_names: ["Speaker names", "Имена спикеров"],
+    fact_check: ["Fact checking", "Проверка фактов"]
   };
   let aiState = {providers: [], purposes: {}}, draft = null, edited = false;  // edited: the person changed the draft
   const options = {};

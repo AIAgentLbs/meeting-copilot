@@ -78,13 +78,13 @@ class CheckAITests(unittest.TestCase):
             self.assertEqual(readiness.snapshot()["purposes"]["live_analysis"]["state"], "unchecked")
             result = readiness.check()
             options = {call[1][:20]: call[2] for call in adapter.calls}
-            self.assertEqual(len(adapter.calls), 3)  # one text, one image, one file probe shared by six tasks
+            self.assertEqual(len(adapter.calls), 3)  # one text, one image, one file probe shared by seven tasks
             self.assertEqual({call[0]["model"] for call in adapter.calls}, {"m1"})
             self.assertIn("roots", next(o for p, o in options.items() if p.startswith("Read the file")))
             self.assertTrue(next(o for p, o in options.items() if p.startswith("Which colour")).get("image"))
             self.assertEqual(set(result["purposes"]), {"live_analysis", "live_translation", "frame_relevance",
-                                                       "summary_rewrite", "summary", "speaker_names"})
-            for purpose in ("summary_rewrite", "live_translation", "summary", "speaker_names"):
+                                                       "summary_rewrite", "summary", "speaker_names", "fact_check"})
+            for purpose in ("summary_rewrite", "live_translation", "summary", "speaker_names", "fact_check"):
                 self.assertEqual(result["purposes"][purpose]["state"], "ready", purpose)
             self.assertEqual(result["purposes"]["live_analysis"]["state"], "error")  # the fake cannot read files
             self.assertEqual(result["purposes"]["frame_relevance"]["state"], "error")  # nor tell the colour

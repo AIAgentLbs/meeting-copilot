@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 from speaker_edits import SpeakerEdits
+from fact_check import with_speakers
 from delivery_health import DeliveryHealth, drive_links_ready
 from recording_health import RecordingLocations
 from question_quality import register_question
@@ -146,6 +147,10 @@ class MeetingArchive:
     @property
     def meeting_chat(self) -> list[dict]:
         return list(self._index_items("meeting-chat.json"))
+
+    @property
+    def fact_checks(self) -> list[dict]:
+        return list(self._index_items("fact-checks.json"))
 
     def sync_transcript(self, transcript: dict) -> None:
         meeting_id = str(transcript.get("meeting_id") or "").strip()
@@ -430,6 +435,8 @@ class MeetingArchive:
             "journal": sorted(journal, key=lambda i: str(i.get("created_at") or "")),
             "frames": sorted(frames, key=lambda i: str(i.get("captured_at") or "")),
             "meeting_chat": sorted(chat, key=lambda i: str(i.get("captured_at") or "")),
+            "fact_checks": sorted((i for i in self.fact_checks if str(i.get("meeting_id")) == meeting_id),
+                                  key=lambda i: str(i.get("created_at") or "")),
             "participants": participants,
             "report": report_meta,
         }
@@ -437,6 +444,7 @@ class MeetingArchive:
             if field in snapshot:
                 result[field] = snapshot[field]
         annotated = self.annotate_speakers({**result, "segments": segments})
+        annotated["fact_checks"] = with_speakers(annotated["fact_checks"], annotated["segments"])  # corrections reach rows
         annotated["transcript"] = annotated.pop("segments")
         return self._library_detail(annotated)
 
@@ -605,6 +613,10 @@ class MeetingArchive:
         canonical["meeting_chat"] = self._dedupe_items(
             [entry for item in chain for entry in item.get("meeting_chat", [])],
             "captured_at",
+        )
+        canonical["fact_checks"] = self._dedupe_items(
+            [entry for item in chain for entry in item.get("fact_checks", [])],
+            "created_at",
         )
         participants: list[dict] = []
         participant_names: set[str] = set()
@@ -1033,6 +1045,9 @@ class MeetingArchive:
             "chat": detail.get("meeting_chat", []),
             "participants": detail.get("participants", []),
         }
+        settled = [item for item in detail.get("fact_checks", []) if item.get("status") != "checking"]
+        if settled:  # absent when empty, so reports made before fact checks keep their signature
+            material["fact_checks"] = settled
         return hashlib.sha256(
             json.dumps(material, ensure_ascii=False, sort_keys=True).encode("utf-8")
         ).hexdigest()
@@ -1732,6 +1747,30 @@ class MeetingArchive:
         )
         return ranked, main
 
+    @staticmethod
+    def _fact_checks_html(items: list[dict], esc) -> str:
+        """Settled checks only; a link appears only for a source the app verified."""
+        labels = {"confirmed": "Подтверждено", "refuted": "Опровергнуто",
+                  "unclear": "Нет подтверждения или опровержения"}
+        rows = []
+        for item in items:
+            if item.get("status") not in labels:
+                continue
+            segment = item.get("segment") or {}
+            assigned = segment.get("speaker_identity") == "manual" or segment.get("speaker_id") == "unassigned"
+            speaker = "Вы" if segment.get("source") == "microphone" and not assigned else (
+                segment.get("speaker_label") or segment.get("speaker") or "Собеседник")
+            links = []
+            for source in item.get("sources", []) if item.get("status") != "unclear" else []:
+                url = str(source.get("url") or source.get("location") or "")
+                links.append(f'<a href="{esc(url)}">{esc(url)}</a>' if url.startswith(("https://", "http://"))
+                             else esc(url))
+            fact = f'<p>На самом деле: {esc(item.get("fact"))}</p>' if item.get("status") == "refuted" else ""
+            source_html = f'<small class="provenance">Источник: {", ".join(links)}</small>' if links else ""
+            rows.append(f'<article class="note"><div class="time">{esc(labels[item["status"]])} · {esc(speaker)}</div>'
+                        f'<p>{esc(item.get("claim"))}</p>{fact}{source_html}</article>')
+        return "".join(rows)
+
     def _report_html(self, detail: dict, frames: list[dict]) -> str:
         esc = lambda value: html.escape(str(value or ""))
         def provenance(item):
@@ -1830,6 +1869,9 @@ class MeetingArchive:
         if detail.get("participants"):
             toc.append('<li><a href="#participants">Справка о собеседниках</a></li>')
         toc.append('<li><a href="#notes">Заметки и сигналы</a></li>')
+        facts_html = self._fact_checks_html(detail.get("fact_checks", []), esc)
+        if facts_html:
+            toc.append('<li><a href="#fact-checks">Проверка фактов</a></li>')
         if detail["meeting_chat"]:
             toc.append('<li><a href="#chat">Чат встречи</a></li>')
         if frames:
@@ -1955,6 +1997,7 @@ h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:
 <nav class="toc"><h2>Оглавление</h2><ol>{''.join(toc)}</ol></nav>
 {f'<section id="participants"><h2>Справка о собеседниках</h2>{participants_html}</section>' if participants_html else ''}
 <section id="notes"><h2>Заметки и сигналы</h2>{''.join(notes_sections) or '<p class="empty">Заметок пока нет.</p>'}</section>
+{f'<section id="fact-checks"><h2>Проверка фактов</h2>{facts_html}</section>' if facts_html else ''}
 {f'<section id="chat"><h2>Чат встречи</h2>{chat_html}</section>' if chat_html else ''}
 {f'<section id="frames" class="page-break"><h2>Ключевые кадры</h2><div class="frames">{frames_html}</div></section>' if frames_html else ''}
 {f'<section id="transcript" class="page-break"><h2>Стенограмма</h2>{transcript_html}</section>' if transcript_html else ''}

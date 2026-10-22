@@ -48,8 +48,8 @@
   },
   "$defs": {
     "task": {
-      "description": "The AI tasks, all run on ai.choice. Python runs the first four; Swift runs summary and speaker_names. A task the choice cannot do (frame_relevance needs a model discovery reports as accepting images; live_analysis with selected repositories needs Codex or Claude Code) is unavailable with its reason; no other task is affected and nothing falls back to another model.",
-      "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names"]
+      "description": "The AI tasks, all run on ai.choice. Python runs the first four and fact_check; Swift runs summary and speaker_names. fact_check searches the web only through a provider that can (Codex, Claude Code); with any other it checks the connected knowledge base only. A task the choice cannot do (frame_relevance needs a model discovery reports as accepting images; live_analysis with selected repositories needs Codex or Claude Code) is unavailable with its reason; no other task is affected and nothing falls back to another model.",
+      "enum": ["live_analysis", "live_translation", "frame_relevance", "summary_rewrite", "summary", "speaker_names", "fact_check"]
     },
     "sttChoice": {
       "type": "object",
