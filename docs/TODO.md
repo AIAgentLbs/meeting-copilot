@@ -176,6 +176,9 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-91: Zoom tile names mixing Cyrillic and Latin are misread by OCR ("Катя из Kumar&Solo" -> "ат umar&Sol" on 2026-10-22) and the garbled name reaches the transcript; re-OCR the highlighted label crop at higher scale with ru+en and snap to the full label seen in other frames (capture zoom-frame-inspector, copilot/web/server.py _speaker_from_frame).
 - [ ] MEETONTRACK-92: An unreadable or undated report status said "Не читается состояние отчета. Проверьте локальный архив" with no action.
   Fixed in release/0.1.15 (`archive.py` `repair_report_states`): rebuilt from the report folder, or one "create the report again" button; close after release.
+- [ ] MEETONTRACK-93: 0.1.15 review leftovers (P2): a repaired report whose PDF is older than the 3-day window and was never
+  tracked is skipped as historical, so no Send again is offered (`archive.py` `repair_report_states`, exempt `state_repaired_at`);
+  a resend still sending after the 5-minute poll shows "Could not send" (`app.js` `resendReport`, show "may not have arrived").
 - [ ] MEETONTRACK-89: Mac call-audio capture fades to silence during Chrome calls (39 of 53 min lost on 2026-10-21);
   watchdog fix ee2e6cf limits it; live A/B against an output-clocked aggregate on the next real call.
 - [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.
