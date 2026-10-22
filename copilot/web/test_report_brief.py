@@ -43,7 +43,7 @@ class ReportBriefTests(unittest.TestCase):
             page = archive._report_html(detail, [])
         self.assertLess(page.index('id="overview"'), page.index('class="toc"'))
         self.assertLess(page.index('id="followups"'), page.index('class="toc"'))
-        self.assertIn("Основной спикер по объёму распознанной речи: <strong>Ana Silva</strong>", page)
+        self.assertIn("Основной спикер по объему распознанной речи: <strong>Ana Silva</strong>", page)
         self.assertIn("ana@example.com", page)
         self.assertIn("@ana_silva", page)
         self.assertIn("Публично: Founder of Prima", page)
@@ -57,7 +57,7 @@ class ReportBriefTests(unittest.TestCase):
             "transcript": [{"speaker": "Спикер 1", "text": "Привет"}],
         })
         self.assertEqual(people, [])
-        self.assertEqual(main, "Не определён по записи")
+        self.assertEqual(main, "Не определен по записи")
 
     def test_audio_loss_preserves_roster_but_does_not_claim_main_speaker(self):
         people, main = MeetingArchive._front_participants({
@@ -65,7 +65,7 @@ class ReportBriefTests(unittest.TestCase):
             "transcript": [{"speaker": "Ana Silva", "text": "A long recognised introduction."}],
         })
         self.assertEqual(people[0]["name"], "Ana Silva")
-        self.assertEqual(main, "Не определён по записи")
+        self.assertEqual(main, "Не определен по записи")
 
     def test_named_speaker_is_not_declared_main_when_unknown_voice_dominates(self):
         people, main = MeetingArchive._front_participants({
@@ -76,7 +76,7 @@ class ReportBriefTests(unittest.TestCase):
             ],
         })
         self.assertEqual(people[0]["name"], "Ana Silva")
-        self.assertEqual(main, "Не определён по записи")
+        self.assertEqual(main, "Не определен по записи")
 
     def test_meet_account_labels_are_listed_without_claiming_voice_identity(self):
         people, main = MeetingArchive._front_participants({
@@ -89,7 +89,7 @@ class ReportBriefTests(unittest.TestCase):
             ],
         })
         self.assertEqual({item["name"] for item in people}, {"Dmitry Brich", "performance sports", "mf"})
-        self.assertEqual(main, "Не определён по записи")
+        self.assertEqual(main, "Не определен по записи")
 
     def test_spoken_address_corroborates_account_but_not_speaker(self):
         people, main = MeetingArchive._front_participants({
@@ -99,7 +99,7 @@ class ReportBriefTests(unittest.TestCase):
         })
         emerson = next(item for item in people if item["name"] == "Emerson Moraes")
         self.assertIn("имя звучит в разговоре", emerson["seen"])
-        self.assertEqual(main, "Не определён по записи")
+        self.assertEqual(main, "Не определен по записи")
 
     def test_followup_requires_actual_action(self):
         self.assertEqual(

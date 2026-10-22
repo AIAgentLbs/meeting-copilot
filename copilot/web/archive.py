@@ -99,11 +99,11 @@ def _shared_indexes(method):
 class MeetingArchive:
     """Joins transcript, notes, Zoom chat, screenshots and recording metadata."""
 
-    product_name = "Meeting Copilot by aiagentlbs.com"
+    product_name = "MeetOnTrack by aiagentlbs.com"
     delivery_retry_days = 3
     generic_titles = {
         "", "Google Chrome", "Google Chrome Helper", "Google Chrome Helper (Renderer)",
-        "Meeting Copilot", "Meeting Copilot Capture", "Zoom", "zoom.us",
+        "Meeting Copilot", "Meeting Copilot Capture", "MeetOnTrack", "Zoom", "zoom.us",
     }
 
     def __init__(
@@ -447,7 +447,7 @@ class MeetingArchive:
             str(item.get("window_title") or "").replace(" 🔊", "").strip()
             for item in frames
         ]
-        visible = [value for value in visible if value and "Meeting Copilot" not in value]
+        visible = [value for value in visible if value and "Meeting Copilot" not in value and "MeetOnTrack" not in value]
         if visible:
             most_common = Counter(visible).most_common(1)[0][0]
             if cls._is_generic_title(title) and not cls._is_generic_title(most_common):
@@ -1167,7 +1167,7 @@ class MeetingArchive:
             if not temporary.is_file() or temporary.stat().st_size <= 4096:
                 raise RuntimeError("Chrome не создал PDF")
             if temporary.read_bytes()[:4] != b"%PDF":
-                raise RuntimeError("Chrome создал повреждённый PDF")
+                raise RuntimeError("Chrome создал поврежденный PDF")
             temporary.replace(pdf_path)
         finally:
             process.terminate()
@@ -1655,10 +1655,10 @@ class MeetingArchive:
             mail_error.clear()
             subject = f"{self.product_name}: {detail['title']} — {stamp}"
             body = (
-                f"Отчёт по встрече «{detail['title']}» от {stamp}.\n\n"
+                f"Отчет по встрече «{detail['title']}» от {stamp}.\n\n"
                 f"Сформирован {self.product_name}.\n"
                 + ("HTML и PDF сохранены в Google Drive. " if drive_status == "uploaded"
-                   else "Google Drive пока недоступен; PDF сохранён локально. ")
+                   else "Google Drive пока недоступен; PDF сохранен локально. ")
                 + "PDF приложен к письму."
                 + links_text
             )
@@ -1819,7 +1819,7 @@ class MeetingArchive:
     def _known_speaker(value: object) -> bool:
         name = str(value or "").strip()
         return bool(name) and not (
-            name.casefold() in {"я", "me", "you", "собеседник", "собеседники", "participant", "участник", "голос не подтверждён", "распределить"}
+            name.casefold() in {"я", "me", "you", "собеседник", "собеседники", "participant", "участник", "голос не подтверждён", "голос не подтвержден", "распределить"}
             or re.fullmatch(r"(?:спикер|speaker|remote|участник)[ -]?\d+", name, re.IGNORECASE)
         )
 
@@ -1895,7 +1895,7 @@ class MeetingArchive:
             spoken[0]["name"]
             if not detail.get("capture_warnings") and spoken
             and spoken[0]["speech"] >= max(speech_by_label.values(), default=0)
-            else "Не определён по записи"
+            else "Не определен по записи"
         )
         return ranked, main
 
@@ -1965,13 +1965,13 @@ class MeetingArchive:
         sources = Counter(str(item.get("source") or "") for item in detail.get("transcript", []))
         audio_identity_note = (
             '<p class="uncertain">Потеряна системная дорожка собеседника. '
-            'На отмеченном участке голос не подтверждён; подпись «Я» не означает, '
+            'На отмеченном участке голос не подтвержден; подпись «Я» не означает, '
             'что эту реплику произнесли вы. Пропавшее аудио восстановить из текста нельзя.</p>'
             if detail.get("capture_warnings") else
-            f'<p class="uncertain">Фрагменты стенограммы: удалённый звук — {sources["system"]}, '
-            f'локальный микрофон — {sources["microphone"]}. Удалённый канал не разделён '
-            'надёжно между участниками.</p>'
-            if main_speaker == "Не определён по записи" and sources["system"] else ""
+            f'<p class="uncertain">Фрагменты стенограммы: удаленный звук — {sources["system"]}, '
+            f'локальный микрофон — {sources["microphone"]}. Удаленный канал не разделен '
+            'надежно между участниками.</p>'
+            if main_speaker == "Не определен по записи" and sources["system"] else ""
         )
         roster = "".join(
             f'<li><strong>{esc(person["name"])}</strong> · {esc(", ".join(sorted(person["seen"]))) or "участник"}'
@@ -2106,7 +2106,7 @@ class MeetingArchive:
                 f'<article class="participant"><h3>{esc(participant.get("name") or "Собеседник")}</h3>'
                 f'<div class="identities">{"".join(identities)}</div>'
                 f'<p>{esc(participant.get("public_summary") or "")}</p>'
-                f'{"<h4>Подтверждённая публичная информация</h4><ul>" + "".join(public_facts) + "</ul>" if public_facts else ""}'
+                f'{"<h4>Подтвержденная публичная информация</h4><ul>" + "".join(public_facts) + "</ul>" if public_facts else ""}'
                 f'{"<h4>Предыдущая коммуникация</h4>" + "".join(correspondence) if correspondence else ""}'
                 f'{"<h4>Ограничения данных</h4><ul class=\"caveats\">" + caveats + "</ul>" if caveats else ""}'
                 f'</article>'
@@ -2116,7 +2116,7 @@ class MeetingArchive:
         return f'''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><title>{title}</title>
 <style>
-@page {{ size: A4; margin: 18mm 17mm 20mm; @bottom-center {{ content: "Meeting Copilot by aiagentlbs.com · " counter(page) " / " counter(pages); color:#66736d; font-size:9pt; }} }}
+@page {{ size: A4; margin: 18mm 17mm 20mm; @bottom-center {{ content: "MeetOnTrack by aiagentlbs.com · " counter(page) " / " counter(pages); color:#66736d; font-size:9pt; }} }}
 *{{box-sizing:border-box}} body{{font-family:"DejaVu Sans",Arial,sans-serif;color:#18211e;line-height:1.48;font-size:10.5pt;margin:0;letter-spacing:0}}
 h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:18pt;color:#174c3e;border-bottom:1px solid #cad7d2;padding-bottom:2mm;margin:11mm 0 4mm}} h3{{font-size:13pt;margin:7mm 0 2mm}}
 .brand{{font-size:9pt;text-transform:uppercase;letter-spacing:.13em;color:#2c6958;font-weight:700;margin-bottom:5mm}} .meta{{display:flex;gap:10mm;color:#56615d;margin-bottom:8mm}}
@@ -2134,10 +2134,10 @@ h1{{font-size:26pt;line-height:1.1;margin:0 0 8mm;color:#174c3e}} h2{{font-size:
 .frames{{display:grid;grid-template-columns:1fr 1fr;gap:5mm}} figure{{margin:0;break-inside:avoid}} img{{width:100%;height:auto;border:1px solid #d5ddd9;border-radius:5px}} figcaption{{font-size:8.5pt;color:#65706c;margin-top:1mm}}
 .empty{{color:#6c7773;font-style:italic}} .page-break{{break-before:page}}
 </style></head><body>
-<div class="brand">Meeting Copilot by aiagentlbs.com</div><h1>{title}</h1>
+<div class="brand">MeetOnTrack by aiagentlbs.com</div><h1>{title}</h1>
 <div class="meta"><span>{esc(date_label)}</span><span>Длительность {esc(duration)}</span><span>{len(detail['transcript'])} реплик</span></div>
 <section id="overview" class="opening"><h2>Участники</h2>
-<p class="main-speaker">Основной спикер по объёму распознанной речи: <strong>{esc(main_speaker)}</strong></p>
+<p class="main-speaker">Основной спикер по объему распознанной речи: <strong>{esc(main_speaker)}</strong></p>
 <ul class="roster">{roster or '<li>Имена участников не подтверждены записью или чатом.</li>'}</ul>
 {active_tile_note}
 {audio_identity_note}
