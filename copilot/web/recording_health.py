@@ -320,15 +320,15 @@ def default_guard() -> RecognitionGuard:
 def notify_owner(reason: str):
     # Generic, fixed copy: never expose a meeting title, transcript or pathname.
     messages = {
-        "audio_track_stalled": "Аудиодорожка перестала записываться. Проверьте Meeting Copilot: запись может быть неполной.",
-        "recognition_retries_exhausted": "Расшифровка не восстановилась после повторов. Звук сохраняется отдельно; проверьте Meeting Copilot.",
+        "audio_track_stalled": "Аудиодорожка перестала записываться. Проверьте MeetOnTrack: запись может быть неполной.",
+        "recognition_retries_exhausted": "Расшифровка не восстановилась после повторов. Звук сохраняется отдельно; проверьте MeetOnTrack.",
         "recognition_resume_failed": "Не удалось возобновить расшифровку. Аудиозапись не перезапускалась.",
-        "recovered": "Запись звука и расшифровка Meeting Copilot снова подтверждены.",
+        "recovered": "Запись звука и расшифровка MeetOnTrack снова подтверждены.",
     }
     message = messages.get(reason)
     if message:
         subprocess.run(["/usr/bin/osascript", "-e",
-                        'on run argv\ndisplay notification (item 1 of argv) with title "Meeting Copilot"\nend run',
+                        'on run argv\ndisplay notification (item 1 of argv) with title "MeetOnTrack"\nend run',
                         message], capture_output=True, text=True, timeout=4, check=False)
 
 

@@ -103,6 +103,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     facts.web = true;
     await page.waitForFunction(() => !document.querySelector('#call-board .facts .fact-notice'));
 
+    // A verdict landing while the owner reads further down keeps the list where it was.
+    facts.items.push(...Array.from({ length: 15 }, (_, i) => row(`long${i}`, 'checking', { claim: `Long claim ${i} `.repeat(12) })));
+    const factList = strip.locator('.board-list');
+    await page.waitForFunction(() => document.querySelectorAll('#call-board .facts .fact-row').length === 20);
+    await factList.evaluate(node => { node.scrollTop = 300; });
+    facts.items.at(-1).status = 'confirmed';
+    await page.waitForFunction(() => document.querySelectorAll('#call-board .facts .fact-row.confirmed').length === 2);
+    assert.equal(await factList.evaluate(node => node.scrollTop), 300, 'fact list scroll survives an update');
+
     for (const width of [900, 700, 390]) {  // narrower panes wrap the columns, never scroll sideways
       await page.setViewportSize({ width, height: 900 });
       const overflow = await page.evaluate(() => [...document.querySelectorAll('html, #call-board, .board-columns')]

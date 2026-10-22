@@ -202,7 +202,7 @@
         <div class="transcript" id="transcript" aria-live="polite">
           <div class="empty-state">
             <strong data-i18n="transcript.empty_title">Жду стенограмму</strong>
-            <span data-i18n="transcript.empty_text">MeetOnTrack передаёт локальную расшифровку примерно раз в секунду.</span>
+            <span data-i18n="transcript.empty_text">MeetOnTrack передает локальную расшифровку примерно раз в секунду.</span>
           </div>
         </div>
         <div class="frames" id="frames" hidden>
@@ -259,7 +259,7 @@
                 data-i18n-aria-label="composer.label"
                 rows="2"
                 maxlength="8000"
-                placeholder="Спросите Copilot или запишите мысль по ходу разговора."
+                placeholder="Спросите MeetOnTrack или запишите мысль по ходу разговора."
                 data-i18n-placeholder="composer.placeholder"
               ></textarea>
               <div class="composer-buttons">
@@ -278,7 +278,7 @@
         <div class="repo-dialog-header">
           <div>
             <h2 data-i18n="project.choose_title">Контекст этой встречи</h2>
-            <p data-i18n="project.choose_description">Подключите папки и Google Drive для поиска. Выбор Git-проекта ниже действует только для этой встречи; подключённые источники сохраняются до отключения.</p>
+            <p data-i18n="project.choose_description">Подключите папки и Google Drive для поиска. Выбор Git-проекта ниже действует только для этой встречи; подключенные источники сохраняются до отключения.</p>
           </div>
           <button class="icon-button" id="project-close" aria-label="Закрыть" data-i18n-aria-label="common.close" type="button">×</button>
         </div>
@@ -299,11 +299,11 @@
           <p id="google-account" role="status" aria-live="polite"></p>
           <div class="google-connection-actions">
             <button class="quiet-button" id="google-connect" type="button" data-i18n="google.connect">Подключить Google</button>
-            <button class="quiet-button" id="google-disconnect" type="button" data-i18n="google.disconnect">Отключить Google от Copilot</button>
+            <button class="quiet-button" id="google-disconnect" type="button" data-i18n="google.disconnect">Отключить Google от MeetOnTrack</button>
             <button class="quiet-button" id="google-check" type="button" data-i18n="google.check">Проверить подключение</button>
           </div>
           <p data-i18n="google.automatic">После подключения и выбора источников LLM сам формулирует поисковые запросы по вопросу или теме звонка. Репозитории остаются дополнительным источником, а не единственным.</p>
-          <p data-i18n="google.calendar_note">При включении Calendar Copilot также сопоставляет подготовку с событиями дня звонка.</p>
+          <p data-i18n="google.calendar_note">При включении Calendar MeetOnTrack также сопоставляет подготовку с событиями дня звонка.</p>
           <fieldset id="google-sources">
             <legend data-i18n="google.sources">Где искать</legend>
             <label><input type="checkbox" value="calendar" /> Google Calendar</label>
@@ -319,7 +319,7 @@
             <button class="quiet-button" id="google-search" type="submit" data-i18n="google.search">Найти для текущего звонка</button>
           </form>
           </details>
-          <p data-i18n="google.limits">Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 результатов; для первых 2 — фрагменты Google Docs или A1:Z80 первого листа Google Sheets. Другие форматы и ошибки чтения помечаются как «только метаданные». Результаты используются 10 минут; изменение источников очищает их. Отправка отчётов настраивается отдельно.</p>
+          <p data-i18n="google.limits">Calendar: −90/+30 дней. Gmail: до 3 писем за год, заголовки и фрагменты. Drive: до 5 результатов; для первых 2 — фрагменты Google Docs или A1:Z80 первого листа Google Sheets. Другие форматы и ошибки чтения помечаются как «только метаданные». Результаты используются 10 минут; изменение источников очищает их. Отправка отчетов настраивается отдельно.</p>
           <p id="google-message" role="status" aria-live="polite"></p>
           <div id="google-results"></div>
         </details>
@@ -345,7 +345,7 @@
         </div>
         <div class="repo-list" id="repo-list"></div>
         <div class="repo-dialog-footer">
-          <span id="repo-help" data-i18n="repos.help">Список берётся из локального каталога — клонирования и сетевых Git-команд нет.</span>
+          <span id="repo-help" data-i18n="repos.help">Список берется из локального каталога — клонирования и сетевых Git-команд нет.</span>
           <div>
             <button class="quiet-button" value="cancel" type="submit" data-i18n="common.cancel">Отмена</button>
             <button class="send-button" id="repo-save" value="default" type="button" data-i18n="repos.save">Сохранить набор</button>
@@ -359,7 +359,7 @@
         <div class="archive-header">
           <div>
             <h2 id="archive-heading" data-i18n="archive.title">Встречи</h2>
-            <p id="archive-description" data-i18n="archive.description">Стенограммы, заметки, чат, кадры и отчёты хранятся локально.</p>
+            <p id="archive-description" data-i18n="archive.description">Стенограммы, заметки, чат, кадры и отчеты хранятся локально.</p>
           </div>
           <button class="quiet-button" id="archive-close" type="button">Скрыть историю</button>
         </div>
@@ -378,7 +378,7 @@
           <section class="archive-detail" id="archive-detail">
             <div class="empty-state">
               <strong data-i18n="archive.select_title">Выберите встречу</strong>
-              <span data-i18n="archive.select_text">Здесь появятся её материалы и готовые отчёты.</span>
+              <span data-i18n="archive.select_text">Здесь появятся ее материалы и готовые отчеты.</span>
             </div>
           </section>
         </div>

@@ -417,7 +417,7 @@ class RepositoryScope:
 
     def set_selection(self, meeting_id: str, value: str) -> None:
         if not meeting_id or len(meeting_id) > 200:
-            raise ValueError("Встреча ещё не определена")
+            raise ValueError("Встреча еще не определена")
         if value not in {item["value"] for item in self.choices()}:
             raise ValueError("Выберите проект или репозиторий из списка")
         with self.selection_lock:
@@ -1342,7 +1342,7 @@ class TranscriptState:
                                      part["meeting_id"], part["meeting"], "transcript")
         except FileNotFoundError:
             with self.lock:
-                self.error = "MeetOnTrack ещё не начал live-расшифровку"
+                self.error = "MeetOnTrack еще не начал live-расшифровку"
                 self.updated_at = datetime.now().astimezone().isoformat(timespec="seconds")
         except (OSError, ValueError, TypeError, RuntimeError) as exc:
             with self.lock:
@@ -2086,7 +2086,7 @@ class CodexSession:
     def invalidate_context(self) -> None:
         with self.lock:
             if self.busy:
-                raise RuntimeError("Copilot is answering now")
+                raise RuntimeError("MeetOnTrack is answering now")
             self.thread_id = ""
             self.meeting_id = ""
             self.last_error = ""
@@ -2199,7 +2199,7 @@ ASK формулируй как одну короткую реплику, кот
         ticket = AI.resolve("live_analysis")  # one snapshot for every call of this question
         with self.lock:
             if self.busy:
-                raise RuntimeError("Copilot уже отвечает на другой вопрос")
+                raise RuntimeError("MeetOnTrack уже отвечает на другой вопрос")
             if meeting_id and self.meeting_id and meeting_id != self.meeting_id:
                 self.thread_id = ""
                 self.last_analyzed_fingerprint = ""

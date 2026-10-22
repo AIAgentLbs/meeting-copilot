@@ -1,5 +1,6 @@
 // Real UI files, synthetic API only: the owner's Chat holds only his questions, notes and answers;
-// auto-analysis lands on Call overview; one chat tab; status filters persist in shared preferences.
+// auto-analysis lands on Call overview; one chat tab; status filters persist in shared preferences;
+// the assistant is called MeetOnTrack and RU copy has no "ё".
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -75,7 +76,15 @@ const errors = [];
     const messages = await chat.locator('.message').evaluateAll(nodes => nodes.map(node => [
       node.querySelector('.message-label').textContent, node.querySelector('.message-text').textContent]));
     assert.deepEqual(messages, [['Вы', 'Что они сказали?'], ['Ваша заметка', 'Моя заметка про бюджет'],
-      ['Copilot', 'Про пилот в понедельник.']], 'no auto-analysis and no thinking bubble for it');
+      ['MeetOnTrack', 'Про пилот в понедельник.']], 'no auto-analysis and no thinking bubble for it');
+    assert.equal(await page.locator('#question').getAttribute('placeholder'), 'Спросите MeetOnTrack или запишите мысль по ходу разговора.');
+
+    // RU copy carries no "ё": the whole dictionary and the page as shipped.
+    const ruCopy = await page.evaluate(() => JSON.stringify(translations.ru));
+    assert(ruCopy.length > 5000, 'the RU dictionary was read');
+    assert.doesNotMatch(ruCopy, /[ёЁ]/, 'no ё in the RU dictionary');
+    assert.doesNotMatch(await fs.readFile(path.join(root, 'index.html'), 'utf8'), /[ёЁ]/, 'no ё in index.html defaults');
+    assert.doesNotMatch(await page.locator('body').innerText(), /Copilot/, 'the assistant is MeetOnTrack everywhere on screen');
     assert.doesNotMatch(await chat.textContent(), /SIGNAL_UPDATE|Автоанализ|RISK|\{"/);
     assert.doesNotMatch(await page.locator('body').textContent(), /SIGNAL_UPDATE/, 'protocol text is shown nowhere');
 
@@ -122,6 +131,8 @@ const errors = [];
     await page.locator('#call-board [data-status-filter="open"]').waitFor();
     assert.equal(await page.locator('#call-board .board-filters').getAttribute('aria-label'), 'Show items with status');
     assert.match(await page.locator('#call-board .board-empty').first().textContent(), /All statuses are hidden/);
+    assert.equal(await page.locator('#question').getAttribute('placeholder'), 'Ask MeetOnTrack or capture a thought during the conversation.');
+    assert.doesNotMatch(await page.evaluate(() => JSON.stringify(translations.en)), /Copilot/, 'no Copilot in the EN dictionary');
     assert.deepEqual(errors, []);
     console.log('Call overview UI: owner-only chat, one chat tab, persistent status filters, RU/EN: OK');
   } finally {
