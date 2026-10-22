@@ -1,0 +1,5 @@
+# Image libraries for visual speaker names (MeetingFrames._speaker_from_frame,
+# meet_participants.meet_active_speaker). Installed into the bundled macOS
+# Python by scripts/package-release.sh; Windows has no frame capture.
+numpy==2.5.4
+pillow==13.0.0
