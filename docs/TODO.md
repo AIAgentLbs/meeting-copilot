@@ -174,6 +174,8 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.
 - [ ] MEETONTRACK-87: Windows: frame relevance check fails with "model answered, but not as asked".
 - [ ] MEETONTRACK-88: Recorder quit-when-idle command, so an upgrade can replace an old capture at once.
+- [ ] MEETONTRACK-90: Live fact-check strip on the dashboard (branch feat/live-fact-check): claims ride the
+  live analysis, verdicts need a source the app itself opened, else yellow; web search only via ai.choice.
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.

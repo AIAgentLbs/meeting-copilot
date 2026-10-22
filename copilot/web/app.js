@@ -2489,6 +2489,12 @@ function renderArchiveDetail(meeting) {
     journal.append(card);
   }
   root.append(archiveSection(t("archive.summary"), meeting.journal?.length || 0, journal, true));
+  if (meeting.fact_checks?.length) {
+    const facts = document.createElement("ul");
+    facts.className = "fact-list";
+    facts.append(...[...meeting.fact_checks].reverse().map(factRow));
+    root.append(archiveSection(t("fact.title"), meeting.fact_checks.length, facts, true));
+  }
 
   const frameGrid = document.createElement("div");
   frameGrid.className = "archive-frame-grid";
@@ -2569,6 +2575,102 @@ async function generateArchiveReport(meetingId, button) {
   }
 }
 
+Object.assign(translations.ru, {
+  "fact.title": "Проверка фактов", "fact.empty": "Проверяемые утверждения из разговора появятся здесь.",
+  "fact.confirmed": "Подтверждено", "fact.refuted": "Опровергнуто",
+  "fact.unclear": "Нет ни подтверждения, ни опровержения", "fact.checking": "Проверяется",
+  "fact.actual": "На самом деле: {fact}", "fact.source": "Источник", "fact.kb": "База знаний: {location}",
+  "fact.note.no_source": "Источник не открылся или не содержит цитату, поэтому без вывода.",
+  "fact.note.unreadable": "ИИ ответил не по формату, поэтому без вывода.",
+  "fact.show_all": "Показать все ({count})", "fact.show_less": "Свернуть", "fact.or": "или",
+  "fact.web_off": "Проверка в интернете недоступна с {provider}. Чтобы ее включить, выберите {options} в разделе «Начать работу». Проверка по базе знаний работает.",
+});
+Object.assign(translations.en, {
+  "fact.title": "Fact check", "fact.empty": "Checkable statements from the conversation appear here.",
+  "fact.confirmed": "Confirmed", "fact.refuted": "Refuted",
+  "fact.unclear": "Neither confirmed nor refuted", "fact.checking": "Checking",
+  "fact.actual": "Actually: {fact}", "fact.source": "Source", "fact.kb": "Knowledge base: {location}",
+  "fact.note.no_source": "The source did not open or lacks the quote, so no verdict.",
+  "fact.note.unreadable": "The AI answered in the wrong format, so no verdict.",
+  "fact.show_all": "Show all ({count})", "fact.show_less": "Show fewer", "fact.or": "or",
+  "fact.web_off": "Web checking is unavailable with {provider}. To turn it on, choose {options} in Getting started. Knowledge base checks still run.",
+});
+
+const FACT_ICONS = { confirmed: "✓", unclear: "?", refuted: "✕", checking: "…" };
+let factSignature = "";
+let factsExpanded = false;
+
+// One fact-check row: status icon, speaker and claim; red adds the actual fact, green and red the
+// verified source. Errors pass through plainError; a yellow row never shows a source.
+function factRow(item) {
+  const status = FACT_ICONS[item.status] ? item.status : "unclear";
+  const row = document.createElement("li");
+  row.className = `fact-row ${status}`;
+  const icon = textNode("span", "fact-icon", FACT_ICONS[status]);
+  icon.setAttribute("role", "img");
+  icon.setAttribute("aria-label", t(`fact.${status}`));
+  icon.title = t(`fact.${status}`);
+  const body = document.createElement("div");
+  body.className = "fact-body";
+  const line = document.createElement("p");
+  const segment = item.segment || {};
+  line.append(textNode("span", "fact-speaker", segment.source === "microphone" ? t("message.you") : speakerLabel(segment)),
+    document.createTextNode(item.claim || ""));
+  body.append(line);
+  if (status === "refuted" && item.fact) body.append(textNode("p", "fact-actual", t("fact.actual", { fact: item.fact })));
+  if (status === "confirmed" || status === "refuted") {
+    for (const source of item.sources || []) {
+      const small = document.createElement("small");
+      const url = source.url || (/^https:\/\//.test(source.location || "") ? source.location : "");
+      if (url) {
+        const link = textNode("a", "", source.kind === "kb" ? t("fact.kb", { location: source.title || url }) : url);
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        small.append(`${t("fact.source")}: `, link);
+      } else {
+        small.textContent = t("fact.kb", { location: source.location || source.title || "" });
+      }
+      body.append(small);
+    }
+  }
+  if (status === "unclear" && item.error) body.append(textNode("small", "", plainError(item.error)));
+  else if (status === "unclear" && t(`fact.note.${item.note}`) !== `fact.note.${item.note}`) body.append(textNode("small", "", t(`fact.note.${item.note}`)));
+  row.append(icon, body);
+  return row;
+}
+
+function renderFactChecks(state) {
+  const strip = document.querySelector("#fact-strip");
+  if (!strip) return;
+  const items = state?.items || [];
+  const signature = `${uiLanguage}:${factsExpanded}:${activeTranscript?.meeting_id || ""}:${JSON.stringify(state || {})}`;
+  if (signature === factSignature) return;
+  factSignature = signature;
+  strip.hidden = !activeTranscript?.meeting_id;
+  const header = document.createElement("div");
+  header.className = "fact-strip-header";
+  header.append(textNode("h3", "", t("fact.title")));
+  if (items.length > 3) {
+    const toggle = textNode("button", "quiet-button", factsExpanded ? t("fact.show_less") : t("fact.show_all", { count: items.length }));
+    toggle.type = "button";
+    toggle.addEventListener("click", () => { factsExpanded = !factsExpanded; renderFactChecks(state); });
+    header.append(toggle);
+  }
+  const parts = [header];
+  if (state && !state.web && state.provider) {
+    parts.push(textNode("p", "fact-notice", t("fact.web_off", {
+      provider: state.provider, options: (state.web_providers || []).join(` ${t("fact.or")} `),
+    })));
+  }
+  if (!items.length) parts.push(textNode("p", "fact-empty", t("fact.empty")));
+  const list = document.createElement("ul");
+  list.className = "fact-list";
+  list.append(...(factsExpanded ? items : items.slice(0, 3)).map(factRow));
+  if (items.length) parts.push(list);
+  strip.replaceChildren(...parts);
+}
+
 async function state() {
   if (stateRequestInFlight) return;
   stateRequestInFlight = true;
@@ -2612,6 +2714,7 @@ async function state() {
     renderCallPlan(data.call_plan || null);
     renderJournal(data.journal || []);
     renderCallBoard(data.call_plan || null, data.journal || []);
+    renderFactChecks(data.fact_checks);
     renderMeetingChat(data.meeting_chat || []);
     elements.send.disabled = requestBusy || data.copilot.busy;
     if (stateConnectionFailed && !requestBusy) {
