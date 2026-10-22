@@ -187,6 +187,7 @@
             <button class="quiet-button translation-jump" id="translation-jump" type="button" hidden></button>
             <button class="quiet-button copy-dialog-button" id="copy-dialog" type="button" data-i18n="transcript.copy">Копировать диалог</button>
             <button class="quiet-button" id="speaker-edit" type="button" data-i18n="speakers.open">Имена</button>
+            <button class="quiet-button" id="transcript-hide" type="button" data-i18n="transcript.hide" aria-label="Скрыть расшифровку" data-i18n-aria-label="transcript.hide_label">Скрыть</button>
             <div class="view-tabs transcript-tabs" role="group" aria-label="Вид левой панели" data-i18n-aria-label="aria.transcript_view">
               <button class="active" data-transcript-view="transcript" type="button"><span data-i18n="transcript.tab">Стенограмма</span></button>
               <button data-transcript-view="frames" type="button"><span data-i18n="frames.tab">Кадры</span> <span id="frame-count">0</span></button>
@@ -217,6 +218,7 @@
           <div>
             <h2 id="copilot-heading" data-i18n="copilot.heading">Чат с контекстом</h2>
           </div>
+          <button class="quiet-button" id="transcript-show" type="button" data-i18n="transcript.show" hidden>Показать расшифровку</button>
         </div>
 
         <section class="delivery-notice" id="delivery-notice" hidden>

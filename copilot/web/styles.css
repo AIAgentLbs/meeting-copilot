@@ -31,7 +31,7 @@
   font-size: 12px;
 }
 #new-meeting-status { color: var(--accent-strong); }
-/* The bar only carries the new-meeting result; while empty it keeps the live region but takes no space. */
+/* The bar only carries status lines (new meeting, saved layout); while empty it keeps the live region but takes no space. */
 .meeting-boundary-bar:has(#new-meeting-status:empty) { padding: 0; border-bottom: 0; }
 .meeting-boundary-dialog {
   width: min(520px, calc(100vw - 32px));
@@ -499,6 +499,10 @@ input:focus-visible + span {
   .workspace.panels-swapped { grid-template-columns: 1fr; }
   .workspace.panels-swapped .transcript-pane { border-left: 0; }
 }
+/* Hidden transcript: the other panel takes the whole width at every breakpoint. */
+.workspace.transcript-hidden, .workspace.transcript-hidden.panels-swapped { grid-template-columns: minmax(0, 1fr); }
+.workspace.transcript-hidden .transcript-pane { display: none; }
+#transcript-show[hidden] { display: none; }
 
 .transcript-pane,
 .copilot-pane {

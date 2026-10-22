@@ -32,7 +32,7 @@ from call_plan import CallPlans
 from live_translation import LiveTranslation
 from frame_relevance import frame_relevance
 from chat_import import parse_chat_export, normalize_chat_times
-from interface_preferences import interface_preferences, save_interface_language
+from interface_preferences import interface_preferences, save_preferences
 from delivery_retry import DeliveryRetry
 from release_updates import ReleaseUpdates, installed_release
 from summary_rewrite import SummaryRewrites
@@ -2555,7 +2555,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/ai/choice":
                 self._json({"ok": True, "status": AI.save(payload.get("choice"))})
             elif path == "/api/preferences":
-                self._json({"ok": True, "preferences": save_interface_language(CAPTURE_CONFIG_FILE, payload.get("interface_language"))})
+                self._json({"ok": True, "preferences": save_preferences(CAPTURE_CONFIG_FILE, payload)})
             elif path == "/api/stt/choice":
                 self._json({"ok": True, "status": STT.save_choice(payload.get("choice"))})
             elif path == "/api/stt/download":

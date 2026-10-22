@@ -7,6 +7,8 @@ const elements = {
   newMeetingError: document.querySelector("#new-meeting-error"),
   newMeetingStatus: document.querySelector("#new-meeting-status"),
   swapPanels: document.querySelector("#swap-panels"),
+  transcriptHide: document.querySelector("#transcript-hide"),
+  transcriptShow: document.querySelector("#transcript-show"),
   meetingTitle: document.querySelector("#meeting-title"),
   liveStatus: document.querySelector("#live-status"),
   captureStatus: document.querySelector("#capture-status"),
@@ -108,6 +110,9 @@ const translations = {
     "transcript.loading": "Получаю последние реплики",
     "transcript.tab": "Стенограмма",
     "transcript.copy": "Копировать диалог",
+    "transcript.hide": "Скрыть",
+    "transcript.hide_label": "Скрыть расшифровку",
+    "transcript.show": "Показать расшифровку",
     "transcript.copied": "Диалог скопирован",
     "transcript.copy_empty": "Нет реплик для копирования",
     "transcript.copy_failed": "Не удалось скопировать",
@@ -332,6 +337,9 @@ const translations = {
     "transcript.loading": "Loading the latest utterances",
     "transcript.tab": "Transcript",
     "transcript.copy": "Copy dialogue",
+    "transcript.hide": "Hide",
+    "transcript.hide_label": "Hide transcript",
+    "transcript.show": "Show transcript",
     "transcript.copied": "Dialogue copied",
     "transcript.copy_empty": "No utterances to copy",
     "transcript.copy_failed": "Could not copy",
@@ -528,10 +536,13 @@ const translations = {
   },
 };
 
-const savedUiLanguage = localStorage.getItem("meeting-copilot-language");
-let hasExplicitUiLanguage = ["en", "ru"].includes(savedUiLanguage);
-let uiLanguage = hasExplicitUiLanguage ? savedUiLanguage : "ru";
-let inheritedUiLanguage = false;
+// config.json (via /api/preferences) is the one store; localStorage only paints the first frame.
+const cachedUiLanguage = localStorage.getItem("meeting-copilot-language");
+let uiLanguage = ["en", "ru"].includes(cachedUiLanguage) ? cachedUiLanguage : "ru";
+let legacyLanguageMigrated = false;
+let preferenceEpoch = 0;
+let preferenceSaves = 0;
+let transcriptHidden = false;
 let panelsSwapped = localStorage.getItem("meeting-copilot-panels-swapped") === "true";
 function applyPanelOrder() {
   const workspace = document.querySelector(".workspace");
@@ -2537,21 +2548,13 @@ async function state() {
   if (stateRequestInFlight) return;
   stateRequestInFlight = true;
   try {
+    const epoch = preferenceEpoch;
     const response = await fetch("/api/state", { cache: "no-store", signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw apiError({}, response);
     const data = await response.json();
     stateFailures = 0;
-    const defaultLanguage = data.preferences?.interface_language;
-    if (!hasExplicitUiLanguage && !inheritedUiLanguage && ["en", "ru"].includes(defaultLanguage)) {
-      uiLanguage = defaultLanguage;
-      inheritedUiLanguage = true;
-      transcriptSignature = "";
-      frameSignature = "";
-      renderedMessages = "";
-      journalSignature = "";
-      meetingChatSignature = "";
-      applyLanguage();
-    }
+    // A change made here while this request ran wins over the older snapshot.
+    if (epoch === preferenceEpoch && !preferenceSaves) applyPreferences(data.preferences || {});
     const project = data.project || {};
     window.renderReleaseUpdates(data.updates || {});
     window.renderGettingStartedStatus?.(data);
@@ -2855,37 +2858,77 @@ window.addEventListener("resize", setArchiveMode);
 elements.repoSearch.addEventListener("input", renderRepositoryCatalog);
 elements.repoSave.addEventListener("click", () => void saveRepositorySelection());
 
-// The interface language lives in Settings only; config.json keeps it for every component.
-document.querySelector("#interface-language").addEventListener("change", async (event) => {
-  const language = event.target.value === "en" ? "en" : "ru";
-  const status = document.querySelector("#interface-language-status");
-  status.textContent = "";
-  hasExplicitUiLanguage = true;
+function switchUiLanguage(language) {
   localStorage.setItem("meeting-copilot-language", language);
-  if (language !== uiLanguage) {
-    uiLanguage = language;
-    applyLanguage();
-    transcriptSignature = "";
-    frameSignature = "";
-    renderedMessages = "";
-    journalSignature = "";
-    meetingChatSignature = "";
-    setArchiveMode();
-    if (!elements.archiveDialog.hidden) void refreshArchive();
-    if (elements.projectDialog.open) {
-      renderProjectOptions();
-      const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;
-      elements.projectHelp.textContent = t("project.choose_help", {
-        count: repositoryCountLabel(count),
-      });
-    }
-    void state();
+  if (language === uiLanguage) return;
+  uiLanguage = language;
+  applyLanguage();
+  transcriptSignature = "";
+  frameSignature = "";
+  renderedMessages = "";
+  journalSignature = "";
+  meetingChatSignature = "";
+  setArchiveMode();
+  if (!elements.archiveDialog.hidden) void refreshArchive();
+  if (elements.projectDialog.open) {
+    renderProjectOptions();
+    const count = projectChoices.find((choice) => choice.kind === "all")?.repositories.length || 0;
+    elements.projectHelp.textContent = t("project.choose_help", {
+      count: repositoryCountLabel(count),
+    });
   }
+}
+
+function applyTranscriptHidden(hidden) {
+  transcriptHidden = hidden;
+  document.querySelector(".workspace").classList.toggle("transcript-hidden", hidden);
+  elements.transcriptShow.hidden = !hidden;
+}
+
+// Interface preferences live in the shared config.json; the saved value is authoritative.
+function applyPreferences(preferences) {
+  const language = preferences.interface_language;
+  if (["en", "ru"].includes(language)) switchUiLanguage(language);
+  else if (["en", "ru"].includes(cachedUiLanguage) && !legacyLanguageMigrated) {
+    // A choice made with the old header switch lived only in this browser: move it into config.json.
+    legacyLanguageMigrated = true;
+    void savePreference({ interface_language: uiLanguage }, document.querySelector("#interface-language-status"));
+  }
+  if (typeof preferences.transcript_hidden === "boolean" && preferences.transcript_hidden !== transcriptHidden) {
+    applyTranscriptHidden(preferences.transcript_hidden);
+  }
+}
+
+async function savePreference(change, status) {
+  preferenceEpoch++;
+  preferenceSaves++;
+  status.textContent = "";
   try {
-    await post("/api/preferences", { interface_language: language });
+    await post("/api/preferences", change);
   } catch (error) {
     status.textContent = plainError(error);
+  } finally {
+    preferenceSaves--;
   }
+}
+
+document.querySelector("#interface-language").addEventListener("change", (event) => {
+  const language = event.target.value === "en" ? "en" : "ru";
+  switchUiLanguage(language);
+  void savePreference({ interface_language: language }, document.querySelector("#interface-language-status"));
+  void state();
+});
+
+// Hiding only folds the panel away: recording and live transcription keep running.
+elements.transcriptHide.addEventListener("click", () => {
+  applyTranscriptHidden(true);
+  elements.transcriptShow.focus();
+  void savePreference({ transcript_hidden: true }, elements.newMeetingStatus);
+});
+elements.transcriptShow.addEventListener("click", () => {
+  applyTranscriptHidden(false);
+  elements.transcriptHide.focus();
+  void savePreference({ transcript_hidden: false }, elements.newMeetingStatus);
 });
 
 Object.assign(translations.ru, {
