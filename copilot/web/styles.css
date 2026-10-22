@@ -1946,6 +1946,10 @@ textarea::placeholder {
 .archive-library-status { font-size: 12px; color: var(--accent-strong); }
 .archive-audio-gap { font-size: 12px; line-height: 1.5; color: var(--muted); }
 .archive-audio-gap:empty { display: none; }
+.archive-report-failure { font-size: 12px; line-height: 1.5; color: var(--danger); }
+.archive-report-failure:empty { display: none; }
+.archive-report-failure-detail { display: grid; gap: 8px; justify-items: start; margin: 8px 0; font-size: 14px; }
+.archive-report-failure-detail p { margin: 0; }
 .archive-library-status.no_speech, .archive-item-preview { font-size: 12px; line-height: 1.5; color: var(--muted); }
 .archive-overview { padding-block: 20px; border-block: 1px solid var(--line); margin-block: 20px; max-width: 75ch; }
 .archive-overview h3 { margin: 0 0 12px; font-size: 16px; }

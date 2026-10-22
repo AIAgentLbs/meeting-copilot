@@ -2332,6 +2332,7 @@ ARCHIVE = MeetingArchive(
     transcript_annotator=FRAMES.annotate,
 )
 DELIVERY_RETRY = DeliveryRetry(ARCHIVE)
+ARCHIVE.remove_print_leftovers()  # Before any report prints.
 GOOGLE_CONTEXT.delivery_settings = ARCHIVE.delivery_settings
 SUMMARY_REWRITES = SummaryRewrites(ARCHIVE, lambda prompt: AI.run("summary_rewrite", prompt, timeout=180))
 

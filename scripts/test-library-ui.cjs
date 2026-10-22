@@ -11,13 +11,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const meetings = [{meeting_id: 'past', title: 'Integration pilot', started_at: '2026-10-16T10:00:00Z', duration_seconds: 1200,
     transcript_count: 40, journal_count: 2, frame_count: 0, library_status: 'analysis_ready', preview: 'Discussed the rollout.',
     // MEETONTRACK-94: the other side's audio stopped 70 s before the end of the call.
-    audio_gap: {started_at: '2026-10-16T10:18:50+00:00', ended_at: '', count: 1, seconds: 70}},
+    audio_gap: {started_at: '2026-10-16T10:18:50+00:00', ended_at: '', count: 1, seconds: 70},
+    // MEETONTRACK-98: Chrome could not save the PDF three times.
+    report_failure: {reason: 'pdf', attempts: 3, failed_at: '2026-10-22T21:19:52+00:00', message: 'Chrome PDF'}},
     {meeting_id: 'empty', title: 'Audio check', started_at: '2026-10-15T10:00:00Z', duration_seconds: 300,
       transcript_count: 0, journal_count: 0, frame_count: 0, library_status: 'no_speech'}];
   const detail = { ...meetings[0], status: 'finished', overview: {points: ['Discussed the rollout.'], questions: ['Who approves the pilot?']},
     transcript: [{speaker: 'Alice', timestamp: '2026-10-16T10:01:00Z', text: 'Discussed the rollout.'}],
     journal: [], frames: [], meeting_chat: [], report: {delivery_on_request: true}, recording_dir: '/synthetic/recordings/past', audio_file: '/synthetic/recordings/past/audio.wav'};
   let rewriteState = 'idle';
+  const delivery = () => ({channels: {gmail: {configured: true, state: 'idle', issues: []}}, notifications: [],
+    undelivered: meetings[0].report_failure ? [{meeting_id: 'past', channels: [], missing: true, failed: meetings[0].report_failure,
+      title: 'Integration pilot', started_at: '2026-10-16T10:00:00Z'}] : []});
   const payload = {preferences: {interface_language: 'en'},
     transcript: {meeting_id: 'current', meeting: 'Current call', status: 'finished', live: false, segments: [], speakers: []},
     recording_health: {capture: {audio_recording: false}},
@@ -33,9 +38,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         if (url.pathname === '/api/summary-rewrite') return route.fulfill({json: {ok: true, rewrite: {state: rewriteState}}});
         if (url.pathname === '/api/archive') {
           const q = (url.searchParams.get('q') || '').toLowerCase();
-          return route.fulfill({json: {ok: true, meetings: meetings.filter(item => item.title.toLowerCase().includes(q))}});
+          return route.fulfill({json: {ok: true, meetings: meetings.filter(item => item.title.toLowerCase().includes(q)), delivery: delivery()}});
         }
         if (url.pathname === '/api/archive/open-local') return route.fulfill({json: {ok: true}});
+        if (url.pathname === '/api/delivery') return route.fulfill({json: {ok: true, delivery: delivery()}});
+        if (url.pathname === '/api/archive/report') {
+          meetings[0].report_failure = null; detail.report_failure = null;
+          return route.fulfill({json: {ok: true, report: {}}});
+        }
         if (url.pathname === '/api/archive/rewrite') {
           detail.overview.points = ['Approval is pending.'];
           rewriteState = 'done';
@@ -63,6 +73,16 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.locator('#archive-detail .archive-audio-gap').textContent(), gap);
     assert(!(await page.locator('#archive-list').textContent()).includes('needs attention'));
     assert((await page.locator('#archive-detail .archive-delivery').textContent()).includes('Send with a button below: the meeting is older than 3 days'));
+    assert.equal(await page.locator('.archive-item .archive-report-failure').first().textContent(),
+      'Report not created. Open the meeting and press Create the report again.');
+    assert.equal(await page.locator('#archive-detail .archive-report-failure-detail p').textContent(),
+      'The report was not created: Chrome could not save the PDF. Attempts: 3, last at 23:19. The app tries again by itself in 30 minutes, or press Create the report again.');
+    await page.waitForFunction(() => document.querySelector('#delivery-alert')?.textContent.includes('was not created'));
+    assert.equal(await page.locator('#delivery-alert').getAttribute('data-state'), 'action_required');
+    await page.locator('#archive-detail .archive-report-failure-detail').getByRole('button', {name: 'Create the report again', exact: true}).click();
+    await page.locator('#archive-detail .archive-report-failure-detail').waitFor({state: 'detached'});
+    assert.equal(await page.locator('.archive-item .archive-report-failure').first().textContent(), '');
+    assert(writes.includes('/api/archive/report'));
     await page.locator('#archive-search').fill('Integration');
     await page.waitForFunction(() => document.querySelectorAll('.archive-item').length === 1);
     await page.locator('#archive-search').fill('');
@@ -106,6 +126,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('#refresh-button').click();
     assert.equal(await page.locator('#archive-dialog').isVisible(), false);
     assert.deepEqual(errors, []);
-    console.log('PASS: idle library, live drawer, search, statuses, overview, rename, preserved call/draft, close, responsive layout');
+    console.log('PASS: idle library, live drawer, search, statuses, report failure and retry, overview, rename, preserved call/draft, close, responsive layout');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

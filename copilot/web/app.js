@@ -823,6 +823,13 @@ Object.assign(translations.ru, {
   "delivery.missing.date": "Отчет по встрече от {date} не найден",
   "delivery.missing.plain": "Отчет по встрече не найден",
   "delivery.recreate": "Создать отчет заново", "delivery.recreating": "Создаю отчет...",
+  "delivery.failed.title_date": "Отчет по встрече «{title}» от {date} не создан",
+  "delivery.failed.title": "Отчет по встрече «{title}» не создан",
+  "delivery.failed.date": "Отчет по встрече от {date} не создан",
+  "delivery.failed.plain": "Отчет по встрече не создан",
+  "report_failure.pdf": "Отчет не создан: Chrome не смог сохранить PDF. Попыток: {attempts}, последняя в {time}. Приложение само повторит попытку через 30 минут, или нажмите «Создать отчет заново».",
+  "report_failure.other": "Отчет не создан ({message}). Попыток: {attempts}, последняя в {time}. Приложение само повторит попытку через 30 минут, или нажмите «Создать отчет заново».",
+  "report_failure.short": "Отчет не создан. Откройте встречу и нажмите «Создать отчет заново».",
   "delivery.event.failed": "{channel}: сбой доставки. {reason}",
   "delivery.event.action_required": "{channel}: нужно ваше действие. {reason}",
   "delivery.event.recovered": "{channel}: доставка отчета восстановлена.",
@@ -869,6 +876,13 @@ Object.assign(translations.en, {
   "delivery.missing.date": "Report for the meeting on {date} was not found",
   "delivery.missing.plain": "A meeting report was not found",
   "delivery.recreate": "Create the report again", "delivery.recreating": "Creating the report...",
+  "delivery.failed.title_date": "Report for “{title}” on {date} was not created",
+  "delivery.failed.title": "Report for “{title}” was not created",
+  "delivery.failed.date": "Report for the meeting on {date} was not created",
+  "delivery.failed.plain": "A meeting report was not created",
+  "report_failure.pdf": "The report was not created: Chrome could not save the PDF. Attempts: {attempts}, last at {time}. The app tries again by itself in 30 minutes, or press Create the report again.",
+  "report_failure.other": "The report was not created ({message}). Attempts: {attempts}, last at {time}. The app tries again by itself in 30 minutes, or press Create the report again.",
+  "report_failure.short": "Report not created. Open the meeting and press Create the report again.",
   "delivery.event.failed": "{channel}: delivery failed. {reason}",
   "delivery.event.action_required": "{channel}: your action is needed. {reason}",
   "delivery.event.recovered": "{channel}: report delivery recovered.",
@@ -963,7 +977,7 @@ function undeliveredLabel(item) {
     title: item.title || "",
     date: Number.isNaN(started.getTime()) ? "" : started.toLocaleDateString(uiLanguage, { day: "numeric", month: "long" }),
   };
-  const family = item.missing ? "missing" : item.uncertain ? "unsure" : "undelivered";
+  const family = item.failed ? "failed" : item.missing ? "missing" : item.uncertain ? "unsure" : "undelivered";
   return t(`delivery.${family}.${["title", "date"].filter(key => values[key]).join("_") || "plain"}`, values);
 }
 
@@ -1071,6 +1085,7 @@ function renderDeliveryHealth(health = {}) {
     button.disabled = Object.values(deliveryResend).includes("sending");
     button.addEventListener("click", () => void (item.missing ? recreateReport(item) : resendReport(item)));
     row.append(button);
+    if (item.failed && !deliveryRecreateError[item.meeting_id]) row.append(textNode("p", "delivery-reason", reportFailureText(item.failed)));
     if (deliveryRecreateError[item.meeting_id]) row.append(textNode("p", "delivery-reason", deliveryRecreateError[item.meeting_id]));
     if ((item.uncertain && !state) || state === "unsure") row.append(textNode("p", "delivery-reason", t("delivery.unsure_hint")));
     if (["failed", "meeting_not_finished", "report_not_ready"].includes(state)) {
@@ -2284,6 +2299,14 @@ function archiveDay(value) {
 }
 
 // One plain sentence: which part of a finished call lost the other side's audio.
+// A report that could not be created: what happened, and the one thing to press.
+function reportFailureText(failure) {
+  if (!failure) return "";
+  const at = new Date(failure.failed_at || "");
+  const time = Number.isNaN(at.getTime()) ? "" : new Intl.DateTimeFormat(uiLanguage === "ru" ? "ru-RU" : "en-GB", {timeStyle: "short"}).format(at);
+  return t(`report_failure.${failure.reason === "pdf" ? "pdf" : "other"}`, {attempts: failure.attempts || 1, time, message: failure.message || ""});
+}
+
 function audioGapText(meeting) {
   const gap = meeting.audio_gap;
   if (!gap) return "";
@@ -2385,6 +2408,7 @@ function renderArchiveList() {
       textNode("span", "archive-item-date", archiveDate(meeting.started_at)),
       textNode("span", `archive-library-status ${meeting.library_status || ""}`, t(`library.${meeting.library_status || "transcript_ready"}`)),
       textNode("span", "archive-audio-gap", audioGapText(meeting)),
+      textNode("span", "archive-report-failure", meeting.report_failure ? t("report_failure.short") : ""),
       textNode("span", "archive-item-preview", meeting.preview || ""),
       textNode("span", "archive-item-counts", [
         archiveDuration(meeting.duration_seconds), `${meeting.transcript_count} ${t("archive.utterances")}`,
@@ -2464,6 +2488,15 @@ function renderArchiveDetail(meeting) {
   overview.className = "archive-overview";
   overview.append(textNode("h3", "", t("library.overview")));
   if (meeting.audio_gap) overview.append(textNode("p", "archive-quality-note archive-audio-gap", audioGapText(meeting)));
+  if (meeting.report_failure) {
+    const failure = textNode("div", "archive-report-failure archive-report-failure-detail", "");
+    failure.append(textNode("p", "", reportFailureText(meeting.report_failure)));
+    const again = textNode("button", "primary-button", t("delivery.recreate"));
+    again.type = "button";
+    again.addEventListener("click", () => void generateArchiveReport(meeting.meeting_id, again));
+    failure.append(again);
+    overview.append(failure);
+  }
   if (meeting.overview?.insufficient) overview.append(textNode("p", "archive-quality-note", t("library.short")));
   const points = meeting.overview?.points || [];
   const questions = meeting.overview?.questions || [];
