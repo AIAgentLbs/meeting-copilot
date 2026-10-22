@@ -89,7 +89,8 @@ class DeliveryHealth:
             # Completed historical reports do not fill the recent summary. An
             # unresolved delivery must not silently disappear when retry ends,
             # and a send the person asked for is judged too.
-            if expired and path.parent.name not in tracked_meetings and not report.get("last_delivery_request"):
+            if (expired and path.parent.name not in tracked_meetings and not report.get("last_delivery_request")
+                    and not report.get("report_missing")):  # Only the person can create it again: always offer it.
                 continue
             considered += 1
             # Any channel that delivered means the person has this report.

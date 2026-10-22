@@ -1052,6 +1052,12 @@ class MeetingArchive:
                     previous_report.get("generated_at") if any(
                         previous_report.get(key) not in {None, "not_configured", "pending", "waiting_for_end"}
                         for key in ("drive_status", "mail_status", "telegram_status")) else None)
+                # A send past the window is the person's own request ("Create the report
+                # again"): it starts a new window, so its failure is retried and shown.
+                if sending and (previous_report.get("delivery_on_request") or (
+                        _date(str(started or "")) and (checked_at - _date(str(started))).total_seconds()
+                        > self.delivery_retry_days * 86400)):
+                    started = None
                 if started or sending:
                     meta["delivery_started_at"] = started or checked_at.isoformat(timespec="seconds")
                 _atomic_json(report_dir / "report.json", meta)

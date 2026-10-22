@@ -329,6 +329,26 @@ class RepairedOldMeetingDeliveryTests(unittest.TestCase):
         deliver.assert_not_called()
         self.assertEqual(self.archive.delivery_health()["undelivered"], [])
 
+    def test_the_persons_create_again_starts_a_new_window_and_its_failure_shows(self):
+        self.finalize()
+        with patch.object(self.archive, "_print_pdf", side_effect=lambda html, pdf: pdf.write_bytes(b"%PDF synthetic")), \
+             patch.object(self.archive, "deliver", return_value={"mail_status": "failed"}) as deliver:
+            self.archive.generate_report("FIRST-CALL")  # The "Create the report again" button.
+        deliver.assert_called_once()
+        report = json.loads((self.report_dir / "report.json").read_text())
+        self.assertNotIn("delivery_on_request", report)
+        self.assertNotEqual(report["delivery_started_at"], self.sent_at)
+        health = self.health()
+        self.assertEqual([i["reason"] for i in health["channels"]["gmail"]["issues"]], ["delivery_failed"])
+
+    def test_a_missing_old_report_still_offers_create_again(self):
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        (self.report_dir / "report.json").write_text(json.dumps({
+            "generated_at": now, "report_missing": True, "delivery_on_request": True,
+            "mail_status": "failed", "telegram_status": "failed", "drive_status": "pending"}))
+        health = self.health()
+        self.assertIn("report_missing", [i["reason"] for i in health["channels"]["gmail"]["issues"]])
+
     def test_a_problem_already_raised_by_0_1_16_clears_on_the_next_check(self):
         self.finalize()
         # What 0.1.16 wrote after rebuilding the report: a fresh "email failed".
