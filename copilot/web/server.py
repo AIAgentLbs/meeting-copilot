@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, urlsplit, urlunsplit, parse_qs
+from urllib.parse import urldefrag, urlparse, urlsplit, urlunsplit, parse_qs
 
 from archive import MeetingArchive
 from canonical_transcript import canonical_segments
@@ -2139,10 +2139,11 @@ ASK формулируй как одну короткую реплику, кот
             )
             prompt += git_metadata(self._roots)
             answer = self._run_ai(prompt)
+            shown = strip_claims(answer).strip() if kind == "insight" else answer  # claim lines feed the fact strip only
             with self.lock:
-                if kind != "insight" or answer.strip() != "НЕТ НОВОГО СИГНАЛА":
+                if shown.strip() and (kind != "insight" or shown.strip() != "НЕТ НОВОГО СИГНАЛА"):
                     self.messages.append({
-                        "role": "assistant", "text": answer, "kind": kind,
+                        "role": "assistant", "text": shown, "kind": kind,
                         "meeting_id": meeting_id,
                     })
                 self._persist_locked()
@@ -2216,17 +2217,24 @@ def fact_knowledge(row: dict) -> list[dict]:
     query = row.get("query") or row.get("claim") or ""
     found = [{"title": Path(hit["path"]).name, "location": f"{hit['path']}:{hit['line']}", "text": hit["text"]}
              for hit in LOCAL_CONTEXT.search(query)["items"][:5]]
-    for source in GOOGLE_CONTEXT.enabled_sources():
+    with GOOGLE_CONTEXT._lock:
+        sources, generation, local = GOOGLE_CONTEXT.enabled_sources(), GOOGLE_CONTEXT._generation, len(found)
+    for source in sources:
         try:  # _search_source, not search(): the live analysis keeps its own cached Google results
             hits = GOOGLE_CONTEXT._search_source(source, query).get("items", [])[:3]
         except (OSError, RuntimeError, ValueError):
             continue  # an unreachable source only means less evidence, never a verdict
-        found += [{"title": hit["title"], "location": hit["url"], "text": hit["excerpt"]} for hit in hits if hit.get("excerpt")]
+        with GOOGLE_CONTEXT._lock:
+            if generation != GOOGLE_CONTEXT._generation:  # access changed mid-search: send none of it to the AI
+                return found[:local]
+        found += [{"title": hit["title"], "location": hit["url"], "text": hit["excerpt"]}
+                  for hit in hits if hit.get("excerpt")]
     return found
 
 
 def fact_source(raw: str) -> tuple[str, str | None]:
-    url = safe_url(raw)
+    """The cited URL as given (query kept, fragment dropped) when safe_url accepts its host."""
+    url = urldefrag(raw.strip()).url if safe_url(raw) else ""
     return url, fetch_text(url) if url else None
 
 

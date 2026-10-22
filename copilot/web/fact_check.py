@@ -31,6 +31,8 @@ from private_dirs import private_dir
 CLAIM_RE = re.compile(r"(?m)^CLAIM_CAPTURE\s*[:—-]\s*(\{[^\n]*\})\s*$")
 STATUSES = ("checking", "confirmed", "unclear", "refuted")
 SPEAKER_KEYS = ("source", "speaker", "speaker_label", "speaker_id", "speaker_identity", "voice_id")
+# Words that flip a claim (\w+ splits "doesn't" into "doesn", "t"); they keep contradictions apart.
+NEGATIONS = frozenset("not no never none nobody nothing without t не нет ни никогда ничего никто без".split())
 PAGE_LIMIT, PAGE_TIMEOUT, MAX_WEB_SOURCES = 1_000_000, 8, 3
 
 
@@ -223,10 +225,13 @@ class FactChecks:
 
     @classmethod
     def same(cls, one: str, other: str) -> bool:
-        """Near-identical claims: the same numbers and nearly the same words (a different year is a new claim)."""
-        if re.findall(r"\d+", one) != re.findall(r"\d+", other):
+        """Near-identical claims: the same numbers, the same negations and nearly the same words.
+
+        A different year or an added "not"/"никогда" is a new claim, so a contradiction is checked too."""
+        a, b = words(one).split(), words(other).split()
+        if re.findall(r"\d+", one) != re.findall(r"\d+", other) or \
+                [w for w in a if w in NEGATIONS] != [w for w in b if w in NEGATIONS]:
             return False
-        a, b = one.split(), other.split()
         return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= cls.SIMILAR
 
     def add(self, transcript: dict, claims: list[dict]) -> int:

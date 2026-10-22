@@ -187,6 +187,9 @@ class StoreTests(unittest.TestCase):
             self.assertEqual(store.claims("m1"), [CLAIM["claim"]])
             years = [{**CLAIM, "claim": f"Компания Higgsfield основана в {year} году"} for year in (2023, 2021)]
             self.assertEqual(store.add(TRANSCRIPT, years), 2)  # another number is another claim
+            opposite = [{**CLAIM, "claim": f"Higgsfield {word} develops its own video generation models"}
+                        for word in ("", "never")]
+            self.assertEqual(store.add(TRANSCRIPT, opposite), 2)  # a contradiction is checked too
 
     def test_checks_are_capped_per_minute_and_wait_for_the_analysis(self):
         now, idle = [0.0], [True]
@@ -277,6 +280,38 @@ class ServerTests(unittest.TestCase):
         state = self.server.fact_check_state("m1")
         self.assertEqual((state["web"], state["provider"], state["web_providers"]), (False, "Ollama", ["Codex", "Claude Code"]))
         self.assertEqual(state["items"][0]["status"], "checking")
+
+    def test_citations_keep_their_query_and_drop_the_fragment(self):
+        with patch.object(self.server, "fetch_text", side_effect=lambda url: f"page {url}") as fetch:
+            url, text = self.server.fact_source("https://publisher.example/article.php?id=123#comments")
+        self.assertEqual((url, fetch.call_args.args[0]), ("https://publisher.example/article.php?id=123",) * 2)
+        self.assertEqual(self.server.fact_source("http://localhost/x?id=1"), ("", None))
+
+    def test_google_results_are_dropped_when_access_changes_mid_search(self):
+        google = self.server.GOOGLE_CONTEXT
+        def revoke(source, query):
+            google._generation += 1  # the user disconnects Google while this source is searched
+            return {"items": [{"title": "Mail", "url": "https://mail.example/1", "excerpt": "secret"}]}
+        with patch.object(google, "enabled_sources", return_value=["gmail"]), \
+                patch.object(google, "_search_source", side_effect=revoke), \
+                patch.object(google, "_generation", 0), \
+                patch.object(self.server.LOCAL_CONTEXT, "search", return_value={"items": [
+                    {"path": "/ctx/notes.md", "line": 3, "text": "Higgsfield notes"}]}):
+            found = self.server.fact_knowledge(CLAIM)
+        self.assertEqual([item["text"] for item in found], ["Higgsfield notes"])
+
+    def test_claim_lines_never_reach_the_chat(self):
+        from test_ai_providers import chosen_codex
+        claim = capture(quote=HIGGSFIELD, claim=CLAIM["claim"], query="Higgsfield")
+        answers = ["FACT — Обсуждаем видео\n" + claim, claim]  # the second answer carries only a claim
+        with tempfile.TemporaryDirectory() as tmp, chosen_codex(tmp, self.server):
+            session = self.server.CodexSession(Path(tmp) / "s.json")
+            with patch.object(session, "_run_ai", side_effect=answers), \
+                    patch.object(self.server.GOOGLE_CONTEXT, "augment", return_value=""), \
+                    patch.object(self.server.LOCAL_CONTEXT, "augment", return_value=""):
+                raw = [session.ask("q", "", "m", "m1", {}, kind="insight", show_user=False) for _ in answers]
+        self.assertEqual(raw, answers, "the analysis still parses the raw answer")
+        self.assertEqual([message["text"] for message in session.messages], ["FACT — Обсуждаем видео"])
 
 
 class ArchiveTests(unittest.TestCase):
