@@ -64,6 +64,8 @@ const auth = { ...healthy, state: 'action_required',
     await reload(undelivered(weekly, { ...weekly, meeting_id: 'm3' }));
     await pillIs('2 отчета не отправлены');
     assert.equal(await pill.getAttribute('data-state'), 'action_required');
+    await reload(undelivered(weekly, { ...weekly, meeting_id: 'm3', uncertain: true }));
+    await pillIs('2 отчета могли не дойти');
 
     await reload(auth);
     await pillIs('Почта: войдите снова');

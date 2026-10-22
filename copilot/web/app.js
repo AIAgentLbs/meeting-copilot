@@ -817,6 +817,12 @@ Object.assign(translations.ru, {
   "delivery.undelivered_many.other": "{count} отчета не отправлены",
   "delivery.resend": "Отправить снова", "delivery.resending": "Отправляю...",
   "delivery.resend_failed": "Не получилось отправить. Проверьте интернет и нажмите «Отправить снова» еще раз.",
+  "delivery.resend_meeting_not_finished": "Встреча еще записывается. Отправьте отчет после ее завершения.",
+  "delivery.resend_report_not_ready": "Файл отчета не найден. Откройте отчет в истории встреч и создайте его заново.",
+  "delivery.unsure_many.one": "{count} отчет мог не дойти",
+  "delivery.unsure_many.few": "{count} отчета могли не дойти",
+  "delivery.unsure_many.many": "{count} отчетов могли не дойти",
+  "delivery.unsure_many.other": "{count} отчета могли не дойти",
   "delivery.state.not_configured": "Не подключен", "delivery.state.idle": "Нет отчетов за последние 3 дня",
   "delivery.state.sent": "Готово · {count}", "delivery.state.pending": "Ожидает отправки · {count}",
   "delivery.state.waiting": "После завершения звонка · {count}",
@@ -852,6 +858,10 @@ Object.assign(translations.en, {
   "delivery.undelivered_many.other": "{count} reports not sent",
   "delivery.resend": "Send again", "delivery.resending": "Sending...",
   "delivery.resend_failed": "Could not send. Check the internet connection and press Send again.",
+  "delivery.resend_meeting_not_finished": "The meeting is still recording. Send the report after it ends.",
+  "delivery.resend_report_not_ready": "The report file is missing. Open the report in meeting history and create it again.",
+  "delivery.unsure_many.one": "{count} report may not have arrived",
+  "delivery.unsure_many.other": "{count} reports may not have arrived",
   "delivery.state.not_configured": "Not connected", "delivery.state.idle": "No reports in the last 3 days",
   "delivery.state.sent": "Ready · {count}", "delivery.state.pending": "Awaiting delivery · {count}",
   "delivery.state.waiting": "After the call ends · {count}",
@@ -982,7 +992,7 @@ async function resendReport(item) {
   deliverySignature = "";
   renderDeliveryHealth(deliveryHealth);
   const fields = { email: "mail_status", drive: "drive_status", telegram: "telegram_status" };
-  let sent = false, auth = false;
+  let sent = false, auth = false, unsure = false, blocked = "";
   try {
     const request_id = crypto.randomUUID();
     // The button itself is the person's confirmation to send again.
@@ -996,10 +1006,12 @@ async function resendReport(item) {
       && item.channels.some(channel => ["sent", "uploaded"].includes(job.report?.[fields[channel]]));
     auth = item.channels.some(channel => job.report?.[fields[channel]] === "auth_required")
       || deliveryAuthReasons.includes(job.report?.mail_error?.reason);
+    unsure = item.channels.some(channel => job.report?.[fields[channel]] === "unknown");
+    blocked = ["meeting_not_finished", "report_not_ready"].includes(job.error) ? job.error : "";
   } catch (_error) {
     sent = false;
   }
-  deliveryResend[item.meeting_id] = sent ? "" : auth ? "auth" : "failed";
+  deliveryResend[item.meeting_id] = sent ? "" : auth ? "auth" : blocked || (unsure ? "unsure" : "failed");
   deliverySignature = "";
   try {
     renderDeliveryHealth((await getJSON("/api/delivery")).delivery);
@@ -1021,7 +1033,9 @@ function renderDeliveryHealth(health = {}) {
   if (authChannels.length) problems.push(t("delivery.auth_pill", { channel: authChannels.map(key => deliveryChannelNames[key]).join(", ") }));
   if (undelivered.length === 1) problems.push(undeliveredLabel(undelivered[0]));
   else if (undelivered.length) {
-    problems.push(t(`delivery.undelivered_many.${new Intl.PluralRules(uiLanguage).select(undelivered.length)}`, { count: undelivered.length }));
+    // Never state an unknown outcome as a confirmed failure.
+    const family = undelivered.some(item => item.uncertain) ? "unsure_many" : "undelivered_many";
+    problems.push(t(`delivery.${family}.${new Intl.PluralRules(uiLanguage).select(undelivered.length)}`, { count: undelivered.length }));
   }
   elements.deliveryAlert.hidden = !Object.keys(channels).length;
   elements.deliveryAlert.dataset.state = problems.length ? "action_required" : "idle";
@@ -1037,8 +1051,10 @@ function renderDeliveryHealth(health = {}) {
     button.disabled = Object.values(deliveryResend).includes("sending");
     button.addEventListener("click", () => void resendReport(item));
     row.append(button);
-    if (item.uncertain && !state) row.append(textNode("p", "delivery-reason", t("delivery.unsure_hint")));
-    if (state === "failed") row.append(textNode("p", "delivery-reason", t("delivery.resend_failed")));
+    if ((item.uncertain && !state) || state === "unsure") row.append(textNode("p", "delivery-reason", t("delivery.unsure_hint")));
+    if (["failed", "meeting_not_finished", "report_not_ready"].includes(state)) {
+      row.append(textNode("p", "delivery-reason", t(`delivery.resend_${state}`)));
+    }
     if (state === "auth") {
       // A resend blocked by sign-in: say so and offer the fix, not another retry.
       const reason = textNode("p", "delivery-reason", t("delivery.reason.auth_required"));
