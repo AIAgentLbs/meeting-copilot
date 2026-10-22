@@ -17,7 +17,7 @@ const auth = { ...healthy, state: 'action_required',
   channels: { ...healthy.channels, gmail: channel('action_required', { action_required: 1, issues: [{ meeting_id: 'm2', reason: 'auth_required' }] }) } };
 
 (async () => {
-  let delivery = healthy, retries = [], jobPolls = 0, language = 'ru', jobReport = { mail_status: 'sent' };
+  let delivery = healthy, retries = [], recreated = [], jobPolls = 0, language = 'ru', jobReport = { mail_status: 'sent' };
   const json = (res, value) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(value)); };
   const state = () => ({
     transcript: { meeting_id: 'idle', meeting: '', status: 'idle', segments: [], live: false },
@@ -33,6 +33,11 @@ const auth = { ...healthy, state: 'action_required',
       jobPolls += 1;
       if (jobReport.mail_status === 'sent') delivery = healthy;
       return json(res, { ok: true, job: { state: 'complete', request_id: retries.at(-1).request_id, report: jobReport } });
+    }
+    if (req.url === '/api/archive/report') {
+      let body = ''; req.on('data', data => body += data);
+      req.on('end', () => { recreated.push(JSON.parse(body)); delivery = healthy; json(res, { ok: true, report: {} }); });
+      return;
     }
     if (req.url === '/api/delivery/retry') {
       let body = ''; req.on('data', data => body += data);
@@ -102,6 +107,18 @@ const auth = { ...healthy, state: 'action_required',
     assert.doesNotMatch(await page.locator('#delivery-undelivered').innerText(), /интернет/);
     await settings.click();
     await page.locator('#settings-panel').waitFor({ state: 'visible', timeout: 3000 });
+
+    // MEETONTRACK-92: a report whose file is gone offers to create it again, not "check the archive".
+    await reload(undelivered({ ...weekly, missing: true }));
+    await pillIs('Отчет по встрече «Weekly sync» от 16 октября не найден');
+    await pill.click();
+    const recreate = page.locator('#delivery-undelivered button');
+    await recreate.waitFor({ timeout: 3000 });
+    assert.equal(await recreate.textContent(), 'Создать отчет заново');
+    await recreate.click();
+    await pillIs('Доставка');
+    assert.deepEqual(recreated, [{ meeting_id: 'm1' }]);
+    assert.doesNotMatch(await page.evaluate(() => document.body.innerText), /локальный архив/);
 
     language = 'en';
     await reload(undelivered(weekly));

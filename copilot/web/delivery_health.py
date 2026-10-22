@@ -99,6 +99,11 @@ class DeliveryHealth:
                 state, reason = "pending", "pending"
                 if not generated:
                     state, reason = "failed", "metadata_invalid"
+                elif report.get("report_missing"):
+                    # Only the person can ask for the report to be created again.
+                    if delivered:
+                        continue
+                    state, reason = "action_required", "report_missing"
                 elif raw == ("uploaded" if channel == "drive" else "sent"):
                     state, reason = "sent", "sent"
                     if channel == "drive" and links_missing:
@@ -114,7 +119,7 @@ class DeliveryHealth:
                     state, reason = "failed", "retry_overdue"
                 # "unknown" is never retried automatically (it may duplicate a
                 # send), so it ends the same way as an expired retry window.
-                if (expired or raw == "unknown") and state not in {"sent", "waiting"}:
+                if (expired or raw == "unknown") and state not in {"sent", "waiting"} and reason != "report_missing":
                     if delivered:
                         # Retries ended but the report reached the person another
                         # way: close it. The failed channel stays visible only in
@@ -122,7 +127,7 @@ class DeliveryHealth:
                         continue
                     # An unknown outcome may already have arrived: say so.
                     state, reason = "action_required", "outcome_unknown" if raw == "unknown" else "retry_expired"
-                key =f"{path.parent.name}:{channel}"
+                key = f"{path.parent.name}:{channel}"
                 observations[key] = {"meeting_id": path.parent.name, "channel": channel,
                                      "state": state, "reason": reason}
                 item = channels[channel]

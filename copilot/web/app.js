@@ -825,7 +825,13 @@ Object.assign(translations.ru, {
   "delivery.reason.delivery_failed": "Отправка не удалась. Приложение повторит ее автоматически.",
   "delivery.reason.retry_overdue": "Доставка задерживается. Автоматические повторы продолжаются.",
   "delivery.reason.retry_expired": "Отчет никуда не отправлен. Нажмите «Подробнее», затем «Отправить снова».",
-  "delivery.reason.metadata_invalid": "Не читается состояние отчета. Проверьте локальный архив.",
+  "delivery.reason.metadata_invalid": "Файл состояния отчета поврежден. Приложение восстановит его автоматически.",
+  "delivery.reason.report_missing": "Файл отчета не найден. Нажмите «Подробнее», затем «Создать отчет заново».",
+  "delivery.missing.title_date": "Отчет по встрече «{title}» от {date} не найден",
+  "delivery.missing.title": "Отчет по встрече «{title}» не найден",
+  "delivery.missing.date": "Отчет по встрече от {date} не найден",
+  "delivery.missing.plain": "Отчет по встрече не найден",
+  "delivery.recreate": "Создать отчет заново", "delivery.recreating": "Создаю отчет...",
   "delivery.event.failed": "{channel}: сбой доставки. {reason}",
   "delivery.event.action_required": "{channel}: нужно ваше действие. {reason}",
   "delivery.event.recovered": "{channel}: доставка отчета восстановлена.",
@@ -864,7 +870,13 @@ Object.assign(translations.en, {
   "delivery.reason.delivery_failed": "Delivery failed. The app will retry automatically.",
   "delivery.reason.retry_overdue": "Delivery is delayed. Automatic retries continue.",
   "delivery.reason.retry_expired": "The report was not sent anywhere. Press Details, then Send again.",
-  "delivery.reason.metadata_invalid": "Report status is unreadable. Check the local archive.",
+  "delivery.reason.metadata_invalid": "The report's status file is damaged. The app will repair it automatically.",
+  "delivery.reason.report_missing": "The report file was not found. Press Details, then Create the report again.",
+  "delivery.missing.title_date": "Report for “{title}” on {date} was not found",
+  "delivery.missing.title": "Report for “{title}” was not found",
+  "delivery.missing.date": "Report for the meeting on {date} was not found",
+  "delivery.missing.plain": "A meeting report was not found",
+  "delivery.recreate": "Create the report again", "delivery.recreating": "Creating the report...",
   "delivery.event.failed": "{channel}: delivery failed. {reason}",
   "delivery.event.action_required": "{channel}: your action is needed. {reason}",
   "delivery.event.recovered": "{channel}: report delivery recovered.",
@@ -959,7 +971,7 @@ function undeliveredLabel(item) {
     title: item.title || "",
     date: Number.isNaN(started.getTime()) ? "" : started.toLocaleDateString(uiLanguage, { day: "numeric", month: "long" }),
   };
-  const family = item.uncertain ? "unsure" : "undelivered";
+  const family = item.missing ? "missing" : item.uncertain ? "unsure" : "undelivered";
   return t(`delivery.${family}.${["title", "date"].filter(key => values[key]).join("_") || "plain"}`, values);
 }
 
@@ -1013,9 +1025,31 @@ async function resendReport(item) {
   }
 }
 
+// A report whose file is gone: create it again (that also sends it) instead of resending.
+const deliveryRecreateError = {};
+async function recreateReport(item) {
+  if (Object.values(deliveryResend).includes("sending")) return;
+  deliveryResend[item.meeting_id] = "sending";
+  delete deliveryRecreateError[item.meeting_id];
+  deliverySignature = "";
+  renderDeliveryHealth(deliveryHealth);
+  try {
+    await post("/api/archive/report", { meeting_id: item.meeting_id });
+  } catch (error) {
+    deliveryRecreateError[item.meeting_id] = plainError(error);
+  }
+  deliveryResend[item.meeting_id] = "";
+  deliverySignature = "";
+  try {
+    renderDeliveryHealth((await getJSON("/api/delivery")).delivery);
+  } catch (_error) {
+    renderDeliveryHealth(deliveryHealth);
+  }
+}
+
 function renderDeliveryHealth(health = {}) {
   deliveryHealth = health;
-  const signature = `${uiLanguage}:${deliveryAcknowledgedThrough}:${JSON.stringify([health.channels, health.notifications, health.undelivered, deliveryResend])}`;
+  const signature = `${uiLanguage}:${deliveryAcknowledgedThrough}:${JSON.stringify([health.channels, health.notifications, health.undelivered, deliveryResend, deliveryRecreateError])}`;
   if (signature === deliverySignature) return;
   deliverySignature = signature;
   const channels = health.channels || {};
@@ -1039,11 +1073,13 @@ function renderDeliveryHealth(health = {}) {
     const state = deliveryResend[item.meeting_id] || "";
     const row = textNode("div", "delivery-undelivered", "");
     row.append(textNode("p", "", undeliveredLabel(item)));
-    const button = textNode("button", "primary-button", t(state === "sending" ? "delivery.resending" : "delivery.resend"));
+    const [busyText, idleText] = item.missing ? ["delivery.recreating", "delivery.recreate"] : ["delivery.resending", "delivery.resend"];
+    const button = textNode("button", "primary-button", t(state === "sending" ? busyText : idleText));
     button.type = "button";
     button.disabled = Object.values(deliveryResend).includes("sending");
-    button.addEventListener("click", () => void resendReport(item));
+    button.addEventListener("click", () => void (item.missing ? recreateReport(item) : resendReport(item)));
     row.append(button);
+    if (deliveryRecreateError[item.meeting_id]) row.append(textNode("p", "delivery-reason", deliveryRecreateError[item.meeting_id]));
     if ((item.uncertain && !state) || state === "unsure") row.append(textNode("p", "delivery-reason", t("delivery.unsure_hint")));
     if (["failed", "meeting_not_finished", "report_not_ready"].includes(state)) {
       row.append(textNode("p", "delivery-reason", t(`delivery.resend_${state}`)));
@@ -1082,7 +1118,7 @@ function renderDeliveryHealth(health = {}) {
     explanation.append(textNode("summary", "", t("delivery.explain")));
     for (const issue of channel.issues || []) {
       // Undelivered reports already have their own "send again" row above.
-      if (reasons.has(issue.reason) || ["retry_expired", "outcome_unknown"].includes(issue.reason)) continue;
+      if (reasons.has(issue.reason) || ["retry_expired", "outcome_unknown", "report_missing"].includes(issue.reason)) continue;
       reasons.add(issue.reason);
       const reason = textNode("p", "delivery-reason", t(`delivery.reason.${issue.reason}`));
       const auth = issue.reason === "auth_required";

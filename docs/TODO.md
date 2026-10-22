@@ -20,6 +20,10 @@ Public Mac/Windows 0.1.10 packages and remaining hardware gates:
   fixture's elapsed time `02:44`. Decide whether the hint must render the call
   time before the first state poll (product fix) or the test must wait for it
   (test fix); then run it in release checks. Not run in CI today.
+  Test fix in release/0.1.15: the script now serves every page script (the
+  state poll failed silently without `updates.js`), keeps the main screen up
+  with recording audio, and drops the removed `#analysis-help` checks. Passes;
+  close after release.
 - [ ] MEETONTRACK-85: `copilot/web/test_meeting_boundary_ui.cjs` times out
   (`locator.waitFor` 3 s, line 45) at 0.1.12 and identically at 0.1.11 (`effb7a2`).
   Not in the release script set. Find whether the fixture or the UI changed,
@@ -170,6 +174,8 @@ hashes, Pages removed, and the Windows installer relocated to
   in the archive folder (0.1.11, owner check 2026-10-21); reproduce on 0.1.12 and fix.
   Fixed in main c65a93b (an elevated mkdir(0o700) left owner-only ACLs); ships in the next Windows build.
 - [ ] MEETONTRACK-91: Zoom tile names mixing Cyrillic and Latin are misread by OCR ("Катя из Kumar&Solo" -> "ат umar&Sol" on 2026-10-22) and the garbled name reaches the transcript; re-OCR the highlighted label crop at higher scale with ru+en and snap to the full label seen in other frames (capture zoom-frame-inspector, copilot/web/server.py _speaker_from_frame).
+- [ ] MEETONTRACK-92: An unreadable or undated report status said "Не читается состояние отчета. Проверьте локальный архив" with no action.
+  Fixed in release/0.1.15 (`archive.py` `repair_report_states`): rebuilt from the report folder, or one "create the report again" button; close after release.
 - [ ] MEETONTRACK-89: Mac call-audio capture fades to silence during Chrome calls (39 of 53 min lost on 2026-10-21);
   watchdog fix ee2e6cf limits it; live A/B against an output-clocked aggregate on the next real call.
 - [ ] MEETONTRACK-86: Windows: Codex sandbox refusal shows only as a generic AI failure.

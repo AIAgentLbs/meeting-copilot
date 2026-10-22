@@ -166,6 +166,72 @@ class DeliveryHealthTests(unittest.TestCase):
         self.assertEqual(health["undelivered"], [])
         self.assertEqual(health["notifications"][-1]["kind"], "recovered")
 
+    def _archive(self):
+        config = self.root / "config"
+        config.mkdir(exist_ok=True)
+        (config / "delivery.json").write_text(json.dumps(self.settings), encoding="utf-8")
+        return MeetingArchive(self.root / "recordings", self.root / "archive", self.reports, config)
+
+    def test_unreadable_status_is_rebuilt_from_existing_report_files(self):
+        # MEETONTRACK-92: nobody can repair report.json by hand.
+        archive = self._archive()
+        folder = self.reports / "test"
+        (folder / "report.json").write_text("{broken", encoding="utf-8")
+        (folder / "index.html").write_text("<p>report</p>", encoding="utf-8")
+        (folder / "meeting-report.pdf").write_bytes(b"%PDF-test")
+        (folder / "delivery-receipts.json").write_text(json.dumps({"mail_status": "sent"}), encoding="utf-8")
+        archive.check_delivery_health()
+        repaired = json.loads((folder / "report.json").read_text())
+        self.assertEqual((folder / "report.json.broken").read_text(), "{broken")
+        self.assertTrue(repaired["generated_at"])
+        self.assertEqual(repaired["pdf_path"], str(folder / "meeting-report.pdf"))
+        self.assertEqual(repaired["mail_status"], "sent")
+        # Unknown whether Telegram went out: never resent automatically, the person decides.
+        self.assertEqual(repaired["telegram_status"], "unknown")
+        with patch.object(archive, "detail", return_value={"title": "Weekly sync"}):
+            health = archive.delivery_health()
+        reasons = {issue["reason"] for item in health["channels"].values() for issue in item["issues"]}
+        self.assertNotIn("metadata_invalid", reasons)
+        self.assertEqual(health["undelivered"], [])  # Email delivered it: nothing to resend.
+
+    def test_undated_status_without_receipts_offers_send_again(self):
+        archive = self._archive()
+        folder = self.reports / "test"
+        (folder / "report.json").write_text(json.dumps({"drive_status": "failed"}), encoding="utf-8")
+        (folder / "index.html").write_text("<p>report</p>", encoding="utf-8")
+        (folder / "meeting-report.pdf").write_bytes(b"%PDF-test")
+        archive.check_delivery_health()
+        with patch.object(archive, "detail", return_value={"title": "Weekly sync"}):
+            undelivered = archive.delivery_health()["undelivered"]
+        self.assertEqual(len(undelivered), 1)
+        self.assertTrue(undelivered[0]["uncertain"])
+        self.assertNotIn("missing", undelivered[0])
+
+    def test_missing_report_offers_to_create_it_again(self):
+        archive = self._archive()
+        (self.reports / "test" / "report.json").write_text("{broken", encoding="utf-8")
+        detail = {"meeting_id": "test", "transcript": [{"text": "hello"}], "journal": [], "frames": []}
+        with patch.object(archive, "report_detail", return_value=detail):
+            archive.check_delivery_health()
+        with patch.object(archive, "detail", return_value={"title": "Weekly sync"}):
+            health = archive.delivery_health()
+        self.assertEqual(health["undelivered"], [{"meeting_id": "test", "channels": ["drive", "email", "telegram"],
+                                                  "uncertain": False, "missing": True, "title": "Weekly sync",
+                                                  "started_at": ""}])
+        self.assertEqual(health["channels"]["gmail"]["issues"][0]["reason"], "report_missing")
+        # A missing report is never sent automatically.
+        self.assertEqual(archive.retry_pending_deliveries(), 0)
+
+    def test_status_without_report_or_meeting_is_set_aside(self):
+        archive = self._archive()
+        folder = self.reports / "test"
+        (folder / "report.json").write_text("{broken", encoding="utf-8")
+        with patch.object(archive, "report_detail", return_value=None):
+            health = archive.check_delivery_health()
+        self.assertFalse((folder / "report.json").exists())
+        self.assertEqual((folder / "report.json.broken").read_text(), "{broken")
+        self.assertEqual(health["issue_count"], 0)
+
     def test_old_report_can_recover_after_retry_window_ends(self):
         self.report.update(mail_status="failed", drive_status="failed", telegram_status="failed")
         self.save()
