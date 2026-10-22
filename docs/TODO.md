@@ -267,6 +267,11 @@ hashes, Pages removed, and the Windows installer relocated to
 - MEETONTRACK-16: Migrate legacy report branding to MeetOnTrack without changing automatic report
   delivery signatures or resending previously delivered reports. Existing PDF/HTML
   exports retain their original branding until an intentional migration/rebuild.
+- [ ] MEETONTRACK-95: Links and services: one card per URL (SERVICE and LINK merged, OCR
+  one-character variants such as forms/torms merged) and no links to the call itself
+  (Zoom, Meet, Teams, Telemost and similar). Source fix 2026-10-22 in
+  `copilot/web/journal_links.py`, applied on create and on read without rewriting
+  stored data; close after release.
 
 ## MeetOnTrack updates and distribution
 

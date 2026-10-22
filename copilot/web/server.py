@@ -37,6 +37,7 @@ from delivery_retry import DeliveryRetry
 from release_updates import ReleaseUpdates, installed_release
 from summary_rewrite import SummaryRewrites
 from question_quality import register_question, useful_question
+from journal_links import URL_RE, LINK_CATEGORIES, call_link, collapse_links
 from recording_health import default_guard
 from meet_participants import meet_active_speaker, meet_participant_labels
 from teams_participants import teams_one_to_one_name, teams_participant_labels
@@ -89,11 +90,6 @@ LOCAL_CONTEXT = LocalContext(HOME / ".config/meeting-copilot/context-folders.jso
 JOURNAL_BLOCK_RE = re.compile(
     r"(?m)^(FACT|CONTRADICTION|HISTORY|RISK|OBJECTION|INCOMING_QUESTION|OPEN_QUESTION|COMMITMENT|DECISION|ASK|URL|PRODUCT|SERVICE)"
     r"\s*(?:[—:–-]\s*|\n+)"
-)
-URL_RE = re.compile(
-    r"(?i)(?:https?://|www\.)[^\s<>'\"\])}]+|"
-    r"(?<![@\w])(?:[a-z0-9-]+\.)+(?:com|io|ai|app|dev|net|org|ru|me|co|us)"
-    r"(?:/[^\s<>'\"\])}]*)?"
 )
 ZOOM_CHAT_HEADER_RE = re.compile(
     r"^(.{1,80}?)(?:\s+to\s+.+?|\s+\(Direct Message\))\s+"
@@ -540,7 +536,7 @@ def safe_url(raw: str) -> str:
         not host
         or "." not in host
         or host in {"localhost", "127.0.0.1"}
-        or host.endswith("zoom.us")
+        or call_link(host, parsed.path)
     ):
         return ""
     scheme = parsed.scheme.lower() if parsed.scheme.lower() in {"http", "https"} else "https"
@@ -756,11 +752,12 @@ class MeetingJournal:
 
     def snapshot(self, meeting_id: str) -> list[dict]:
         with self.lock:
-            return [
-                item for item in map(routed_event, reversed(self.items))
+            items = [
+                item for item in map(routed_event, self.items)
                 if meeting_id and item.get("meeting_id") == meeting_id
                 and register_question(item)
-            ][:500]
+            ]
+        return collapse_links(items)[::-1][:500]
 
     def manual_context(self, meeting_id: str, limit: int = 40) -> str:
         with self.lock:
@@ -818,6 +815,10 @@ class MeetingJournal:
                 for existing in self.items
             ):
                 return None
+            if category in LINK_CATEGORIES and item not in collapse_links(
+                [existing for existing in self.items if existing.get("meeting_id") == meeting_id] + [item]
+            ):
+                return None  # A call link, or a link this meeting already shows.
             self.items.append(item)
             payload = json.dumps(
                 {"version": 1, "items": self.items}, ensure_ascii=False, indent=2
@@ -1122,12 +1123,15 @@ class MeetingChat:
         return added
 
 
+def add_link(url: str, meeting_id: str, meeting: str, source: str) -> None:
+    # One card per URL: the named SERVICE card when the host is known, else a bare URL.
+    name = service_name(url)
+    JOURNAL.add("SERVICE" if name else "URL", f"{name} — {url}" if name else url, meeting_id, meeting, source)
+
+
 def capture_mentions(text: str, meeting_id: str, meeting: str, source: str) -> None:
     for url in extract_urls(text):
-        JOURNAL.add("URL", url, meeting_id, meeting, source)
-        name = service_name(url)
-        if name:
-            JOURNAL.add("SERVICE", f"{name} — {url}", meeting_id, meeting, source)
+        add_link(url, meeting_id, meeting, source)
     for category, name, pattern in ENTITY_MENTIONS:
         if pattern.search(text):
             JOURNAL.add(category, name, meeting_id, meeting, source)
@@ -1508,12 +1512,8 @@ class MeetingFrames:
                 capture_mentions(visual_text, meeting_id, meeting, "screen")
             for raw_url in frame.get("urls", []):
                 url = safe_url(str(raw_url))
-                if not url:
-                    continue
-                JOURNAL.add("URL", url, meeting_id, meeting, "screen")
-                name = service_name(url)
-                if name:
-                    JOURNAL.add("SERVICE", f"{name} — {url}", meeting_id, meeting, "screen")
+                if url:
+                    add_link(url, meeting_id, meeting, "screen")
             messages = frame.get("chat_messages", [])
             if isinstance(messages, list) and messages:
                 MEETING_CHAT.add_many(
