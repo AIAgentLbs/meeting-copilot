@@ -116,6 +116,8 @@ class MeetingArchive:
         self.delivery_monitor = DeliveryHealth(
             reports_root, config_root / "delivery-health.json", self.delivery_retry_days
         )
+        # ponytail: names cached for the process lifetime; a rename shows after restart.
+        self._delivery_labels: dict[str, dict] = {}
         private_dir(self.archive_root, recover=True)
         private_dir(self.reports_root, recover=True)
 
@@ -858,7 +860,26 @@ class MeetingArchive:
     def delivery_health(self) -> dict:
         """Expose all configured channels without sending or querying providers."""
         settings = _json(self.config_root / "delivery.json", {})
-        return self.delivery_monitor.snapshot(settings if isinstance(settings, dict) else {})
+        health = self.delivery_monitor.snapshot(settings if isinstance(settings, dict) else {})
+        # Reports that reached the person through no channel after retries
+        # ended, named so the header can offer one "send again" per report.
+        retry_names = {"gmail": "email", "drive": "drive", "telegram": "telegram"}
+        undelivered: dict[str, list[str]] = {}
+        for channel, item in health["channels"].items():
+            for issue in item["issues"]:
+                if issue["reason"] == "retry_expired":
+                    undelivered.setdefault(issue["meeting_id"], []).append(retry_names[channel])
+        health["undelivered"] = [{"meeting_id": meeting_id, "channels": channels,
+                                  **self._delivery_label(meeting_id)}
+                                 for meeting_id, channels in undelivered.items()]
+        return health
+
+    def _delivery_label(self, meeting_id: str) -> dict:
+        if meeting_id not in self._delivery_labels:
+            detail = self.detail(meeting_id) or {}
+            self._delivery_labels[meeting_id] = {"title": str(detail.get("title") or ""),
+                                                 "started_at": str(detail.get("started_at") or "")}
+        return self._delivery_labels[meeting_id]
 
     def check_delivery_health(self) -> dict:
         settings = _json(self.config_root / "delivery.json", {})

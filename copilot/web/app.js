@@ -18,6 +18,7 @@ const elements = {
   deliveryAlert: document.querySelector("#delivery-alert"),
   deliverySummary: document.querySelector("#delivery-summary"),
   deliveryChannels: document.querySelector("#delivery-channels"),
+  deliveryUndelivered: document.querySelector("#delivery-undelivered"),
   deliveryNotice: document.querySelector("#delivery-notice"),
   deliveryNoticeText: document.querySelector("#delivery-notice-text"),
   deliveryNoticeDetails: document.querySelector("#delivery-notice-details"),
@@ -94,9 +95,6 @@ const translations = {
     "status.checking": "Проверка",
     "nav.repositories": "Контекст встречи",
     "nav.meetings": "История встреч",
-    "delivery.auth_required": "Почта: нужен вход · {count}",
-    "delivery.pending": "Почта: не отправлено · {count}",
-    "delivery.hint": "Отчёты сохранены локально. Откройте историю встреч для статуса доставки.",
     "language.label": "Язык интерфейса",
     "aria.transcript_view": "Вид левой панели",
     "aria.copilot_view": "Режим правой панели",
@@ -324,9 +322,6 @@ const translations = {
     "status.checking": "Checking",
     "nav.repositories": "Meeting context",
     "nav.meetings": "Meeting history",
-    "delivery.auth_required": "Email: sign-in needed · {count}",
-    "delivery.pending": "Email: not sent · {count}",
-    "delivery.hint": "Reports are saved locally. Open meeting history for delivery status.",
     "language.label": "Interface language",
     "aria.transcript_view": "Left pane view",
     "aria.copilot_view": "Right pane view",
@@ -802,40 +797,58 @@ elements.newMeetingConfirm.addEventListener("click", async () => {
 });
 
 Object.assign(translations.ru, {
-  "delivery.heading": "Доставка отчётов", "delivery.button": "Доставка",
-  "delivery.attention": "Доставка · проблем: {count}", "delivery.details": "Подробнее",
+  "delivery.heading": "Доставка отчетов", "delivery.button": "Доставка", "delivery.details": "Подробнее",
   "delivery.dismiss": "Прочитано", "delivery.dismiss_failed": "Не удалось сохранить. Повторите.",
-  "delivery.local_note": "Запись и отчёт остаются локально. Ошибки доставки не останавливают звонок.",
-  "delivery.state.not_configured": "Не подключён", "delivery.state.idle": "Нет отчётов за последние 3 дня",
+  "delivery.local_note": "Запись и отчет остаются локально. Ошибки доставки не останавливают звонок.",
+  "delivery.auth_pill": "{channel}: войдите снова", "delivery.open_settings": "Открыть настройки",
+  "delivery.undelivered.title_date": "Отчет по встрече «{title}» от {date} не отправлен",
+  "delivery.undelivered.title": "Отчет по встрече «{title}» не отправлен",
+  "delivery.undelivered.date": "Отчет по встрече от {date} не отправлен",
+  "delivery.undelivered.plain": "Отчет по встрече не отправлен",
+  "delivery.undelivered_many.one": "{count} отчет не отправлен",
+  "delivery.undelivered_many.few": "{count} отчета не отправлены",
+  "delivery.undelivered_many.many": "{count} отчетов не отправлены",
+  "delivery.undelivered_many.other": "{count} отчета не отправлены",
+  "delivery.resend": "Отправить снова", "delivery.resending": "Отправляю...",
+  "delivery.resend_failed": "Не получилось отправить. Проверьте интернет и нажмите «Отправить снова» еще раз.",
+  "delivery.state.not_configured": "Не подключен", "delivery.state.idle": "Нет отчетов за последние 3 дня",
   "delivery.state.sent": "Готово · {count}", "delivery.state.pending": "Ожидает отправки · {count}",
   "delivery.state.waiting": "После завершения звонка · {count}",
   "delivery.state.failed": "Не доставлено · {count}", "delivery.state.action_required": "Нужно действие · {count}",
-  "delivery.reason.auth_required": "Восстановите авторизацию этого подключения.",
+  "delivery.reason.auth_required": "Вход в аккаунт больше не действует. Откройте настройки и подключите аккаунт снова.",
   "delivery.reason.links_missing": "Не получены корректные ссылки Drive. Приложение повторит загрузку.",
-  "delivery.reason.delivery_failed": "Отправка не удалась. Приложение повторит её автоматически.",
+  "delivery.reason.delivery_failed": "Отправка не удалась. Приложение повторит ее автоматически.",
   "delivery.reason.retry_overdue": "Доставка задерживается. Автоматические повторы продолжаются.",
-  "delivery.reason.retry_expired": "Автоповторы закончились. Проверьте предыдущую доставку перед повторной отправкой.",
-  "delivery.reason.metadata_invalid": "Не читается состояние отчёта. Проверьте локальный архив.",
+  "delivery.reason.retry_expired": "Отчет никуда не отправлен. Нажмите «Подробнее», затем «Отправить снова».",
+  "delivery.reason.metadata_invalid": "Не читается состояние отчета. Проверьте локальный архив.",
   "delivery.event.failed": "{channel}: сбой доставки. {reason}",
   "delivery.event.action_required": "{channel}: нужно ваше действие. {reason}",
-  "delivery.event.recovered": "{channel}: доставка отчёта восстановлена.",
-  "delivery.more": "Ещё событий: {count}", "delivery.open_report": "Открыть отчёт",
+  "delivery.event.recovered": "{channel}: доставка отчета восстановлена.",
+  "delivery.more": "Еще событий: {count}", "delivery.open_report": "Открыть отчет",
   "delivery.explain": "Причина и что делать",
 });
 Object.assign(translations.en, {
-  "delivery.heading": "Report delivery", "delivery.button": "Delivery",
-  "delivery.attention": "Delivery · issues: {count}", "delivery.details": "Details",
+  "delivery.heading": "Report delivery", "delivery.button": "Delivery", "delivery.details": "Details",
   "delivery.dismiss": "Mark as read", "delivery.dismiss_failed": "Could not save. Try again.",
   "delivery.local_note": "Recordings and reports stay locally. Delivery errors do not interrupt the call.",
+  "delivery.auth_pill": "{channel}: sign in again", "delivery.open_settings": "Open settings",
+  "delivery.undelivered.title_date": "Report for “{title}” on {date} was not sent",
+  "delivery.undelivered.title": "Report for “{title}” was not sent",
+  "delivery.undelivered.date": "Report for the meeting on {date} was not sent",
+  "delivery.undelivered.plain": "A meeting report was not sent",
+  "delivery.undelivered_many.one": "{count} report not sent",
+  "delivery.undelivered_many.other": "{count} reports not sent",
+  "delivery.resend": "Send again", "delivery.resending": "Sending...",
+  "delivery.resend_failed": "Could not send. Check the internet connection and press Send again.",
   "delivery.state.not_configured": "Not connected", "delivery.state.idle": "No reports in the last 3 days",
   "delivery.state.sent": "Ready · {count}", "delivery.state.pending": "Awaiting delivery · {count}",
   "delivery.state.waiting": "After the call ends · {count}",
   "delivery.state.failed": "Not delivered · {count}", "delivery.state.action_required": "Action needed · {count}",
-  "delivery.reason.auth_required": "Restore authorization for this connection.",
+  "delivery.reason.auth_required": "The account sign-in has expired. Open settings and connect the account again.",
   "delivery.reason.links_missing": "Valid Drive links are missing. The app will retry the upload.",
   "delivery.reason.delivery_failed": "Delivery failed. The app will retry automatically.",
   "delivery.reason.retry_overdue": "Delivery is delayed. Automatic retries continue.",
-  "delivery.reason.retry_expired": "Automatic retries ended. Check earlier delivery before sending again.",
+  "delivery.reason.retry_expired": "The report was not sent anywhere. Press Details, then Send again.",
   "delivery.reason.metadata_invalid": "Report status is unreadable. Check the local archive.",
   "delivery.event.failed": "{channel}: delivery failed. {reason}",
   "delivery.event.action_required": "{channel}: your action is needed. {reason}",
@@ -923,15 +936,92 @@ elements.recognitionResume.addEventListener("click", async () => {
 
 const deliveryChannelNames = { drive: "Google Drive", get gmail() { return uiLanguage === "ru" ? "Почта" : "Email"; }, telegram: "Telegram" };
 
+const deliveryResend = {};
+
+function undeliveredLabel(item) {
+  const started = new Date(item.started_at || "");
+  const values = {
+    title: item.title || "",
+    date: Number.isNaN(started.getTime()) ? "" : started.toLocaleDateString(uiLanguage, { day: "numeric", month: "long" }),
+  };
+  return t(`delivery.undelivered.${["title", "date"].filter(key => values[key]).join("_") || "plain"}`, values);
+}
+
+function deliveryAuthChannels(channels) {
+  return Object.keys(deliveryChannelNames)
+    .filter(key => (channels[key]?.issues || []).some(issue => issue.reason === "auth_required"));
+}
+
+function openDeliverySettings() {
+  if (!elements.archiveDialog.hidden) closeArchive();
+  document.querySelector("#settings-open").click();
+  document.querySelector("#delivery-settings").scrollIntoView({ block: "start" });
+}
+
+// One button per undelivered report: re-sends every channel that failed for it.
+async function resendReport(item) {
+  if (deliveryResend[item.meeting_id] === "sending") return;
+  deliveryResend[item.meeting_id] = "sending";
+  deliverySignature = "";
+  renderDeliveryHealth(deliveryHealth);
+  const fields = { email: "mail_status", drive: "drive_status", telegram: "telegram_status" };
+  let sent = false;
+  try {
+    const request_id = crypto.randomUUID();
+    // The button itself is the person's confirmation to send again.
+    let job = (await post("/api/delivery/retry", { meeting_id: item.meeting_id, channels: item.channels, request_id, confirm: true })).job;
+    const deadline = Date.now() + 300000;
+    while (job.state === "sending" && job.request_id === request_id && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      job = (await getJSON("/api/delivery/job")).job;
+    }
+    sent = job.request_id === request_id && job.state === "complete"
+      && item.channels.some(channel => ["sent", "uploaded"].includes(job.report?.[fields[channel]]));
+  } catch (_error) {
+    sent = false;
+  }
+  deliveryResend[item.meeting_id] = sent ? "" : "failed";
+  deliverySignature = "";
+  try {
+    renderDeliveryHealth((await getJSON("/api/delivery")).delivery);
+  } catch (_error) {
+    renderDeliveryHealth(deliveryHealth);
+  }
+}
+
 function renderDeliveryHealth(health = {}) {
   deliveryHealth = health;
-  const signature = `${uiLanguage}:${deliveryAcknowledgedThrough}:${JSON.stringify([health.channels, health.notifications, health.issue_count])}`;
+  const signature = `${uiLanguage}:${deliveryAcknowledgedThrough}:${JSON.stringify([health.channels, health.notifications, health.undelivered, deliveryResend])}`;
   if (signature === deliverySignature) return;
   deliverySignature = signature;
   const channels = health.channels || {};
+  const undelivered = health.undelivered || [];
+  const authChannels = deliveryAuthChannels(channels);
+  // The pill names the concrete problem; automatic retries are not the person's problem.
+  const problems = [];
+  if (authChannels.length) problems.push(t("delivery.auth_pill", { channel: authChannels.map(key => deliveryChannelNames[key]).join(", ") }));
+  if (undelivered.length === 1) problems.push(undeliveredLabel(undelivered[0]));
+  else if (undelivered.length) {
+    problems.push(t(`delivery.undelivered_many.${new Intl.PluralRules(uiLanguage).select(undelivered.length)}`, { count: undelivered.length }));
+  }
   elements.deliveryAlert.hidden = !Object.keys(channels).length;
-  elements.deliveryAlert.dataset.state = health.state || "not_configured";
-  elements.deliveryAlert.textContent = t(health.issue_count ? "delivery.attention" : "delivery.button", { count: health.issue_count });
+  elements.deliveryAlert.dataset.state = problems.length ? "action_required" : "idle";
+  elements.deliveryAlert.dataset.action = authChannels.length && !undelivered.length ? "settings" : "archive";
+  elements.deliveryAlert.textContent = problems.join(" · ") || t("delivery.button");
+  const resendRows = document.createDocumentFragment();
+  for (const item of undelivered) {
+    const state = deliveryResend[item.meeting_id] || "";
+    const row = textNode("div", "delivery-undelivered", "");
+    row.append(textNode("p", "", undeliveredLabel(item)));
+    const button = textNode("button", "primary-button", t(state === "sending" ? "delivery.resending" : "delivery.resend"));
+    button.type = "button";
+    button.disabled = state === "sending";
+    button.addEventListener("click", () => void resendReport(item));
+    row.append(button);
+    if (state === "failed") row.append(textNode("p", "delivery-reason", t("delivery.resend_failed")));
+    resendRows.append(row);
+  }
+  elements.deliveryUndelivered.replaceChildren(resendRows);
   const fragment = document.createDocumentFragment();
   const hints = [];
   for (const [key, name] of Object.entries(deliveryChannelNames)) {
@@ -953,12 +1043,14 @@ function renderDeliveryHealth(health = {}) {
     explanation.open = !window.matchMedia("(max-width: 600px)").matches;
     explanation.append(textNode("summary", "", t("delivery.explain")));
     for (const issue of channel.issues || []) {
-      if (reasons.has(issue.reason)) continue;
+      // Undelivered reports already have their own "send again" row above.
+      if (reasons.has(issue.reason) || issue.reason === "retry_expired") continue;
       reasons.add(issue.reason);
       const reason = textNode("p", "delivery-reason", t(`delivery.reason.${issue.reason}`));
-      const open = textNode("button", "quiet-button delivery-issue-link", t("delivery.open_report"));
+      const auth = issue.reason === "auth_required";
+      const open = textNode("button", "quiet-button delivery-issue-link", t(auth ? "delivery.open_settings" : "delivery.open_report"));
       open.type = "button";
-      open.addEventListener("click", () => void loadArchiveMeeting(issue.meeting_id));
+      open.addEventListener("click", () => auth ? openDeliverySettings() : void loadArchiveMeeting(issue.meeting_id));
       reason.append(open);
       explanation.append(reason);
     }
@@ -966,7 +1058,7 @@ function renderDeliveryHealth(health = {}) {
     row.append(value);
     fragment.append(row);
   }
-  elements.deliveryAlert.title = hints.join("\n");
+  elements.deliveryAlert.title = [...problems, ...hints].join("\n");
   elements.deliveryChannels.replaceChildren(fragment);
   elements.deliverySummary.hidden = !Object.keys(channels).length;
   const notices = (health.notifications || []).filter(item => item.id > deliveryAcknowledgedThrough);
@@ -2829,7 +2921,10 @@ elements.question.addEventListener("keydown", (event) => {
 
 elements.note.addEventListener("click", () => void saveNote());
 elements.copyDialog.addEventListener("click", () => void copyDialogue());
-elements.deliveryAlert.addEventListener("click", () => void openArchive());
+elements.deliveryAlert.addEventListener("click", () => {
+  if (elements.deliveryAlert.dataset.action === "settings") openDeliverySettings();
+  else void openArchive();
+});
 elements.deliveryNoticeDetails.addEventListener("click", () => void openArchive());
 elements.deliveryNoticeDismiss.addEventListener("click", () => void acknowledgeDeliveryNotices());
 elements.translationJump.addEventListener("click", () => {

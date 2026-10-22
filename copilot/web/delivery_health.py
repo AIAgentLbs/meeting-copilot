@@ -82,6 +82,9 @@ class DeliveryHealth:
             if expired and path.parent.name not in tracked_meetings:
                 continue
             considered += 1
+            # Any channel that delivered means the person has this report.
+            delivered = any(report.get(field) == ("uploaded" if channel == "drive" else "sent")
+                            for channel, field in self.channels.items())
             for channel, field in self.channels.items():
                 if not configured[channel]:
                     continue
@@ -104,6 +107,11 @@ class DeliveryHealth:
                 elif now - generated > timedelta(minutes=15):
                     state, reason = "failed", "retry_overdue"
                 if expired and state not in {"sent", "waiting"}:
+                    if delivered:
+                        # Retries ended but the report reached the person another
+                        # way: close it. The failed channel stays visible only in
+                        # that report's own delivery details.
+                        continue
                     state, reason = "action_required", "retry_expired"
                 key = f"{path.parent.name}:{channel}"
                 observations[key] = {"meeting_id": path.parent.name, "channel": channel,
@@ -128,8 +136,13 @@ class DeliveryHealth:
         with self.lock:
             stored = _read(self.state_file)
         ack = int(stored.get("acknowledged_through") or 0)
+        tracked = stored.get("issues", {})
+        # A failure notice whose problem was closed (or its channel disabled)
+        # is stale: only open problems and recoveries are announced.
+        notifications = [item for item in stored.get("events", []) if item["id"] > ack and (
+            item["kind"] == "recovered" or f"{item['meeting_id']}:{item['channel']}" in tracked)]
         summary.update({"checked_at": stored.get("checked_at"),
-                        "notifications": [item for item in stored.get("events", []) if item["id"] > ack],
+                        "notifications": notifications,
                         "acknowledged_through": ack})
         # Backward compatibility for older installed web clients.
         mail = summary["channels"]["gmail"]
