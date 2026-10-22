@@ -257,10 +257,11 @@ class OldMeetingRepairTests(FinalTranscriptAfterNextCallTests):
         self.assertEqual(health["notifications"], [])
         # A send the person asked for that failed is shown, not hidden as "on request".
         failed = json.loads(path.read_text())
-        path.write_text(json.dumps({**failed, "mail_status": "failed"}))
+        path.write_text(json.dumps({**failed, "mail_status": "failed", "last_delivery_request": "synthetic-request-0001"}))
         health = DeliveryHealth(self.root / "reports", self.config / "health.json").refresh(
             settings, now=datetime.now(timezone.utc) + timedelta(hours=1))
         self.assertEqual(health["issue_count"], 1)
+        self.assertEqual(health["channels"]["gmail"]["issues"][0]["reason"], "retry_expired")  # "Send again".
 
     # The inherited cases also hold for an old meeting, without any sending.
     def test_final_transcript_replaces_live_and_report_follows_when_next_call_ends(self):
@@ -272,6 +273,99 @@ class OldMeetingRepairTests(FinalTranscriptAfterNextCallTests):
         self.finalize()
         self.archive.sync_transcript(self.live)
         self.assertEqual(len(self.stored()["segments"]), 406)
+
+
+class RepairedOldMeetingDeliveryTests(unittest.TestCase):
+    """MEETONTRACK-99, shaped like 9AE490BB: sent 10 days ago, email failed and
+    Telegram arrived; the final transcript then rebuilt its report."""
+
+    def __getattr__(self, name):  # The shared call fixture: root, config, archive, finalize, sent.
+        case = self.__dict__.get("case")
+        if case is None:
+            raise AttributeError(name)
+        return getattr(case, name)
+
+    def setUp(self):
+        self.case = FinalTranscriptAfterNextCallTests("test_dropout_in_the_last_minute_is_explained_not_flagged")
+        self.case.setUp(days_ago=10)
+        self.addCleanup(self.case.doCleanups)
+        self.next_call_ends()
+        self.settings = {"email_to": "synthetic@example.test", "telegram_account": "synthetic",
+                         "telegram_config": "/synthetic/telegram", "drive_folder_id": "folder"}
+        (self.config / "delivery.json").write_text(json.dumps(self.settings))
+        self.sent_at = (self.end + timedelta(minutes=2)).isoformat(timespec="seconds")
+        self.report_dir = self.root / "reports/FIRST-CALL"
+        self.report_dir.mkdir(parents=True)
+        (self.report_dir / "meeting-report.pdf").write_bytes(b"%PDF old")
+        self.old = {"generated_at": self.sent_at, "html": "/api/archive/report/FIRST-CALL/index.html",
+                    "pdf": "/api/archive/report/FIRST-CALL/meeting-report.pdf",
+                    "pdf_path": str(self.report_dir / "meeting-report.pdf"), "source_signature": "live-text",
+                    "drive_status": "uploaded", "drive_folder_url": "https://drive.google.com/drive/folders/f1",
+                    "drive_html_url": "https://drive.google.com/file/d/h1/view",
+                    "drive_pdf_url": "https://drive.google.com/file/d/p1/view",
+                    "mail_status": "failed", "telegram_status": "sent",
+                    "delivery_checked_at": self.sent_at, "delivery_retry_at": self.sent_at}
+        (self.report_dir / "report.json").write_text(json.dumps(self.old))
+
+    def health(self, hours: float = 0) -> dict:
+        return DeliveryHealth(self.root / "reports", self.config / "delivery-health.json").refresh(
+            self.settings, now=datetime.now(timezone.utc) + timedelta(hours=hours))
+
+    def test_rebuilding_keeps_the_old_outcome_and_raises_no_new_delivery_problem(self):
+        self.finalize()
+        self.assertEqual(self.sent, [], "Nothing is sent for an old meeting")
+        report = json.loads((self.report_dir / "report.json").read_text())
+        self.assertTrue(report["delivery_on_request"])
+        self.assertNotEqual(report["generated_at"], self.sent_at)  # The report itself is new.
+        self.assertEqual((report["mail_status"], report["telegram_status"]), ("failed", "sent"))
+        self.assertEqual((report["delivery_checked_at"], report["delivery_started_at"]), (self.sent_at, self.sent_at))
+        self.assertEqual(report["drive_status"], "pending", "The Drive copy has the old text")
+        self.assertEqual(report["drive_pdf_url"], self.old["drive_pdf_url"])
+        health = self.health()
+        self.assertEqual((health["issue_count"], health["notifications"]), (0, []))
+        self.assertEqual(health["channels"]["drive"]["pending"], 0, "Old Drive copies are not pending work")
+        with patch.object(self.archive, "deliver") as deliver:
+            self.archive.retry_pending_deliveries()
+        deliver.assert_not_called()
+        self.assertEqual(self.archive.delivery_health()["undelivered"], [])
+
+    def test_a_problem_already_raised_by_0_1_16_clears_on_the_next_check(self):
+        self.finalize()
+        # What 0.1.16 wrote after rebuilding the report: a fresh "email failed".
+        report = json.loads((self.report_dir / "report.json").read_text())
+        report.pop("delivery_started_at")
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        (self.report_dir / "report.json").write_text(json.dumps({**report, "delivery_checked_at": now, "delivery_retry_at": now}))
+        key = "FIRST-CALL:gmail"
+        issue = {"meeting_id": "FIRST-CALL", "channel": "gmail", "state": "failed", "reason": "delivery_failed"}
+        (self.config / "delivery-health.json").write_text(json.dumps({
+            "version": 1, "issues": {key: issue}, "sequence": 13, "acknowledged_through": 12,
+            "events": [{**issue, "kind": "failed", "id": 13, "at": datetime.now().astimezone().isoformat()}]}))
+        health = self.health()
+        self.assertEqual((health["issue_count"], health["notifications"]), (0, []))
+        self.assertNotIn(health["state"], {"failed", "action_required"})
+        stored = json.loads((self.config / "delivery-health.json").read_text())
+        self.assertEqual(stored["issues"], {})
+
+    def test_a_refresh_inside_the_delivery_window_does_not_restart_it(self):
+        # A recent report, sent 2 days ago; a speaker rename rebuilds it today.
+        sent = (datetime.now().astimezone() - timedelta(days=2, hours=23)).isoformat(timespec="seconds")
+        meta = {**self.old, "generated_at": sent, "delivery_checked_at": sent, "delivery_retry_at": sent}
+        (self.report_dir / "report.json").write_text(json.dumps(meta))
+        with patch.object(self.archive, "_print_pdf", side_effect=lambda html, pdf: pdf.write_bytes(b"%PDF synthetic")), \
+             patch.object(self.archive, "_ready_for_delivery", return_value=True), \
+             patch.object(self.archive, "deliver") as deliver:
+            self.archive.generate_report("FIRST-CALL", deliver=False)
+            deliver.assert_not_called()
+            report = json.loads((self.report_dir / "report.json").read_text())
+            self.assertNotIn("delivery_on_request", report)
+            self.assertEqual(report["delivery_started_at"], sent)
+            # Two hours later the 3-day window from the first send is over: no more retries.
+            with patch.object(archive, "datetime", wraps=datetime) as clock:
+                clock.now.return_value = datetime.now().astimezone() + timedelta(hours=2)
+                self.archive.retry_pending_deliveries()
+            deliver.assert_not_called()
+        self.assertEqual(self.health(hours=2)["issue_count"], 0, "Telegram arrived: the email failure closes")
 
 
 if __name__ == "__main__":

@@ -98,6 +98,10 @@ def _shared_indexes(method):
 
 PRINT_PROFILE_PREFIX = "meeting-copilot-report-"
 REPORT_FAILURE = "report-failure.json"
+# What a send left in report.json; a refresh that sends nothing keeps all of it.
+DELIVERY_OUTCOME = ("drive_status", "drive_folder", "drive_folder_url", "drive_html_url", "drive_pdf_url",
+                    "drive_links_status", "mail_status", "gmail_message_id", "mail_error",
+                    "telegram_status", "telegram_message_id", "delivery_started_at")
 
 
 class ReportPdfError(RuntimeError):
@@ -1003,17 +1007,13 @@ class MeetingArchive:
                                                             len(rendered_frames), source_signature,
                                                             deliver=deliver, on_request=on_request)
                 ready = self._ready_for_delivery(detail)
+                sending = deliver and not meta.get("delivery_on_request") and ready
                 # ponytail: sending holds the archive lock (settings and the Google
                 # profile must not change mid-send); a slow Drive upload still blocks it.
-                delivery = (
-                    {"drive_status": "pending",  # A finished call no longer waits for its end.
-                     **{key: "pending" if value == "waiting_for_end" and meta.get("delivery_on_request") else value
-                        for key in ("mail_status", "telegram_status")
-                        if (value := str(previous_report.get(key) or "not_configured"))}}
-                    if not deliver or meta.get("delivery_on_request") else
-                    self.deliver(detail, meta, previous=previous_delivery)
-                    if ready
-                    else {
+                if sending:
+                    delivery = self.deliver(detail, meta, previous=previous_delivery)
+                elif deliver and not meta.get("delivery_on_request"):
+                    delivery = {
                         "drive_status": (
                             "uploaded" if previous_report.get("drive_status") == "uploaded"
                             else "waiting_for_end"
@@ -1027,13 +1027,33 @@ class MeetingArchive:
                             else "waiting_for_end"
                         ),
                     }
-                )
+                else:
+                    # Nothing is sent: the earlier outcome stays as it was, with
+                    # its dates, so expiry and auto-close still apply (MEETONTRACK-99).
+                    delivery = {key: previous_delivery[key] for key in DELIVERY_OUTCOME if key in previous_delivery}
+                    if delivery.get("drive_status") in {None, "not_configured", "waiting_for_end"}:
+                        delivery["drive_status"] = "pending"  # A finished call no longer waits for its end.
+                    for key in ("mail_status", "telegram_status"):
+                        if delivery.get(key) == "waiting_for_end" and meta.get("delivery_on_request"):
+                            delivery[key] = "pending"
                 meta.update(delivery)
                 checked_at = datetime.now().astimezone()
-                meta["delivery_checked_at"] = checked_at.isoformat(timespec="seconds")
-                meta["delivery_retry_at"] = (
-                    checked_at + timedelta(minutes=15)
-                ).isoformat(timespec="seconds")
+                if sending:
+                    meta["delivery_checked_at"] = checked_at.isoformat(timespec="seconds")
+                    meta["delivery_retry_at"] = (
+                        checked_at + timedelta(minutes=15)
+                    ).isoformat(timespec="seconds")
+                else:
+                    meta.update({key: previous_delivery[key] for key in ("delivery_checked_at", "delivery_retry_at")
+                                 if key in previous_delivery})
+                # The retry window runs from the first send; older reports have no
+                # such date, so a report that already had an outcome keeps its own.
+                started = previous_delivery.get("delivery_started_at") or (
+                    previous_report.get("generated_at") if any(
+                        previous_report.get(key) not in {None, "not_configured", "pending", "waiting_for_end"}
+                        for key in ("drive_status", "mail_status", "telegram_status")) else None)
+                if started or sending:
+                    meta["delivery_started_at"] = started or checked_at.isoformat(timespec="seconds")
                 _atomic_json(report_dir / "report.json", meta)
             return {**meta, "meeting_id": detail["meeting_id"]}
         raise AssertionError("unreachable")  # The last attempt always saves.
@@ -1095,9 +1115,9 @@ class MeetingArchive:
             meta = _json(path, {})
             if not isinstance(meta, dict) or meta.get("report_missing") or meta.get("delivery_on_request"):
                 continue  # Only the person's button sends it.
-            generated = _date(str(meta.get("generated_at") or ""))
+            generated = _date(str(meta.get("delivery_started_at") or meta.get("generated_at") or ""))
             if not generated or (now - generated).total_seconds() > self.delivery_retry_days * 86400:
-                continue
+                continue  # The window runs from the first send, not from a later refresh.
             retry_at = _date(str(meta.get("delivery_retry_at") or ""))
             if retry_at and retry_at > now:
                 continue

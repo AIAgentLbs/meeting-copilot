@@ -79,10 +79,17 @@ class DeliveryHealth:
         for path in sorted(self.reports_root.glob("*/report.json")):
             report = _read(path)
             generated = _date(report.get("generated_at"))
-            expired = bool(generated and now - generated > timedelta(days=self.retry_days))
+            # The retry window runs from the first send, not from a later
+            # refresh of the report (MEETONTRACK-99). An old meeting's report
+            # is sent only by the person's button and nothing retries it, so
+            # its outcome is judged like one whose retries have ended.
+            started = _date(report.get("delivery_started_at")) or generated
+            expired = bool(report.get("delivery_on_request")) or bool(
+                started and now - started > timedelta(days=self.retry_days))
             # Completed historical reports do not fill the recent summary. An
-            # unresolved delivery must not silently disappear when retry ends.
-            if expired and path.parent.name not in tracked_meetings:
+            # unresolved delivery must not silently disappear when retry ends,
+            # and a send the person asked for is judged too.
+            if expired and path.parent.name not in tracked_meetings and not report.get("last_delivery_request"):
                 continue
             considered += 1
             # Any channel that delivered means the person has this report.

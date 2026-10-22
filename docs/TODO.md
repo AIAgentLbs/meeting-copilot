@@ -179,6 +179,11 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-93: 0.1.15 review leftovers (P2): a repaired report whose PDF is older than the 3-day window and was never
   tracked is skipped as historical, so no Send again is offered (`archive.py` `repair_report_states`, exempt `state_repaired_at`);
   a resend still sending after the 5-minute poll shows "Could not send" (`app.js` `resendReport`, show "may not have arrived").
+- [ ] MEETONTRACK-99: Rebuilt reports of old meetings showed old delivery failures as new problems (0.1.16, 9AE490BB:
+  email failed 2026-10-16, Telegram sent; the MEETONTRACK-94 rebuild re-dated the report and raised a fresh "email failed").
+  Fixed on fix/meetontrack-on-request-delivery: a rebuild that sends nothing keeps the earlier outcome and its dates; the
+  retry window runs from the first send (`delivery_started_at`); on-request reports are judged as expired (`delivery_health.py`),
+  so the polluted issue clears on the next check after start.
 - [ ] MEETONTRACK-98: Report PDFs of long meetings failed on 0.1.16: Chrome got a fixed 20 s to print (`archive.py` `_print_pdf`)
   and `finalize_history` retried every minute. Fixed on fix/meetontrack-pdf-print-timeout: wait for Chrome to exit (180 s cap);
   print outside the archive lock (one job per report folder, chunks of one call share it; re-print if the meeting changed); a
