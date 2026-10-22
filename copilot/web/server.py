@@ -2370,21 +2370,22 @@ def archive_loop() -> None:
     while not TRANSCRIPT.stop.is_set():
         try:
             ARCHIVE.reconcile_boundaries(BOUNDARIES)
+            # Old physical sessions can finish while this web service is down,
+            # and a call followed right away by another finishes its final
+            # transcript after it stopped being current. Revisit them at a
+            # bounded cadence, not each poll; the first pass repairs history.
+            # It runs first so a failing current report cannot hold it back.
+            if time.monotonic() - last_history_check >= 60:
+                last_history_check = time.monotonic()
+                ARCHIVE.finalize_history()  # Isolates its own failures per meeting.
+                for meeting_id in BOUNDARIES.closed_ids():
+                    ARCHIVE.create_due_report(meeting_id)
             for part in TRANSCRIPT.snapshots():
                 snapshot = ARCHIVE.annotate_speakers(TRANSLATIONS.annotate(FRAMES.annotate(part)))
                 ARCHIVE.sync_transcript(snapshot)
                 meeting_id = str(snapshot.get("meeting_id") or "")
                 if meeting_id:
                     ARCHIVE.create_due_report(meeting_id)
-            # Old physical sessions can finish while this web service is down,
-            # and a call followed right away by another finishes its final
-            # transcript after it stopped being current. Revisit them at a
-            # bounded cadence, not each poll; the first pass repairs history.
-            if time.monotonic() - last_history_check >= 60:
-                last_history_check = time.monotonic()
-                for meeting_id in BOUNDARIES.closed_ids():
-                    ARCHIVE.create_due_report(meeting_id)
-                ARCHIVE.finalize_history()
         except Exception as exc:
             print(f"meeting archive update failed: {exc}", flush=True)
         TRANSCRIPT.stop.wait(10)

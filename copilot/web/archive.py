@@ -201,6 +201,8 @@ class MeetingArchive:
             if not clean.get("recording_trigger") and previous.get("recording_trigger"):
                 clean["recording_trigger"] = previous["recording_trigger"]
             if transcript.get("final_transcript"):
+                if previous.get("speaker_revision"):
+                    return  # Speakers were corrected by hand meanwhile: keep that text.
                 clean["final_transcript"] = str(transcript["final_transcript"])
             elif previous.get("final_transcript") and not clean.get("explicit_boundary"):
                 # The recorder's final transcript wins: a later live export may
@@ -308,22 +310,32 @@ class MeetingArchive:
     @_shared_indexes
     def finalize_history(self) -> None:
         """Bring finished meetings up to date after they stopped being the current call."""
-        idle = not self._capture_active()  # Reports wait for the current call to end.
+        imported = []
+        # Every final transcript first: a merged report must never be sent
+        # while a later chunk of the same call still holds live text.
         for path in sorted(self.archive_root.glob("*/meeting.json")):
-            meeting_id = path.parent.name
             try:
                 snapshot = _json(path, {})
                 if not isinstance(snapshot, dict) or snapshot.get("status") != "finished":
                     continue
-                if not (self.import_final_transcript(snapshot) or snapshot.get("final_transcript")):
-                    continue  # Only meetings whose final transcript came in here.
-                version = (path.stat().st_mtime_ns, _mtime(self.reports_root / meeting_id / "report.json"))
-                if not idle or self._history_checked.get(meeting_id) == version:
-                    continue
-                if not self.create_due_report(meeting_id):
-                    self._history_checked[meeting_id] = version
+                if self.import_final_transcript(snapshot) or snapshot.get("final_transcript"):
+                    imported.append((path, _date(snapshot.get("updated_at"))))
             except Exception as exc:  # One broken meeting must not stop the others.
-                print(f"meeting history update failed: {type(exc).__name__}", flush=True)
+                print(f"meeting history import failed: {type(exc).__name__}", flush=True)
+        if self._capture_active():
+            return  # Reports wait for the current call to end.
+        now = datetime.now().astimezone()
+        for path, ended in imported:
+            meeting_id = path.parent.name
+            try:
+                version = (path.stat().st_mtime_ns, _mtime(self.reports_root / meeting_id / "report.json"))
+                if self._history_checked.get(meeting_id) == version:
+                    continue
+                # Remember "nothing to do" only once the 2-minute settling time is long over.
+                if not self.create_due_report(meeting_id) and ended and (now - ended).total_seconds() > 600:
+                    self._history_checked[meeting_id] = version
+            except Exception as exc:
+                print(f"meeting history report failed: {type(exc).__name__}", flush=True)
 
     def _recordings(self) -> list[dict]:
         operation = getattr(self._index_state, "values", None)

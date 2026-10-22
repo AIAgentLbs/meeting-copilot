@@ -156,6 +156,24 @@ class FinalTranscriptAfterNextCallTests(unittest.TestCase):
         self.assertTrue((self.root / "reports/FIRST-CALL/report.json").exists())
         self.assertEqual(self.sent, ["FIRST-CALL"] if self.sent_automatically else [])
 
+    def test_a_merged_report_waits_until_every_chunk_has_its_final_transcript(self):
+        # A reconnect 30 s later is the same call: its chunk sorts first by folder name.
+        early = self.start - timedelta(minutes=30)
+        chunk = self.recording("2026.10.22-1530 Google Chrome Helper (Ap", early, self.start - timedelta(seconds=30))
+        (chunk / "transcript.json").write_text(json.dumps({"engine": "fluidaudio", "segments": [
+            {"speaker": "them", "start_ms": 1000, "end_ms": 3000, "text": "Earlier chunk final"}]}))
+        self.archive.sync_transcript({**self.live, "meeting": "Synthetic sync"})  # Same title: one call.
+        self.archive.sync_transcript({**self.live, "meeting": "Synthetic sync", "meeting_id": "EARLY-CHUNK", "started_at": iso(early),
+                                      "updated_at": iso(self.start - timedelta(seconds=30)), "capture_warnings": [],
+                                      "recording_dir": str(chunk), "segments": [
+                                          {"source": "system", "timestamp": iso(early + timedelta(seconds=1)), "text": "Live chunk"}]})
+        self.next_call_ends()
+        self.finalize()
+        self.assertEqual(self.sent, ["FIRST-CALL"] if self.sent_automatically else [])
+        texts = [item["text"] for item in self.archive.report_detail("FIRST-CALL")["transcript"]]
+        self.assertIn("Earlier chunk final", texts)
+        self.assertNotIn("Live chunk", texts)
+
 
 class OldMeetingRepairTests(FinalTranscriptAfterNextCallTests):
     sent_automatically = False
@@ -183,6 +201,12 @@ class OldMeetingRepairTests(FinalTranscriptAfterNextCallTests):
             settings, now=datetime.now(timezone.utc) + timedelta(hours=1))
         self.assertEqual(health["issue_count"], 0)
         self.assertEqual(health["notifications"], [])
+        # A send the person asked for that failed is shown, not hidden as "on request".
+        failed = json.loads(path.read_text())
+        path.write_text(json.dumps({**failed, "mail_status": "failed"}))
+        health = DeliveryHealth(self.root / "reports", self.config / "health.json").refresh(
+            settings, now=datetime.now(timezone.utc) + timedelta(hours=1))
+        self.assertEqual(health["issue_count"], 1)
 
     # The inherited cases also hold for an old meeting, without any sending.
     def test_final_transcript_replaces_live_and_report_follows_when_next_call_ends(self):

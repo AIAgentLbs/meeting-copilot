@@ -96,7 +96,7 @@ class DeliveryHealth:
                 raw = report.get(field)
                 if expired and raw in {None, "not_configured"} and not report.get("report_missing"):
                     continue
-                if report.get("delivery_on_request") and raw != ("uploaded" if channel == "drive" else "sent"):
+                if report.get("delivery_on_request") and raw in {None, "not_configured", "pending"}:
                     continue  # An old meeting's report waits for the person's button, not a retry.
                 state, reason = "pending", "pending"
                 if not generated:

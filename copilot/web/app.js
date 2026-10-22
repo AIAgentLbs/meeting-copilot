@@ -2597,7 +2597,7 @@ function renderArchiveDetail(meeting) {
   for (const [channel, field] of [["drive", "drive_status"], ["gmail", "mail_status"], ["telegram", "telegram_status"]]) {
     const raw = meeting.report?.[field] || "not_configured";
     const state = raw === "uploaded" || raw === "sent" ? "sent"
-      : meeting.report?.delivery_on_request ? "on_request"
+      : meeting.report?.delivery_on_request && ["pending", "not_configured"].includes(raw) ? "on_request"
       : raw === "auth_required" ? "action_required" : raw === "waiting_for_end" ? "waiting"
         : raw === "pending" ? "pending" : raw === "not_configured" ? "not_configured" : "failed";
     statuses.push(`${deliveryChannelNames[channel]}: ${t(`delivery.state.${state}`, { count: 1 })}`);
