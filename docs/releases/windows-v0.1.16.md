@@ -41,6 +41,9 @@ speech models. AI answers are optional and use an AI tool you already have.
   Meetings that ended within the last 3 days get their reports sent
   automatically through the delivery you set up. Older meetings get a saved
   report with a Send button, so nothing old is sent without you.
+- When the report of an older meeting is created again, a delivery problem
+  that meeting had long ago no longer comes back as a new problem in the
+  delivery indicator.
 
 Everything from 0.1.15 is included. The plain explanation of sound dropouts in
 the library is part of the Mac release; the Windows recorder does not report
@@ -69,10 +72,10 @@ The installer verifies the package checksum. No automatic installer is enabled.
 
 ## Build identity
 
-Application source: `df38488a0a1a22ad2fba0f8c2d8ae05e27ac5555`.
+Application source: `3b3aa321d12477efd0cc71db50350c2e009f4851`.
 Native source: `50e7448c880538ab96b57e093b4f7214a7a51de0`
 ([recorder run 39649348946](https://github.com/AIAgentLbs/meetontrack-recorder/actions/runs/39649348946)).
-ZIP SHA-256: `f4c6470d0b2ef1812897a4bb8c6645726c6829f4e5a553b8d5a17a0a897a44fe`.
+ZIP SHA-256: `21c2dd0e504d1ec10923648f2136eaadb08b6aa913069f8eb05f804669e569c5`.
 The integrated package version is 0.1.16; its independently versioned native
 component retains 0.6.6. The web update checker compares integrated versions.
 
