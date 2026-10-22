@@ -9,7 +9,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
   const browser = await chromium.launch({headless: true});
   const root = path.resolve(__dirname, '../copilot/web');
   const errors = [], saved = [];
-  let preferences = {interface_language: 'ru'};
+  let preferences = {interface_language: 'ru'}, slowNextSave = false;
   try {
     const context = await browser.newContext({viewport: {width: 1440, height: 900}});
     const page = await context.newPage();
@@ -18,6 +18,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       const url = new URL(route.request().url());
       if (url.pathname === '/api/preferences') {
         const change = route.request().postDataJSON();
+        if (slowNextSave) { slowNextSave = false; await new Promise(resolve => setTimeout(resolve, 1500)); }
         saved.push(change);
         preferences = {...preferences, ...change};
         return route.fulfill({json: {ok: true, preferences: change}});
@@ -92,6 +93,17 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await fresh.waitForFunction(() => document.documentElement.lang === 'ru');
     await fresh.locator('.transcript-pane').waitFor({state: 'visible'});
     assert.equal(await fresh.locator('#transcript-hide').getAttribute('aria-label'), 'Скрыть расшифровку');
+
+    // Hide then show quickly while the first save is slow: the last click is what stays saved.
+    const before = saved.length;
+    slowNextSave = true;
+    await fresh.locator('#transcript-hide').click();
+    await fresh.locator('#transcript-show').click();
+    for (let wait = 0; saved.length < before + 2 && wait < 100; wait++) await new Promise(resolve => setTimeout(resolve, 100));
+    assert.deepEqual(saved.slice(before), [{transcript_hidden: true}, {transcript_hidden: false}], 'saves keep click order');
+    assert.equal(preferences.transcript_hidden, false);
+    await fresh.waitForTimeout(2500);  // a poll after the saves must not fold the panel again
+    assert.equal(await fresh.locator('.transcript-pane').isVisible(), true);
     assert.deepEqual(errors, []);
     console.log('PASS: no header language switch, no removed helper lines, language in Settings saved and restored, transcript hide/persist/show, narrow width');
   } finally { await browser.close(); }

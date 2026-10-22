@@ -539,9 +539,9 @@ const translations = {
 // config.json (via /api/preferences) is the one store; localStorage only paints the first frame.
 const cachedUiLanguage = localStorage.getItem("meeting-copilot-language");
 let uiLanguage = ["en", "ru"].includes(cachedUiLanguage) ? cachedUiLanguage : "ru";
-let legacyLanguageMigrated = false;
 let preferenceEpoch = 0;
 let preferenceSaves = 0;
+let preferenceQueue = Promise.resolve();
 let transcriptHidden = false;
 let panelsSwapped = localStorage.getItem("meeting-copilot-panels-swapped") === "true";
 function applyPanelOrder() {
@@ -2887,29 +2887,32 @@ function applyTranscriptHidden(hidden) {
 
 // Interface preferences live in the shared config.json; the saved value is authoritative.
 function applyPreferences(preferences) {
+  // No en/ru saved (absent or the native "auto"): keep this browser's language, as before.
   const language = preferences.interface_language;
   if (["en", "ru"].includes(language)) switchUiLanguage(language);
-  else if (["en", "ru"].includes(cachedUiLanguage) && !legacyLanguageMigrated) {
-    // A choice made with the old header switch lived only in this browser: move it into config.json.
-    legacyLanguageMigrated = true;
-    void savePreference({ interface_language: uiLanguage }, document.querySelector("#interface-language-status"));
-  }
   if (typeof preferences.transcript_hidden === "boolean" && preferences.transcript_hidden !== transcriptHidden) {
     applyTranscriptHidden(preferences.transcript_hidden);
   }
 }
 
-async function savePreference(change, status) {
+// Saves run one at a time in click order, so an older request never lands after a newer one.
+// The epoch moves at the start and the end of each save: a state snapshot that overlapped
+// any save is ignored, the next poll brings the saved value.
+function savePreference(change, status) {
   preferenceEpoch++;
   preferenceSaves++;
   status.textContent = "";
-  try {
-    await post("/api/preferences", change);
-  } catch (error) {
-    status.textContent = plainError(error);
-  } finally {
-    preferenceSaves--;
-  }
+  preferenceQueue = preferenceQueue.then(async () => {
+    try {
+      await post("/api/preferences", change);
+    } catch (error) {
+      status.textContent = plainError(error);
+    } finally {
+      preferenceSaves--;
+      preferenceEpoch++;
+    }
+  });
+  return preferenceQueue;
 }
 
 document.querySelector("#interface-language").addEventListener("change", (event) => {
