@@ -190,6 +190,8 @@ class StoreTests(unittest.TestCase):
             opposite = [{**CLAIM, "claim": f"Higgsfield {word} develops its own video generation models"}
                         for word in ("", "never")]
             self.assertEqual(store.add(TRANSCRIPT, opposite), 2)  # a contradiction is checked too
+            founded = [{**CLAIM, "claim": f"Компания {name} основана в 1998 году"} for name in ("Google", "Tencent")]
+            self.assertEqual(store.add(TRANSCRIPT, founded), 2)  # another name is another claim
 
     def test_checks_are_capped_per_minute_and_wait_for_the_analysis(self):
         now, idle = [0.0], [True]
@@ -214,6 +216,15 @@ class StoreTests(unittest.TestCase):
             row = FactChecks(path).snapshot("m1")[0]
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertEqual((row["status"], row["error"]), ("unclear", "AI_NETWORK: offline"))
+
+    def test_an_unreadable_store_is_set_aside_and_the_same_path_is_used(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fact-checks.json"
+            path.write_text("{broken")
+            FactChecks(path).add(TRANSCRIPT, [CLAIM])
+            self.assertEqual(FactChecks(path).claims("m1"), [CLAIM["claim"]])  # a restart reads what was written
+            kept = [item.read_text() for item in Path(directory).glob("fact-checks-unreadable-*.json")]
+        self.assertEqual(kept, ["{broken"])
 
 
 class SafetyTests(unittest.TestCase):
@@ -299,6 +310,14 @@ class ServerTests(unittest.TestCase):
                     {"path": "/ctx/notes.md", "line": 3, "text": "Higgsfield notes"}]}):
             found = self.server.fact_knowledge(CLAIM)
         self.assertEqual([item["text"] for item in found], ["Higgsfield notes"])
+
+    def test_folder_excerpts_are_dropped_when_a_folder_is_disconnected_mid_search(self):
+        folders = iter(["before", "after"])
+        with patch.object(self.server.GOOGLE_CONTEXT, "enabled_sources", return_value=[]), \
+                patch.object(self.server.LOCAL_CONTEXT, "generation", side_effect=lambda: next(folders)), \
+                patch.object(self.server.LOCAL_CONTEXT, "search", return_value={"items": [
+                    {"path": "/ctx/notes.md", "line": 3, "text": "Higgsfield notes"}]}):
+            self.assertEqual(self.server.fact_knowledge(CLAIM), [])
 
     def test_claim_lines_never_reach_the_chat(self):
         from test_ai_providers import chosen_codex

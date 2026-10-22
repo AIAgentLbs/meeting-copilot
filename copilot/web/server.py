@@ -2215,6 +2215,7 @@ SUMMARY_REWRITES = SummaryRewrites(ARCHIVE, lambda prompt: AI.run("summary_rewri
 def fact_knowledge(row: dict) -> list[dict]:
     """Connected knowledge base excerpts for one claim: context folders, then enabled Google sources."""
     query = row.get("query") or row.get("claim") or ""
+    folders = LOCAL_CONTEXT.generation()
     found = [{"title": Path(hit["path"]).name, "location": f"{hit['path']}:{hit['line']}", "text": hit["text"]}
              for hit in LOCAL_CONTEXT.search(query)["items"][:5]]
     with GOOGLE_CONTEXT._lock:
@@ -2226,10 +2227,10 @@ def fact_knowledge(row: dict) -> list[dict]:
             continue  # an unreachable source only means less evidence, never a verdict
         with GOOGLE_CONTEXT._lock:
             if generation != GOOGLE_CONTEXT._generation:  # access changed mid-search: send none of it to the AI
-                return found[:local]
+                return found[:local] if folders == LOCAL_CONTEXT.generation() else []
         found += [{"title": hit["title"], "location": hit["url"], "text": hit["excerpt"]}
                   for hit in hits if hit.get("excerpt")]
-    return found
+    return found if folders == LOCAL_CONTEXT.generation() else found[local:]  # a folder disconnected meanwhile
 
 
 def fact_source(raw: str) -> tuple[str, str | None]:

@@ -212,7 +212,8 @@ class FactChecks:
         except FileNotFoundError:
             pass
         except (OSError, ValueError, TypeError, AttributeError):
-            self.path = path.with_name("fact-checks-recovered.json")  # never overwrite an unreadable file
+            # Keep the unreadable file aside and start clean at the same path, so every reader agrees.
+            path.replace(path.with_name(f"{path.stem}-unreadable-{int(time.time())}{path.suffix}"))
         # A check cut short by a restart is simply run again.
         self.queue = deque(item["id"] for item in self.items if item.get("status") == "checking")
 
@@ -223,13 +224,18 @@ class FactChecks:
     def claims(self, meeting_id: str) -> list[str]:
         return [item["claim"] for item in reversed(self.snapshot(meeting_id))]
 
+    @staticmethod
+    def anchors(text: str) -> list[str]:
+        """Numbers and names (capitalised words after the first): a different one makes a different claim."""
+        return re.findall(r"\d+", text) + re.findall(r"(?<=\s)[^\W\d_a-zа-яё]\w*", text)
+
     @classmethod
     def same(cls, one: str, other: str) -> bool:
         """Near-identical claims: the same numbers, the same negations and nearly the same words.
 
-        A different year or an added "not"/"никогда" is a new claim, so a contradiction is checked too."""
+        Another year, name or an added "not"/"никогда" is a new claim, so a contradiction is checked too."""
         a, b = words(one).split(), words(other).split()
-        if re.findall(r"\d+", one) != re.findall(r"\d+", other) or \
+        if cls.anchors(one) != cls.anchors(other) or \
                 [w for w in a if w in NEGATIONS] != [w for w in b if w in NEGATIONS]:
             return False
         return a == b or difflib.SequenceMatcher(None, a, b).ratio() >= cls.SIMILAR
@@ -238,10 +244,10 @@ class FactChecks:
         meeting_id = str(transcript.get("meeting_id") or "")
         added = 0
         with self.lock:
-            known = [words(item.get("claim")) for item in self.items if item.get("meeting_id") == meeting_id]
+            known = [str(item.get("claim") or "") for item in self.items if item.get("meeting_id") == meeting_id]
             for claim in claims if meeting_id else []:
-                key = words(claim["claim"])
-                if not key or any(self.same(key, other) for other in known):
+                key = str(claim["claim"])  # raw: same() needs the capitals of names
+                if not words(key) or any(self.same(key, other) for other in known):
                     continue
                 known.append(key)
                 row = {"id": str(uuid.uuid4()), "category": "FACT_CHECK", "source": "fact_check",

@@ -176,6 +176,8 @@ hashes, Pages removed, and the Windows installer relocated to
 - [ ] MEETONTRACK-88: Recorder quit-when-idle command, so an upgrade can replace an old capture at once.
 - [ ] MEETONTRACK-90: Live fact-check strip on the dashboard (branch feat/live-fact-check): claims ride the
   live analysis, verdicts need a source the app itself opened, else yellow; web search only via ai.choice.
+  Follow-up (Codex P2, 2026-10-22): a speaker corrected in the speaker editor is not re-applied to fact-check
+  rows (strip and report keep the label copied at extraction); resolve the row's segment through speaker edits.
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.
