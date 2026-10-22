@@ -274,28 +274,35 @@ class MeetingArchive:
         live = list(snapshot.get("segments") or [])
         if _lines(final) == _lines(live):
             final = live  # Already imported by the live file: keep its names.
-        warnings = [warning for warning in snapshot.get("capture_warnings") or []
-                    if not self._audio_heard_during(warning, final)]
+        finish = _date(snapshot.get("ended_at") or snapshot.get("updated_at"))
+        warnings = [narrowed for warning in snapshot.get("capture_warnings") or []
+                    if (narrowed := self._narrow_warning(warning, final, finish))]
         self.sync_transcript(self.transcript_annotator({
             **snapshot, "segments": final, "capture_warnings": warnings,
             "latest_at": final[-1]["timestamp"], "final_transcript": version}))
         return True
 
     @staticmethod
-    def _audio_heard_during(warning: dict, segments: list[dict]) -> bool:
-        """The final transcript has the other side speaking inside a reported dropout.
+    def _narrow_warning(warning: dict, segments: list[dict], finish) -> dict | None:
+        """Start a reported dropout after the other side's last words the final transcript has in it.
 
         The warning comes from the live audio meter; words recognized from the
-        saved recording in that interval prove the recording itself kept them.
+        saved recording prove that part was kept. What is left under the
+        meter's own 45-second threshold is no dropout at all.
         """
         start, end = _date(warning.get("started_at")), _date(warning.get("ended_at"))
         if warning.get("reason") != "system-audio-lost" or not start:
-            return False
-        for segment in segments:
-            at = _date(segment.get("timestamp"))
-            if segment.get("source") == "system" and at and at > start and (not end or at < end):
-                return True
-        return False
+            return warning
+        heard = [_date(segment.get("end_timestamp")) or at for segment in segments
+                 if segment.get("source") == "system" and (at := _date(segment.get("timestamp")))
+                 and at > start and (not end or at < end)]
+        if not heard:
+            return warning
+        start = max(heard)
+        limit = end or finish
+        if limit and (limit - start).total_seconds() < 45:
+            return None
+        return {**warning, "started_at": start.isoformat()}
 
     def create_due_report(self, meeting_id: str) -> bool:
         """Create a report the meeting still needs; send it only inside the delivery window."""
@@ -917,9 +924,10 @@ class MeetingArchive:
                 meta["delivery_on_request"] = True
             _atomic_json(report_dir / "report.json", meta)
             delivery = (
-                {"drive_status": "pending",
-                 "mail_status": str(previous_report.get("mail_status") or "not_configured"),
-                 "telegram_status": str(previous_report.get("telegram_status") or "not_configured")}
+                {"drive_status": "pending",  # A finished call no longer waits for its end.
+                 **{key: "pending" if value == "waiting_for_end" and meta.get("delivery_on_request") else value
+                    for key in ("mail_status", "telegram_status")
+                    if (value := str(previous_report.get(key) or "not_configured"))}}
                 if not deliver or meta.get("delivery_on_request") else
                 self.deliver(detail, meta, previous=previous_delivery)
                 if self._ready_for_delivery(detail)

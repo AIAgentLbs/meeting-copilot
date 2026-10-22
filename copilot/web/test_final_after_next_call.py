@@ -131,11 +131,21 @@ class FinalTranscriptAfterNextCallTests(unittest.TestCase):
 
     def test_final_speech_inside_the_dropout_clears_the_warning(self):
         lines = json.loads((self.first / "transcript.json").read_text())["segments"]
-        lines.append({"speaker": "them", "start_ms": 3600000, "end_ms": 3604000, "text": "Still talking"})
+        lines.append({"speaker": "them", "start_ms": 3610000, "end_ms": 3620000, "text": "Still talking"})
         self.write_final(lines)
         self.finalize()
         self.assertEqual(self.stored()["capture_warnings"], [])
         self.assertIsNone(self.archive.detail("FIRST-CALL")["audio_gap"])
+
+    def test_one_short_utterance_only_narrows_a_long_dropout(self):
+        self.live["capture_warnings"] = [{"reason": "system-audio-lost", "started_at": iso(self.start + timedelta(seconds=2400))}]
+        self.archive.sync_transcript(self.live)
+        lines = json.loads((self.first / "transcript.json").read_text())["segments"]
+        self.write_final([line for line in lines if not 2400000 < line["start_ms"]]
+                         + [{"speaker": "them", "start_ms": 2500000, "end_ms": 2501000, "text": "One word"}])
+        self.finalize()
+        self.assertEqual(self.archive.detail("FIRST-CALL")["audio_gap"]["started_at"],
+                         (self.start + timedelta(seconds=2501)).isoformat())
 
     def test_later_live_export_never_replaces_final_and_repeat_passes_change_nothing(self):
         self.next_call_ends()
@@ -198,6 +208,11 @@ class OldMeetingRepairTests(FinalTranscriptAfterNextCallTests):
         report = json.loads(path.read_text())
         self.assertTrue(report["delivery_on_request"])
         self.assertEqual(self.sent, [])
+        # A report made while the call was still recording no longer waits for its end.
+        path.write_text(json.dumps({**report, "mail_status": "waiting_for_end", "generated_while_recording": True}))
+        (self.root / "archive/FIRST-CALL/meeting.json").touch()
+        self.finalize()
+        self.assertEqual(json.loads(path.read_text())["mail_status"], "pending")
         settings = json.loads((self.config / "delivery.json").read_text())
         with patch.object(self.archive, "deliver") as deliver:
             self.archive.retry_pending_deliveries()
