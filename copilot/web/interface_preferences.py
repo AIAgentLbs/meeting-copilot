@@ -12,6 +12,10 @@ from stt import _atomic_write
 CHOICES = {
     "interface_language": lambda value: value in ("en", "ru"),
     "transcript_hidden": lambda value: isinstance(value, bool),
+    # Call overview status filter: the statuses shown, each at most once (an empty list hides all).
+    "call_overview_statuses": lambda value: isinstance(value, list)
+    and all(isinstance(item, str) and item in ("open", "clarify", "resolved") for item in value)
+    and len(set(value)) == len(value),
 }
 _WRITE_LOCK = threading.Lock()
 
@@ -31,7 +35,8 @@ def save_preferences(config_path: Path, change) -> dict:
     missing file = empty object, malformed or not an object = refuse; every other key is kept."""
     if not isinstance(change, dict) or not change or any(key not in CHOICES or not CHOICES[key](value)
                                                           for key, value in change.items()):
-        raise ValueError("Send interface_language (en or ru) and/or transcript_hidden (true or false)")
+        raise ValueError("Send interface_language (en or ru), transcript_hidden (true or false) "
+                         "and/or call_overview_statuses (a list of open, clarify, resolved)")
     private_dir(config_path.parent)
     with _WRITE_LOCK, _file_lock(config_path.with_name(config_path.name + ".lock")):
         try:

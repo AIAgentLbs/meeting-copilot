@@ -23,6 +23,8 @@ class InterfacePreferencesTests(unittest.TestCase):
             self.assertEqual(interface_preferences(path), {})
             for value in ('{}', '{"interface_language":"auto"}', '{"interface_language":"de"}',
                           '{"interface_language":null}', '{"transcript_hidden":1}', '{"transcript_hidden":"true"}',
+                          '{"call_overview_statuses":"open"}', '{"call_overview_statuses":["open","open"]}',
+                          '{"call_overview_statuses":["done"]}', '{"call_overview_statuses":[{}]}',
                           '[]', 'null', 'not json'):
                 path.write_text(value, encoding="utf-8")
                 self.assertEqual(interface_preferences(path), {})
@@ -38,6 +40,11 @@ class InterfacePreferencesTests(unittest.TestCase):
             self.assertEqual(json.loads(path.read_text()),
                              {**others, "interface_language": "en", "transcript_hidden": True})
             self.assertEqual(interface_preferences(path), {"interface_language": "en", "transcript_hidden": True})
+            save_preferences(path, {"call_overview_statuses": ["clarify"]})
+            self.assertEqual(interface_preferences(path)["call_overview_statuses"], ["clarify"])
+            save_preferences(path, {"call_overview_statuses": []})  # every status off is a valid choice
+            self.assertEqual(json.loads(path.read_text()),
+                             {**others, "interface_language": "en", "transcript_hidden": True, "call_overview_statuses": []})
             path.unlink()
             save_preferences(path, {"transcript_hidden": False})  # a missing file becomes the first setting
             self.assertEqual(json.loads(path.read_text()), {"transcript_hidden": False})
@@ -47,6 +54,8 @@ class InterfacePreferencesTests(unittest.TestCase):
             path = Path(directory) / "config.json"
             for change in ({}, [], None, {"interface_language": "auto"}, {"interface_language": 1},
                            {"transcript_hidden": 1}, {"transcript_hidden": "true"}, {"keep_audio": False},
+                           {"call_overview_statuses": ["open", "maybe"]}, {"call_overview_statuses": "open"},
+                           {"call_overview_statuses": [["open"]]},
                            {"interface_language": "en", "recordings_dir": "/elsewhere"}):
                 with self.assertRaises(ValueError):
                     save_preferences(path, change)

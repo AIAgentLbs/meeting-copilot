@@ -488,7 +488,7 @@ class ServerTests(unittest.TestCase):
                     patch.object(self.server.LOCAL_CONTEXT, "augment", return_value=""):
                 raw = [session.ask("q", "", "m", "m1", {}, kind="insight", show_user=False) for _ in answers]
         self.assertEqual(raw, answers, "the analysis still parses the raw answer")
-        self.assertEqual([message["text"] for message in session.messages], ["FACT — Обсуждаем видео"])
+        self.assertEqual(session.messages, [], "auto-analysis feeds Call overview, never the owner's chat")
 
 
 class ArchiveTests(unittest.TestCase):

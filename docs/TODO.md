@@ -196,6 +196,13 @@ hashes, Pages removed, and the Windows installer relocated to
   Codex P2 follow-ups fixed on the branch (2026-10-22): rows show the speaker the annotated transcript shows now
   (corrections included), and one wall-clock deadline per fetch shuts down a source that trickles headers or body.
   Open until the branch is merged and released.
+  2026-10-22 owner request: moved into Call overview as a fourth column (strip and its grid row removed).
+- [ ] MEETONTRACK-96: Chat tab shows only the owner's questions, notes and the answers to him; auto-analysis
+  (and raw SIGNAL_UPDATE/protocol lines) never reach it, also for stored meetings (filtered on read, data kept).
+  The separate Meeting chat tab is removed; call-chat capture still feeds Call overview and Links and services.
+  Done on branch worktree-agent-a427cf01f1e72ae19; open until merged and released.
+- [ ] MEETONTRACK-97: Call overview status counters are filter toggles saved as `call_overview_statuses` in the
+  shared config.json. Done on branch worktree-agent-a427cf01f1e72ae19; open until merged and released.
 - [ ] MEETONTRACK-70: LocalVQE echo-cancellation model (`liblocalvqe`, echo removal before
   transcription) is still a fixed model; offer it through discovery like the speech
   models or record why it is an adapter constant.

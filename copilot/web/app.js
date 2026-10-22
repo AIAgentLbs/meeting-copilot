@@ -72,9 +72,6 @@ const elements = {
     notes: document.querySelector("#notes-count"),
     entities: document.querySelector("#entities-count"),
   },
-  meetingChat: document.querySelector("#meeting-chat"),
-  meetingChatList: document.querySelector("#meeting-chat-list"),
-  meetingChatCount: document.querySelector("#meeting-chat-count"),
   composerWrap: document.querySelector("#composer-wrap"),
   repoDialog: document.querySelector("#repo-dialog"),
   projectDialog: document.querySelector("#project-dialog"),
@@ -172,7 +169,6 @@ const translations = {
     "plan.objection.resolved": "Отработано",
     "plan.objection.clarify": "Нужны детали",
     "view.journal": "Журнал",
-    "view.meeting_chat": "Чат встречи",
     "welcome.title": "Спросите по ходу разговора",
     "welcome.text": "Ответ будет проверен по локальным источникам. Репозитории открываются только для чтения.",
     "suggestion.latest": "Что они только что сказали?",
@@ -182,9 +178,6 @@ const translations = {
     "journal.all": "Все",
     "journal.notes": "Мои заметки",
     "journal.entities": "Ссылки и сервисы",
-    "meeting_chat.note": "Видимый Zoom Chat и импорт экспорта · сообщения сохраняются отдельно от скриншотов. Скрытая история автоматически не прокручивается.",
-    "meeting_chat.import": "Импорт TXT / JSON",
-    "meeting_chat.questions": "Только вопросы аудитории",
     "composer.label": "Вопрос или заметка к текущему созвону",
     "composer.placeholder": "Спросите Copilot или запишите мысль по ходу разговора.",
     "composer.ask": "Спросить",
@@ -217,7 +210,7 @@ const translations = {
     "frames.alt": "Кадр Zoom",
     "frames.speaker_unknown": "Спикер не определён",
     "message.you": "Вы",
-    "message.autoanalysis": "Автоанализ",
+    "message.note": "Ваша заметка",
     "message.thinking": "Ищу в стенограмме и репозиториях",
     "message.latest": "К последнему ответу",
     "speaker.voice": "Собеседник {value}",
@@ -236,8 +229,6 @@ const translations = {
     "traffic.yellow": "Жёлтый: открытый вопрос",
     "traffic.green": "Зелёный: решение или обязательство",
     "meeting.no_title": "Без названия",
-    "meeting_chat.empty_title": "Чат встречи пока не распознан",
-    "meeting_chat.empty_text": "Откройте панель Zoom Chat: новые видимые сообщения сохранятся с именами участников.",
     "meeting_chat.participant": "Участник",
     "project.unknown": "Проект не определён",
     "project.all_scope": "Контекст: все {count} · выбрать проект",
@@ -395,7 +386,6 @@ const translations = {
     "plan.objection.resolved": "Addressed",
     "plan.objection.clarify": "More information needed",
     "view.journal": "Journal",
-    "view.meeting_chat": "Meeting chat",
     "welcome.title": "Ask during the conversation",
     "welcome.text": "The answer will be checked against local sources. Repositories are opened read-only.",
     "suggestion.latest": "What did they just say?",
@@ -405,9 +395,6 @@ const translations = {
     "journal.all": "All",
     "journal.notes": "My notes",
     "journal.entities": "Links and services",
-    "meeting_chat.note": "Visible Zoom Chat and imported exports · messages are saved independently of screenshots. Hidden history is not scrolled automatically.",
-    "meeting_chat.import": "Import TXT / JSON",
-    "meeting_chat.questions": "Audience questions only",
     "composer.label": "Question or note for the current meeting",
     "composer.placeholder": "Ask Copilot or capture a thought during the conversation.",
     "composer.ask": "Ask",
@@ -440,7 +427,7 @@ const translations = {
     "frames.alt": "Zoom frame",
     "frames.speaker_unknown": "Speaker not identified",
     "message.you": "You",
-    "message.autoanalysis": "Auto-analysis",
+    "message.note": "Your note",
     "message.thinking": "Searching the transcript and repositories",
     "message.latest": "Jump to latest",
     "speaker.voice": "Participant {value}",
@@ -459,8 +446,6 @@ const translations = {
     "traffic.yellow": "Yellow: open question",
     "traffic.green": "Green: decision or commitment",
     "meeting.no_title": "Untitled meeting",
-    "meeting_chat.empty_title": "Meeting chat has not been detected",
-    "meeting_chat.empty_text": "Open the Zoom Chat panel; newly visible messages will be saved with participant names.",
     "meeting_chat.participant": "Participant",
     "project.unknown": "Project not identified",
     "project.all_scope": "Context: all {count} · choose project",
@@ -629,7 +614,6 @@ let requestBusy = false;
 let autoAnalysisPrimed = false;
 let journalSignature = "";
 let journalFilter = "notes";
-let meetingChatSignature = "";
 let repositoryCatalog = [];
 let selectedRepositoryPaths = new Set();
 let maxActiveRepositories = 15;
@@ -705,6 +689,9 @@ let currentCallPlan = null;
 let currentJournal = [];
 let callBoardSignature = "";
 const boardExpanded = new Set();
+const BOARD_STATUSES = ["open", "clarify", "resolved"];
+// Which statuses Call overview shows; saved in the shared preferences (config.json).
+let boardStatuses = new Set(BOARD_STATUSES);
 
 Object.assign(translations.ru, {
   "meeting.new": "Начать новую встречу", "meeting.cancel": "Отмена",
@@ -775,7 +762,7 @@ elements.newMeetingConfirm.addEventListener("click", async () => {
       throw new Error(t("meeting.new_retry"));
     }
     const result = await response.json();
-    transcriptSignature = frameSignature = renderedMessages = journalSignature = meetingChatSignature = callPlanSignature = callBoardSignature = "";
+    transcriptSignature = frameSignature = renderedMessages = journalSignature = callPlanSignature = callBoardSignature = "";
     boardExpanded.clear();
     autoAnalysisPrimed = false;
     elements.newMeetingStatus.textContent = t("meeting.new_success", { title: result.title });
@@ -1181,6 +1168,9 @@ Object.assign(translations.ru, {
   "board.empty.incoming": "Здесь появятся вопросы собеседников из стенограммы.",
   "board.empty.risks": "Здесь появятся риски и возражения из подготовки и разговора.",
   "board.waiting": "Пункты появятся по мере анализа разговора.",
+  "board.filter": "Показывать пункты со статусом",
+  "board.filter_none": "Все статусы скрыты. Включите хотя бы один статус выше.",
+  "board.filter_empty": "Нет пунктов с выбранными статусами.",
 });
 Object.assign(translations.en, {
   "board.tab": "Call overview", "board.mine": "Questions to ask", "board.incoming": "To me & the group",
@@ -1192,6 +1182,9 @@ Object.assign(translations.en, {
   "board.empty.incoming": "Questions captured from the conversation appear here.",
   "board.empty.risks": "Prepared and live risks and objections appear here.",
   "board.waiting": "Items appear as the conversation is analyzed.",
+  "board.filter": "Show items with status",
+  "board.filter_none": "All statuses are hidden. Turn at least one status on above.",
+  "board.filter_empty": "No items with the selected statuses.",
 });
 
 const journalGroups = {
@@ -1570,9 +1563,33 @@ function renderFrameStatus(status) {
   }
 }
 
-function renderMessages(copilot) {
-  const signature = JSON.stringify(copilot.messages);
-  if (signature === renderedMessages && copilot.busy === requestBusy) return;
+// The Chat tab is the owner's own conversation: his questions, the notes he saves from the
+// composer and the answers to him. Auto-analysis never lands here (it feeds Call overview).
+function chatEntries(messages, journal) {
+  const entries = [];
+  let at = "";
+  for (const message of messages) {
+    if (message.kind === "insight") continue;  // defence in depth; the server already leaves them out
+    at = message.at || at;
+    entries.push({ ...message, at });
+  }
+  for (const note of journal) {
+    if (note.category === "NOTE" && note.source === "user_note") {
+      entries.push({ role: "user", kind: "note", text: note.text || "", at: note.created_at || "" });
+    }
+  }
+  // Older saved messages carry no time: they keep their order and come first.
+  return entries.map((entry, index) => ({ entry, index }))
+    .sort((a, b) => (a.entry.at || "").localeCompare(b.entry.at || "") || a.index - b.index)
+    .map((item) => item.entry);
+}
+
+function renderMessages(copilot, journal = []) {
+  const entries = chatEntries(copilot.messages, journal);
+  // Busy with an auto-analysis is not an answer to the owner: no "thinking" bubble for it.
+  const answering = requestBusy || (copilot.busy && copilot.messages.at(-1)?.role === "user");
+  const signature = `${uiLanguage}:${answering}:${JSON.stringify(entries)}`;
+  if (signature === renderedMessages) return;
   const wasInitialized = elements.chat.dataset.initialized === "true";
   const oldScrollTop = elements.chat.scrollTop;
   const distanceFromBottom = elements.chat.scrollHeight
@@ -1582,24 +1599,23 @@ function renderMessages(copilot) {
   renderedMessages = signature;
   const fragment = document.createDocumentFragment();
 
-  if (!copilot.messages.length && !requestBusy) {
+  if (!entries.length && !answering) {
     fragment.append(elements.welcome);
     elements.welcome.hidden = false;
   } else {
     elements.welcome.hidden = true;
-    for (const message of copilot.messages) {
+    for (const message of entries) {
       const article = document.createElement("article");
       article.className = `message ${message.role} ${message.kind || "answer"}`;
-      const label = message.role === "user"
-        ? t("message.you")
-        : message.kind === "insight" ? t("message.autoanalysis") : "Copilot";
+      const label = message.kind === "note" ? t("message.note")
+        : message.role === "user" ? t("message.you") : "Copilot";
       article.append(
         textNode("div", "message-label", label),
         textNode("p", "message-text", readableAnswer(message.text)),
       );
       fragment.append(article);
     }
-    if (requestBusy || copilot.busy) {
+    if (answering) {
       const thinking = document.createElement("article");
       thinking.className = "message assistant";
       thinking.append(
@@ -1914,7 +1930,7 @@ function renderCallPlan(plan) {
 
 function renderCallBoard(plan, journal) {
   currentJournal = journal;
-  const signature = `${uiLanguage}:${activeTranscript?.meeting_id}:${JSON.stringify(plan)}:${JSON.stringify(journal)}`;
+  const signature = `${uiLanguage}:${[...boardStatuses]}:${activeTranscript?.meeting_id}:${JSON.stringify(plan)}:${JSON.stringify(journal)}`;
   if (signature === callBoardSignature) return;
   callBoardSignature = signature;
   const scrolls = Object.fromEntries([...elements.callBoard.querySelectorAll("[data-board-list]")]
@@ -1930,10 +1946,26 @@ function renderCallBoard(plan, journal) {
   const fragment = document.createDocumentFragment();
   const summary = document.createElement("div");
   summary.className = "board-summary";
-  for (const status of ["open", "clarify", "resolved"]) {
+  const filters = document.createElement("div");
+  filters.className = "board-filters";
+  filters.setAttribute("role", "group");
+  filters.setAttribute("aria-label", t("board.filter"));
+  for (const status of BOARD_STATUSES) {
     const count = entries.filter((item) => item.status === status).length;
-    summary.append(textNode("span", `board-summary-status ${status}`, `${t(`board.${status}`)} ${count}`));
+    const toggle = textNode("button", `board-summary-status ${status}`, `${t(`board.${status}`)} ${count}`);
+    toggle.type = "button";
+    toggle.dataset.statusFilter = status;
+    toggle.setAttribute("aria-pressed", String(boardStatuses.has(status)));
+    toggle.addEventListener("click", () => {
+      if (boardStatuses.has(status)) boardStatuses.delete(status);
+      else boardStatuses.add(status);
+      renderCallBoard(currentCallPlan, currentJournal);
+      elements.callBoard.querySelector(`[data-status-filter="${status}"]`)?.focus();
+      void savePreference({ call_overview_statuses: BOARD_STATUSES.filter((item) => boardStatuses.has(item)) }, helpStatus);
+    });
+    filters.append(toggle);
   }
+  summary.append(filters);
   if (plan?.links?.length) {
     const materials = document.createElement("details");
     materials.className = "board-materials";
@@ -1967,8 +1999,11 @@ function renderCallBoard(plan, journal) {
     const list = document.createElement("div");
     list.className = "board-list";
     list.dataset.boardList = lane;
+    const shown = group.filter((item) => boardStatuses.has(item.status));
     if (!group.length) list.append(textNode("p", "board-empty", t(`board.empty.${lane}`)));
-    for (const item of group) {
+    else if (!boardStatuses.size) list.append(textNode("p", "board-empty", t("board.filter_none")));
+    else if (!shown.length) list.append(textNode("p", "board-empty", t("board.filter_empty")));
+    for (const item of shown) {
       const card = document.createElement("article");
       card.className = `board-item ${item.status}`;
       const heading = document.createElement("div");
@@ -2025,8 +2060,13 @@ function renderCallBoard(plan, journal) {
     section.append(header, list);
     columns.append(section);
   }
+  // Fact check is the fourth column; it keeps its own states and is not filtered by the toggles above.
+  const factScroll = factColumn.querySelector(".board-list")?.scrollTop || 0;  // read before it moves
+  columns.append(factColumn);
   fragment.append(columns);
   elements.callBoard.replaceChildren(fragment);
+  const factList = factColumn.querySelector(".board-list");
+  if (factList) factList.scrollTop = factScroll;
   for (const list of elements.callBoard.querySelectorAll("[data-board-list]")) list.scrollTop = scrolls[list.dataset.boardList] || 0;
 }
 
@@ -2218,46 +2258,6 @@ function jumpToTranscript(anchorAt) {
   nearest.row.scrollIntoView({ behavior: "smooth", block: "center" });
   nearest.row.classList.add("time-anchor");
   setTimeout(() => nearest.row.classList.remove("time-anchor"), 2400);
-}
-
-function renderMeetingChat(items) {
-  const oldScroll = elements.meetingChatList.scrollTop;
-  const pinned = elements.meetingChatList.scrollHeight - elements.meetingChatList.clientHeight - oldScroll < 72;
-  window.currentMeetingChat = items;
-  elements.meetingChatCount.textContent = String(items.length);
-  const questionsOnly = document.querySelector("#chat-questions-only").checked;
-  const signature = `${questionsOnly}:${JSON.stringify(items)}`;
-  if (signature === meetingChatSignature) return;
-  meetingChatSignature = signature;
-  items = questionsOnly ? items.filter(item => (item.text || "").includes("?")) : items;
-  const fragment = document.createDocumentFragment();
-  if (!items.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-state journal-empty";
-    empty.append(
-      textNode("strong", "", t("meeting_chat.empty_title")),
-      textNode("span", "", t("meeting_chat.empty_text")),
-    );
-    fragment.append(empty);
-  } else {
-    for (const item of items) {
-      const card = document.createElement("article");
-      card.className = "meeting-chat-card";
-      const header = document.createElement("div");
-      header.className = "meeting-chat-card-header";
-      header.append(
-        textNode("strong", "", item.sender || t("meeting_chat.participant")),
-        textNode("time", "", item.displayed_at || `${uiLanguage === "ru" ? "Обнаружено" : "Detected"}: ${localTime(item.captured_at)}`),
-      );
-      card.append(header, textNode("p", "", item.text || ""));
-      if (item.boundary_unassigned) card.append(textNode("small", "boundary-provenance", t("meeting.unassigned")));
-      if (item.time_inferred) card.append(textNode("small", "boundary-provenance", t("meeting.inferred_time")));
-      card.append(textNode("small", "", `${item.source === "export" ? "TXT / JSON" : "OCR"}${(item.text || "").includes("?") ? (uiLanguage === "ru" ? " · Вопрос аудитории — в реестре вопросов" : " · Audience question — in question register") : ""}`));
-      fragment.append(card);
-    }
-  }
-  elements.meetingChatList.replaceChildren(fragment);
-  elements.meetingChatList.scrollTop = pinned ? elements.meetingChatList.scrollHeight : oldScroll;
 }
 
 function archiveDate(value) {
@@ -2748,6 +2748,7 @@ Object.assign(translations.ru, {
   "fact.note.no_source": "Источник не открылся или не содержит цитату, поэтому без вывода.",
   "fact.note.unreadable": "ИИ ответил не по формату, поэтому без вывода.",
   "fact.show_all": "Показать все ({count})", "fact.show_less": "Свернуть", "fact.or": "или",
+  "fact.count": "{confirmed} подтверждено · {unclear} неясно · {refuted} опровергнуто",
   "fact.web_none": "Проверка в интернете недоступна с {provider}. Чтобы ее включить, выберите ИИ с поиском в интернете в разделе «Начать работу». Проверка по базе знаний работает.",
   "fact.web_off": "Проверка в интернете недоступна с {provider}. Чтобы ее включить, выберите {options} в разделе «Начать работу». Проверка по базе знаний работает.",
 });
@@ -2759,6 +2760,7 @@ Object.assign(translations.en, {
   "fact.note.no_source": "The source did not open or lacks the quote, so no verdict.",
   "fact.note.unreadable": "The AI answered in the wrong format, so no verdict.",
   "fact.show_all": "Show all ({count})", "fact.show_less": "Show fewer", "fact.or": "or",
+  "fact.count": "{confirmed} confirmed · {unclear} unclear · {refuted} refuted",
   "fact.web_none": "Web checking is unavailable with {provider}. To turn it on, choose an AI with web search in Getting started. Knowledge base checks still run.",
   "fact.web_off": "Web checking is unavailable with {provider}. To turn it on, choose {options} in Getting started. Knowledge base checks still run.",
 });
@@ -2808,36 +2810,47 @@ function factRow(item) {
   return row;
 }
 
+// The fact-check column of Call overview: same frame as the other three columns.
+const factColumn = document.createElement("section");
+factColumn.className = "board-column facts";
+
 function renderFactChecks(state) {
-  const strip = document.querySelector("#fact-strip");
-  if (!strip) return;
   const items = state?.items || [];
   const signature = `${uiLanguage}:${factsExpanded}:${activeTranscript?.meeting_id || ""}:${JSON.stringify(state || {})}`;
   if (signature === factSignature) return;
   factSignature = signature;
-  strip.hidden = !activeTranscript?.meeting_id;
-  const header = document.createElement("div");
-  header.className = "fact-strip-header";
-  header.append(textNode("h3", "", t("fact.title")));
-  if (items.length > 3) {
-    const toggle = textNode("button", "quiet-button", factsExpanded ? t("fact.show_less") : t("fact.show_all", { count: items.length }));
-    toggle.type = "button";
-    toggle.addEventListener("click", () => { factsExpanded = !factsExpanded; renderFactChecks(state); });
-    header.append(toggle);
-  }
-  const parts = [header];
+  const header = document.createElement("header");
+  header.className = "board-column-header";
+  const count = (status) => items.filter((item) => item.status === status).length;
+  header.append(textNode("h3", "", t("fact.title")), textNode("p", "", t("fact.count", {
+    confirmed: count("confirmed"), unclear: count("unclear"), refuted: count("refuted"),
+  })));
+  const list = document.createElement("div");
+  list.className = "board-list";
+  list.dataset.boardList = "facts";
+  list.setAttribute("aria-live", "polite");
   if (state && !state.web && state.provider) {
     const options = state.web_providers || [];  // only providers installed and signed in here
-    parts.push(textNode("p", "fact-notice", t(options.length ? "fact.web_off" : "fact.web_none", {
+    list.append(textNode("p", "fact-notice", t(options.length ? "fact.web_off" : "fact.web_none", {
       provider: state.provider, options: options.join(` ${t("fact.or")} `),
     })));
   }
-  if (!items.length) parts.push(textNode("p", "fact-empty", t("fact.empty")));
-  const list = document.createElement("ul");
-  list.className = "fact-list";
-  list.append(...(factsExpanded ? items : items.slice(0, 3)).map(factRow));
-  if (items.length) parts.push(list);
-  strip.replaceChildren(...parts);
+  if (!items.length) list.append(textNode("p", "board-empty", t("fact.empty")));
+  const rows = document.createElement("ul");
+  rows.className = "fact-list";
+  rows.append(...(factsExpanded ? items : items.slice(0, 3)).map(factRow));
+  if (items.length) list.append(rows);
+  if (items.length > 3) {
+    const toggle = textNode("button", "quiet-button fact-more", factsExpanded ? t("fact.show_less") : t("fact.show_all", { count: items.length }));
+    toggle.type = "button";
+    toggle.addEventListener("click", () => {
+      factsExpanded = !factsExpanded;
+      renderFactChecks(state);
+      factColumn.querySelector(".fact-more")?.focus();
+    });
+    list.append(toggle);
+  }
+  factColumn.replaceChildren(header, list);
 }
 
 async function state() {
@@ -2871,12 +2884,11 @@ async function state() {
     updateLibraryMode(data);
     renderFrames(data.frames || []);
     renderFrameStatus(data.frame_capture || {});
-    renderMessages(data.copilot);
+    renderMessages(data.copilot, data.journal || []);
     renderCallPlan(data.call_plan || null);
     renderJournal(data.journal || []);
-    renderCallBoard(data.call_plan || null, data.journal || []);
     renderFactChecks(data.fact_checks);
-    renderMeetingChat(data.meeting_chat || []);
+    renderCallBoard(data.call_plan || null, data.journal || []);
     elements.send.disabled = requestBusy || data.copilot.busy;
     if (stateConnectionFailed && !requestBusy) {
       elements.help.textContent = t("help.ai");
@@ -3034,7 +3046,6 @@ document.querySelectorAll("[data-content-view]").forEach((button) => {
     elements.callBoard.hidden = view !== "board";
     elements.callPlan.hidden = view !== "plan";
     elements.journal.hidden = !journalView;
-    elements.meetingChat.hidden = view !== "meeting-chat";
     elements.chatLatest.hidden = view !== "chat" || chatPinnedToLatest;
   });
 });
@@ -3052,26 +3063,6 @@ elements.chatLatest.addEventListener("click", () => {
   chatPinnedToLatest = true;
   elements.chat.scrollTo({ top: elements.chat.scrollHeight, behavior: "smooth" });
   updateChatLatestButton();
-});
-
-document.querySelector("#chat-questions-only").addEventListener("change", () => renderMeetingChat(window.currentMeetingChat || []));
-document.querySelector("#chat-import-file").addEventListener("click", () => document.querySelector("#chat-import-input").click());
-document.querySelector("#chat-import-input").addEventListener("change", async event => {
-  const file = event.target.files[0];
-  if (!file) return;
-  const meetingId = activeTranscript?.meeting_id;
-  const result = document.querySelector("#chat-import-result");
-  try {
-    if (file.size > 2000000) throw new Error(uiLanguage === "ru" ? "Максимум 2 МБ" : "Maximum 2 MB");
-    const response = await fetch("/api/meeting-chat/import", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ meeting_id: meetingId, text: await file.text() }) });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw apiError(data, response);
-    result.textContent = `${uiLanguage === "ru" ? "Добавлено" : "Added"}: ${data.added}`;
-    renderMeetingChat(data.meeting_chat);
-    if (data.added) void analyze(true);
-  } catch (error) { result.textContent = plainError(error); }
-  event.target.value = "";
 });
 
 elements.form.addEventListener("submit", (event) => {
@@ -3167,7 +3158,6 @@ function switchUiLanguage(language) {
   frameSignature = "";
   renderedMessages = "";
   journalSignature = "";
-  meetingChatSignature = "";
   setArchiveMode();
   if (!elements.archiveDialog.hidden) void refreshArchive();
   if (elements.projectDialog.open) {
@@ -3193,7 +3183,21 @@ function applyPreferences(preferences) {
   if (typeof preferences.transcript_hidden === "boolean" && preferences.transcript_hidden !== transcriptHidden) {
     applyTranscriptHidden(preferences.transcript_hidden);
   }
+  const statuses = preferences.call_overview_statuses;
+  if (Array.isArray(statuses) && statuses.join() !== BOARD_STATUSES.filter((item) => boardStatuses.has(item)).join()) {
+    boardStatuses = new Set(BOARD_STATUSES.filter((item) => statuses.includes(item)));
+    renderCallBoard(currentCallPlan, currentJournal);
+  }
 }
+
+// A failed save of a board filter shows in the help line; a successful one says nothing.
+const helpStatus = {
+  set textContent(text) {
+    if (!text) return;
+    elements.help.textContent = text;
+    elements.help.classList.add("error");
+  },
+};
 
 // Saves run one at a time in click order, so an older request never lands after a newer one.
 // The epoch moves at the start and the end of each save: a state snapshot that overlapped

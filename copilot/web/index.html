@@ -220,7 +220,6 @@
           <button class="quiet-button" id="delivery-notice-details" type="button" data-i18n="delivery.details">Подробнее</button>
           <button class="quiet-button" id="delivery-notice-dismiss" type="button" data-i18n="delivery.dismiss">Прочитано</button>
         </section>
-        <section class="fact-strip" id="fact-strip" aria-live="polite" aria-label="Проверка фактов" data-i18n-aria-label="fact.title" hidden></section>
         <div class="copilot-content">
           <div class="workspace-filters" id="workspace-filters" role="tablist" aria-label="Чат и сигналы" data-i18n-aria-label="aria.workspace_filter">
             <button class="active" data-content-view="board" role="tab" aria-selected="true" type="button" data-i18n="board.tab">Обзор звонка</button>
@@ -228,7 +227,6 @@
             <button data-content-view="chat" role="tab" type="button" data-i18n="view.chat">Чат</button>
             <button data-content-view="notes" role="tab" type="button"><span data-i18n="journal.notes">Мои заметки</span><span class="tab-count" id="notes-count">0</span></button>
             <button data-content-view="entities" role="tab" type="button"><span data-i18n="journal.entities">Ссылки и сервисы</span><span class="tab-count" id="entities-count">0</span></button>
-            <button data-content-view="meeting-chat" role="tab" type="button"><span data-i18n="view.meeting_chat">Чат встречи</span><span class="tab-count" id="meeting-chat-count">0</span></button>
           </div>
           <div class="workspace-view">
             <section class="call-board" id="call-board" aria-label="Обзор звонка" data-i18n-aria-label="board.tab"></section>
@@ -248,16 +246,6 @@
             <button class="chat-latest" id="chat-latest" type="button" hidden data-i18n="message.latest">К последнему ответу</button>
             <div class="journal" id="journal" hidden>
               <div class="journal-list" id="journal-list" aria-live="polite"></div>
-            </div>
-            <div class="meeting-chat" id="meeting-chat" hidden>
-              <div class="meeting-chat-tools">
-                <button id="chat-import-file" class="quiet-button" type="button" data-i18n="meeting_chat.import">Импорт TXT / JSON</button>
-                <input id="chat-import-input" type="file" accept=".txt,.json,text/plain,application/json" hidden>
-                <label><input id="chat-questions-only" type="checkbox"><span data-i18n="meeting_chat.questions">Только вопросы аудитории</span></label>
-                <span id="chat-import-result" role="status"></span>
-              </div>
-              <div class="meeting-chat-note" data-i18n="meeting_chat.note">Сообщения извлекаются из видимой панели Zoom Chat и сохраняются только локально.</div>
-              <div class="meeting-chat-list" id="meeting-chat-list" aria-live="polite"></div>
             </div>
           </div>
         </div>
