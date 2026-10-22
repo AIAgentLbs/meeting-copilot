@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import archive
 from archive import MeetingArchive
 from delivery_health import DeliveryHealth
 
@@ -195,20 +196,32 @@ class FinalTranscriptAfterNextCallTests(unittest.TestCase):
         self.assertNotIn("Live chunk", texts)
 
 
-    def test_a_failing_report_is_tried_again_every_30_minutes_not_every_minute(self):
+    def test_a_failing_report_is_shown_and_tried_again_every_30_minutes_not_every_minute(self):
         self.next_call_ends()
-        clock = [5000.0]
-        with patch("archive.time.monotonic", lambda: clock[0]):
-            with patch.object(self.archive, "_print_pdf", side_effect=RuntimeError("Chrome не создал PDF")) as printer:
-                self.archive.finalize_history()
-                self.archive.finalize_history()
-                self.assertEqual(printer.call_count, 1)
-                clock[0] += 1801
-                self.archive.finalize_history()
-                self.assertEqual(printer.call_count, 2)
-            clock[0] += 1801
-            self.finalize()  # Printing works again: the report is created and sent.
-        self.assertEqual(self.sent, ["FIRST-CALL"] if self.sent_automatically else [])
+        marker = self.root / "reports/FIRST-CALL/report-failure.json"
+        with patch.object(self.archive, "_print_pdf", side_effect=archive.ReportPdfError("Chrome не создал PDF")) as printer:
+            self.archive.finalize_history()
+            self.archive.finalize_history()
+            self.assertEqual(printer.call_count, 1)
+            failure = json.loads(marker.read_text())
+            self.assertEqual((failure["reason"], failure["attempts"]), ("pdf", 1))
+            self.assertEqual(self.archive.detail("FIRST-CALL")["report_failure"]["reason"], "pdf")
+            health = self.archive.delivery_health()
+            item = next(item for item in health["undelivered"] if item["meeting_id"] == "FIRST-CALL")
+            self.assertTrue(item["missing"] and item["failed"])
+            self.assertGreaterEqual(health["issue_count"], 1)
+            earlier = (datetime.now(timezone.utc) - timedelta(minutes=31)).isoformat()
+            marker.write_text(json.dumps({**failure, "failed_at": earlier}))
+            self.archive.finalize_history()
+            self.assertEqual(printer.call_count, 2)
+            self.assertEqual(json.loads(marker.read_text())["attempts"], 2)
+        # The person's button does not wait for the 30 minutes, and success clears the failure.
+        with patch.object(self.archive, "_print_pdf", side_effect=lambda html, pdf: pdf.write_bytes(b"%PDF synthetic")), \
+             patch.object(self.archive, "deliver", side_effect=lambda detail, meta, **_: self.sent.append(detail["meeting_id"]) or {"mail_status": "sent"}):
+            self.archive.generate_report("FIRST-CALL")
+        self.assertFalse(marker.exists())
+        self.assertIsNone(self.archive.detail("FIRST-CALL")["report_failure"])
+        self.assertNotIn("FIRST-CALL", [item["meeting_id"] for item in self.archive.delivery_health()["undelivered"]])
 
 
 class OldMeetingRepairTests(FinalTranscriptAfterNextCallTests):

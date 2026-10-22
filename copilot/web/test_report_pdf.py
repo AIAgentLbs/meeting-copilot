@@ -5,8 +5,10 @@ load; the old fixed 20 s window then failed every one of them, again every
 minute. Time and Chrome are faked here, so the test runs instantly.
 """
 
+import json
 import re
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -42,12 +44,15 @@ class PrintPdfTests(unittest.TestCase):
         html, pdf = folder / "index.html", folder / "meeting-report.pdf"
         html.write_text("<p>synthetic</p>")
         clock = [1000.0]
+        self.profiles = folder / "tmp"
+        self.profiles.mkdir()
 
         def sleep(seconds):
             clock[0] += seconds
         with patch.object(archive.Path, "is_file", lambda self: True if "Google Chrome" in str(self) else Path.exists(self)), \
              patch.object(archive.time, "sleep", sleep), patch.object(archive.time, "monotonic", lambda: clock[0]), \
-             patch.object(archive.subprocess, "Popen", lambda command, **_: SlowChrome(clock, delay, command)):
+             patch.object(archive.subprocess, "Popen", lambda command, **_: SlowChrome(clock, delay, command)), \
+             patch.object(archive.tempfile, "tempdir", str(self.profiles)):
             MeetingArchive._print_pdf(html, pdf)
         return pdf
 
@@ -55,8 +60,94 @@ class PrintPdfTests(unittest.TestCase):
         self.assertTrue(self.print_with(25).read_bytes().startswith(b"%PDF"))
 
     def test_chrome_that_never_writes_a_pdf_still_fails_plainly(self):
-        with self.assertRaisesRegex(RuntimeError, "Chrome не создал PDF"):
+        with self.assertRaisesRegex(archive.ReportPdfError, "Chrome не создал PDF"):
             self.print_with(10_000)
+
+    def test_chrome_profile_is_removed_after_each_print(self):
+        self.print_with(5)
+        self.assertEqual(list(self.profiles.iterdir()), [])
+
+    def test_start_removes_only_this_apps_leftover_profiles(self):
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(folder, ignore_errors=True))
+        (folder / f"{archive.PRINT_PROFILE_PREFIX}old1" / "Default").mkdir(parents=True)
+        (folder / f"{archive.PRINT_PROFILE_PREFIX}old2").mkdir()
+        (folder / "other-app-report-1").mkdir()
+        (folder / f"{archive.PRINT_PROFILE_PREFIX}note.txt").write_text("not a folder")
+        with patch.object(archive.tempfile, "tempdir", str(folder)):
+            self.assertEqual(MeetingArchive.remove_print_leftovers(), 2)
+        self.assertEqual(sorted(p.name for p in folder.iterdir()),
+                         [f"{archive.PRINT_PROFILE_PREFIX}note.txt", "other-app-report-1"])
+
+
+class PrintOutsideTheLockTests(unittest.TestCase):
+    """A slow print must not stall the library, and one meeting prints once at a time."""
+
+    def setUp(self):
+        from test_final_after_next_call import FinalTranscriptAfterNextCallTests
+        case = FinalTranscriptAfterNextCallTests("test_dropout_in_the_last_minute_is_explained_not_flagged")
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        case.next_call_ends()
+        self.case, self.archive = case, case.archive
+        self.printing, self.release = threading.Event(), threading.Event()
+        self.prints = 0
+
+        def slow_print(html, pdf):
+            self.prints += 1
+            self.printing.set()
+            self.assertTrue(self.release.wait(10))
+            pdf.write_bytes(b"%PDF synthetic")
+        patcher = patch.object(self.archive, "_print_pdf", side_effect=slow_print)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        delivery = patch.object(self.archive, "deliver", return_value={"mail_status": "sent"})
+        delivery.start()
+        self.addCleanup(delivery.stop)
+
+    def start(self) -> threading.Thread:
+        worker = threading.Thread(target=self.archive.generate_report, args=("FIRST-CALL",))
+        worker.start()
+        return worker
+
+    def test_the_library_answers_while_chrome_prints(self):
+        worker = self.start()
+        self.assertTrue(self.printing.wait(5))
+        answered = []
+        # Renaming takes the archive lock, like settings, resends and summaries.
+        reader = threading.Thread(target=lambda: answered.append((self.archive.list_meetings(),
+                                                                   self.archive.rename_meeting("NEXT-CALL", "Renamed"))))
+        reader.start()
+        reader.join(5)
+        self.assertTrue(answered, "The library waited for Chrome")
+        self.assertTrue(self.archive.delivery_health() is not None)
+        self.release.set()
+        worker.join(10)
+        self.assertTrue((self.case.root / "reports/FIRST-CALL/report.json").exists())
+
+    def test_a_second_request_for_the_same_meeting_waits_for_the_first(self):
+        first = self.start()
+        self.assertTrue(self.printing.wait(5))
+        second = self.start()
+        second.join(0.5)
+        self.assertEqual(self.prints, 1, "Two Chrome prints of one meeting at once")
+        self.release.set()
+        first.join(10)
+        second.join(10)
+        self.assertEqual(self.prints, 2)
+
+    def test_text_changed_during_the_print_is_printed_again_before_saving(self):
+        worker = self.start()
+        self.assertTrue(self.printing.wait(5))
+        stored = json.loads((self.case.root / "archive/FIRST-CALL/meeting.json").read_text())
+        stored["segments"].append({"source": "system", "timestamp": stored["segments"][-1]["timestamp"],
+                                   "text": "Added while printing"})
+        (self.case.root / "archive/FIRST-CALL/meeting.json").write_text(json.dumps(stored))
+        self.release.set()
+        worker.join(10)
+        self.assertEqual(self.prints, 2)
+        report = json.loads((self.case.root / "reports/FIRST-CALL/report.json").read_text())
+        self.assertEqual(report["source_signature"], self.archive.source_signature(self.archive.report_detail("FIRST-CALL")))
 
 
 if __name__ == "__main__":

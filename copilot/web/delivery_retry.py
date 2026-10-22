@@ -36,7 +36,7 @@ class DeliveryRetry:
     def _run(self, identity, request, channels, confirm):
         result = {"state": "failed", "request_id": request, "meeting_id": identity}
         try:
-            with self.archive.lock:
+            with self.archive.report_gate(identity), self.archive.lock:
                 path = self.archive.reports_root / identity / "report.json"
                 report = read_json(path)
                 if not report:

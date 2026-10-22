@@ -96,6 +96,14 @@ def _shared_indexes(method):
     return wrapped
 
 
+PRINT_PROFILE_PREFIX = "meeting-copilot-report-"
+REPORT_FAILURE = "report-failure.json"
+
+
+class ReportPdfError(RuntimeError):
+    """Chrome could not print the report: the person sees it and can try again."""
+
+
 class MeetingArchive:
     """Joins transcript, notes, Zoom chat, screenshots and recording metadata."""
 
@@ -125,6 +133,8 @@ class MeetingArchive:
         self.reports_root = reports_root
         self.config_root = config_root
         self.lock = threading.RLock()
+        # One report job per meeting: printing and sending run outside self.lock.
+        self._report_gates: dict[str, threading.Lock] = {}
         self.delivery_settings = DeliverySettings(config_root, self.lock)
         self._index_state = threading.local()
         self.speaker_edits = SpeakerEdits(archive_root)
@@ -137,7 +147,6 @@ class MeetingArchive:
         self.transcript_annotator = transcript_annotator or (lambda snapshot: snapshot)
         # meeting_id -> (meeting.json, report.json) versions already found up to date.
         self._history_checked: dict[str, tuple] = {}
-        self._history_failed: dict[str, float] = {}
         private_dir(self.archive_root, recover=True)
         private_dir(self.reports_root, recover=True)
 
@@ -313,13 +322,19 @@ class MeetingArchive:
 
     def create_due_report(self, meeting_id: str) -> bool:
         """Create a report the meeting still needs; send it only inside the delivery window."""
-        if not self.needs_report(meeting_id):
+        if self._report_failed_recently(meeting_id) or not self.needs_report(meeting_id):
             return False
         ended = _date(str((self.report_detail(meeting_id) or {}).get("ended_at") or ""))
         recent = bool(ended and (datetime.now().astimezone() - ended).total_seconds()
                       <= self.delivery_retry_days * 86400)
         self.generate_report(meeting_id, on_request=not recent)
         return True
+
+    def _report_failed_recently(self, meeting_id: str) -> bool:
+        """Automatic attempts after a failure wait 30 minutes; the person's button never waits."""
+        failure = _json(self.reports_root / _safe(str(meeting_id)) / REPORT_FAILURE, None)
+        failed = _date(str(failure.get("failed_at") or "")) if isinstance(failure, dict) else None
+        return bool(failed and (datetime.now().astimezone() - failed).total_seconds() < 1800)
 
     @_shared_indexes
     def finalize_history(self) -> None:
@@ -345,13 +360,11 @@ class MeetingArchive:
                 version = (path.stat().st_mtime_ns, _mtime(self.reports_root / meeting_id / "report.json"))
                 if self._history_checked.get(meeting_id) == version:
                     continue
-                if time.monotonic() - self._history_failed.get(meeting_id, -1e9) < 1800:
-                    continue  # A failed report is tried again every 30 minutes, not every minute.
                 # Remember "nothing to do" only once the 2-minute settling time is long over.
-                if not self.create_due_report(meeting_id) and ended and (now - ended).total_seconds() > 600:
+                if (not self.create_due_report(meeting_id) and ended and (now - ended).total_seconds() > 600
+                        and not (self.reports_root / meeting_id / REPORT_FAILURE).exists()):
                     self._history_checked[meeting_id] = version
             except Exception as exc:
-                self._history_failed[meeting_id] = time.monotonic()
                 print(f"meeting history report failed for {meeting_id}: {type(exc).__name__}: {exc}", flush=True)
 
     def _recordings(self) -> list[dict]:
@@ -592,6 +605,8 @@ class MeetingArchive:
         report = detail.get("report") or {}
         active = detail.get("status") in {"recording", "loading", "overloaded"}
         detail["audio_gap"] = None if active else self._audio_gap(detail)
+        failure = _json(self.reports_root / _safe(detail["meeting_id"]) / REPORT_FAILURE, None)
+        detail["report_failure"] = failure if isinstance(failure, dict) else None
         detail["library_status"] = ("recording" if active
                                     else "report_ready" if report.get("html") and report.get("pdf")
                                     else "analysis_ready" if points else "transcript_ready" if transcript
@@ -854,6 +869,7 @@ class MeetingArchive:
             "title": detail["title"],
             "library_status": detail.get("library_status", "transcript_ready"),
             "audio_gap": detail.get("audio_gap"),
+            "report_failure": detail.get("report_failure"),
             "preview": (detail.get("overview", {}).get("points") or [""])[0],
             "status": detail["status"],
             "started_at": detail["started_at"],
@@ -878,20 +894,52 @@ class MeetingArchive:
         indexes = {round(index * (len(existing) - 1) / (limit - 1)) for index in range(limit)}
         return [existing[index] for index in sorted(indexes)]
 
-    def generate_report(self, meeting_id: str, *, deliver: bool = True, on_request: bool = False) -> dict:
+    def report_gate(self, meeting_id: str) -> threading.Lock:
         with self.lock:
-            detail = self.report_detail(meeting_id)
-            if detail is None:
-                raise ValueError("Встреча не найдена")
-            if not detail["transcript"] and not detail["journal"] and not detail["frames"]:
-                raise ValueError("Для этой записи пока нет стенограммы, заметок или кадров")
+            return self._report_gates.setdefault(_safe(str(meeting_id)), threading.Lock())
+
+    def generate_report(self, meeting_id: str, *, deliver: bool = True, on_request: bool = False) -> dict:
+        """Create (and send) a report; Chrome and the senders never hold the archive lock."""
+        with self.report_gate(meeting_id):
+            try:
+                meta = self._generate_report(meeting_id, deliver=deliver, on_request=on_request)
+            except ValueError:
+                raise
+            except Exception as exc:
+                self._record_report_failure(meeting_id, exc)
+                raise
+            for identity in {_safe(str(meeting_id)), _safe(str(meta.get("meeting_id") or meeting_id))}:
+                (self.reports_root / identity / REPORT_FAILURE).unlink(missing_ok=True)
+            meta.pop("meeting_id", None)
+            return meta
+
+    def _record_report_failure(self, meeting_id: str, exc: Exception) -> None:
+        path = self.reports_root / _safe(str(meeting_id)) / REPORT_FAILURE
+        try:
+            previous = _json(path, {})
+            attempts = int(previous.get("attempts") or 0) if isinstance(previous, dict) else 0
+            private_dir(path.parent)
+            _atomic_json(path, {"reason": "pdf" if isinstance(exc, ReportPdfError) else "other",
+                                "message": str(exc)[:300], "attempts": attempts + 1,
+                                "failed_at": datetime.now().astimezone().isoformat(timespec="seconds")})
+        except Exception as error:  # The original failure is what the caller reports.
+            print(f"report failure marker not saved: {type(error).__name__}", flush=True)
+
+    def _generate_report(self, meeting_id: str, *, deliver: bool, on_request: bool) -> dict:
+        for attempt in range(3):
+            with self.lock:
+                detail = self.report_detail(meeting_id)
+                if detail is None:
+                    raise ValueError("Встреча не найдена")
+                if not detail["transcript"] and not detail["journal"] and not detail["frames"]:
+                    raise ValueError("Для этой записи пока нет стенограммы, заметок или кадров")
+                source_signature = self.source_signature(detail)
 
             report_dir = self.reports_root / detail["meeting_id"]
             assets = report_dir / "assets"
             private_dir(assets)
             for old in assets.glob("*.jpg"):
                 old.unlink()
-
             selected_frames = self._choose_frames(detail["frames"])
             rendered_frames: list[dict] = []
             for index, frame in enumerate(selected_frames, start=1):
@@ -899,47 +947,25 @@ class MeetingArchive:
                 target = assets / f"frame-{index:02d}.jpg"
                 shutil.copy2(source, target)
                 rendered_frames.append({**frame, "asset": f"assets/{target.name}"})
-
             document = self._report_html(detail, rendered_frames)
             html_path = report_dir / "index.html"
             html_path.write_text(document, encoding="utf-8")
             html_path.chmod(0o600)
             pdf_path = report_dir / "meeting-report.pdf"
-            self._print_pdf(html_path, pdf_path)
-            pdf_path.chmod(0o600)
+            printed = report_dir / "meeting-report.next.pdf"
+            self._print_pdf(html_path, printed)
 
-            previous_report = {**(detail.get("report") or {}),
-                               **_json(report_dir / "report.json", {}),
-                               **_json(report_dir / "delivery-receipts.json", {})}
-            source_signature = self.source_signature(detail)
-            previous_delivery = dict(previous_report)
-            if (previous_report.get("source_signature") != source_signature
-                    and previous_report.get("drive_status") == "uploaded"):
-                # A revised PDF must replace its Drive copy, but a previously
-                # delivered email or Telegram message must never be resent.
-                previous_delivery["drive_status"] = "pending"
-            meta = {
-                **{key: previous_report[key] for key in ("last_delivery_request", "last_delivery_result", "mail_error") if key in previous_report},
-                "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
-                "html": f"/api/archive/report/{detail['meeting_id']}/index.html",
-                "pdf": f"/api/archive/report/{detail['meeting_id']}/meeting-report.pdf",
-                "html_path": str(html_path),
-                "pdf_path": str(pdf_path),
-                "included_frames": len(rendered_frames),
-                "drive_status": "pending",
-                # Keep sent markers durable even if the process exits during
-                # a slow Drive refresh; a restart must not resend the memo.
-                "mail_status": str(previous_report.get("mail_status") or "not_configured"),
-                "telegram_status": str(previous_report.get("telegram_status") or "not_configured"),
-                "gmail_message_id": previous_report.get("gmail_message_id"),
-                "source_signature": source_signature,
-                "generated_while_recording": not self._ready_for_delivery(detail),
-            }
-            # Past the delivery window nothing is sent on its own, also after a
-            # later refresh that sends nothing; the person's button sends it.
-            if on_request or (not deliver and previous_report.get("delivery_on_request")):
-                meta["delivery_on_request"] = True
-            _atomic_json(report_dir / "report.json", meta)
+            with self.lock:
+                fresh = self.report_detail(meeting_id)
+                if fresh and self.source_signature(fresh) != source_signature and attempt < 2:
+                    printed.unlink(missing_ok=True)
+                    continue  # The meeting changed while Chrome printed: print the new text.
+                printed.replace(pdf_path)
+                pdf_path.chmod(0o600)
+                meta, previous_report, previous_delivery = self._report_meta(detail, report_dir, html_path, pdf_path,
+                                                            len(rendered_frames), source_signature,
+                                                            deliver=deliver, on_request=on_request)
+                ready = self._ready_for_delivery(detail)
             delivery = (
                 {"drive_status": "pending",  # A finished call no longer waits for its end.
                  **{key: "pending" if value == "waiting_for_end" and meta.get("delivery_on_request") else value
@@ -947,7 +973,7 @@ class MeetingArchive:
                     if (value := str(previous_report.get(key) or "not_configured"))}}
                 if not deliver or meta.get("delivery_on_request") else
                 self.deliver(detail, meta, previous=previous_delivery)
-                if self._ready_for_delivery(detail)
+                if ready
                 else {
                     "drive_status": (
                         "uploaded" if previous_report.get("drive_status") == "uploaded"
@@ -963,14 +989,51 @@ class MeetingArchive:
                     ),
                 }
             )
-            meta.update(delivery)
-            checked_at = datetime.now().astimezone()
-            meta["delivery_checked_at"] = checked_at.isoformat(timespec="seconds")
-            meta["delivery_retry_at"] = (
-                checked_at + timedelta(minutes=15)
-            ).isoformat(timespec="seconds")
-            _atomic_json(report_dir / "report.json", meta)
-            return meta
+            with self.lock:
+                meta.update(delivery)
+                checked_at = datetime.now().astimezone()
+                meta["delivery_checked_at"] = checked_at.isoformat(timespec="seconds")
+                meta["delivery_retry_at"] = (
+                    checked_at + timedelta(minutes=15)
+                ).isoformat(timespec="seconds")
+                _atomic_json(report_dir / "report.json", meta)
+            return {**meta, "meeting_id": detail["meeting_id"]}
+        raise AssertionError("unreachable")  # The last attempt always saves.
+
+    def _report_meta(self, detail: dict, report_dir: Path, html_path: Path, pdf_path: Path, frames: int,
+                     source_signature: str, *, deliver: bool, on_request: bool) -> tuple[dict, dict, dict]:
+        previous_report = {**(detail.get("report") or {}),
+                           **_json(report_dir / "report.json", {}),
+                           **_json(report_dir / "delivery-receipts.json", {})}
+        previous_delivery = dict(previous_report)
+        if (previous_report.get("source_signature") != source_signature
+                and previous_report.get("drive_status") == "uploaded"):
+            # A revised PDF must replace its Drive copy, but a previously
+            # delivered email or Telegram message must never be resent.
+            previous_delivery["drive_status"] = "pending"
+        meta = {
+            **{key: previous_report[key] for key in ("last_delivery_request", "last_delivery_result", "mail_error") if key in previous_report},
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "html": f"/api/archive/report/{detail['meeting_id']}/index.html",
+            "pdf": f"/api/archive/report/{detail['meeting_id']}/meeting-report.pdf",
+            "html_path": str(html_path),
+            "pdf_path": str(pdf_path),
+            "included_frames": frames,
+            "drive_status": "pending",
+            # Keep sent markers durable even if the process exits during
+            # a slow Drive refresh; a restart must not resend the memo.
+            "mail_status": str(previous_report.get("mail_status") or "not_configured"),
+            "telegram_status": str(previous_report.get("telegram_status") or "not_configured"),
+            "gmail_message_id": previous_report.get("gmail_message_id"),
+            "source_signature": source_signature,
+            "generated_while_recording": not self._ready_for_delivery(detail),
+        }
+        # Past the delivery window nothing is sent on its own, also after a
+        # later refresh that sends nothing; the person's button sends it.
+        if on_request or (not deliver and previous_report.get("delivery_on_request")):
+            meta["delivery_on_request"] = True
+        _atomic_json(report_dir / "report.json", meta)
+        return meta, previous_report, previous_delivery
 
     def retry_pending_deliveries(
         self, *, max_reports: int = 5, meeting_ids: set[str] | None = None
@@ -1015,15 +1078,21 @@ class MeetingArchive:
             if (not detail or not self._ready_for_delivery(detail)
                     or not Path(str(meta.get("pdf_path") or "")).is_file()):
                 continue
-            with self.lock:
-                if _json(path, {}) != meta:
-                    # Report generation may have completed while we prepared
-                    # the retry. Re-check next scan instead of resending it.
-                    continue
-                meta.update(self.deliver(detail, meta, previous=meta))
-                meta["delivery_checked_at"] = now.isoformat(timespec="seconds")
-                meta["delivery_retry_at"] = (now + timedelta(minutes=15)).isoformat(timespec="seconds")
-                _atomic_json(path, meta)
+            gate = self.report_gate(path.parent.name)
+            if not gate.acquire(blocking=False):
+                continue  # Its report is being created and sent right now.
+            try:
+                with self.lock:
+                    if _json(path, {}) != meta:
+                        # Report generation may have completed while we prepared
+                        # the retry. Re-check next scan instead of resending it.
+                        continue
+                    meta.update(self.deliver(detail, meta, previous=meta))
+                    meta["delivery_checked_at"] = now.isoformat(timespec="seconds")
+                    meta["delivery_retry_at"] = (now + timedelta(minutes=15)).isoformat(timespec="seconds")
+                    _atomic_json(path, meta)
+            finally:
+                gate.release()
             retried += 1
         return retried
 
@@ -1051,6 +1120,15 @@ class MeetingArchive:
                                   **({"missing": True} if meeting_id in missing else {}),
                                   **self._delivery_label(meeting_id)}
                                  for meeting_id, channels in undelivered.items()]
+        # A report that could not be created: one "create it again" button each.
+        listed = {item["meeting_id"] for item in health["undelivered"]}
+        for path in sorted(self.reports_root.glob(f"*/{REPORT_FAILURE}")):
+            failure = _json(path, None)
+            if not isinstance(failure, dict) or path.parent.name in listed:
+                continue
+            health["undelivered"].append({"meeting_id": path.parent.name, "channels": [], "uncertain": False,
+                                          "missing": True, "failed": failure, **self._delivery_label(path.parent.name)})
+            health["issue_count"] = int(health.get("issue_count") or 0) + 1
         return health
 
     def repair_report_states(self) -> None:
@@ -1141,8 +1219,8 @@ class MeetingArchive:
         """Print with Chrome, then terminate its lingering headless helper."""
         chrome = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
         if not chrome.is_file():
-            raise RuntimeError("Google Chrome не найден для создания PDF")
-        profile = Path(tempfile.mkdtemp(prefix="meeting-copilot-report-"))
+            raise ReportPdfError("Google Chrome не найден для создания PDF")
+        profile = Path(tempfile.mkdtemp(prefix=PRINT_PROFILE_PREFIX))
         temporary = pdf_path.with_suffix(".tmp.pdf")
         temporary.unlink(missing_ok=True)
         command = [
@@ -1174,9 +1252,9 @@ class MeetingArchive:
                     stable = 0
                 prior = size
             if not temporary.is_file() or temporary.stat().st_size <= 4096:
-                raise RuntimeError("Chrome не создал PDF")
+                raise ReportPdfError("Chrome не создал PDF")
             if temporary.read_bytes()[:4] != b"%PDF":
-                raise RuntimeError("Chrome создал поврежденный PDF")
+                raise ReportPdfError("Chrome создал поврежденный PDF")
             temporary.replace(pdf_path)
         finally:
             process.terminate()
@@ -1185,8 +1263,23 @@ class MeetingArchive:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=3)
-            shutil.rmtree(profile, ignore_errors=True)
+            # Chrome's helpers may still write into the profile for a moment.
+            for _ in range(20):
+                shutil.rmtree(profile, ignore_errors=True)
+                if not profile.exists():
+                    break
+                time.sleep(0.25)
             temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def remove_print_leftovers() -> int:
+        """On start, before any print: remove Chrome profiles an earlier run left behind (our prefix only)."""
+        removed = 0
+        for folder in Path(tempfile.gettempdir()).glob(f"{PRINT_PROFILE_PREFIX}*"):
+            if folder.is_dir() and not folder.is_symlink():
+                shutil.rmtree(folder, ignore_errors=True)
+                removed += not folder.exists()
+        return removed
 
     @staticmethod
     def source_signature(detail: dict) -> str:
